@@ -6,10 +6,10 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString = process.env.SUPABASE_URL;
   if (!connectionString) {
     throw new Error(
-      "DATABASE_URL is not set. Set it in your environment variables."
+      "SUPABASE_URL is not set. Set it in your environment variables."
     );
   }
   const adapter = new PrismaPg({ connectionString });
