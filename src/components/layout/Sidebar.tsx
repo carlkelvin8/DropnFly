@@ -103,7 +103,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           {theme === "dark" ? "Light Mode" : "Dark Mode"}
         </button>
         <button
-          onClick={() => signOut({ callbackUrl: "/" })}
+          onClick={() => signOut({ callbackUrl: window.location.origin + "/" })}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
           <LogOut className="h-4 w-4" />
