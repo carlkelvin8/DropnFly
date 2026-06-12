@@ -17,6 +17,7 @@ const secret =
 export const config = {
   secret,
   trustHost: true,
+  basePath: "/api/auth",
   providers: [
     Credentials({
       name: "credentials",
