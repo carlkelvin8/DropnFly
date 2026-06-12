@@ -1,26 +1,21 @@
-import { handlers } from "@/lib/auth";
+import { Auth, setEnvDefaults } from "@auth/core";
+import { config } from "@/lib/auth-config";
 
-async function wrappedHandler(
-  req: Request,
-  handler: (req: Request) => Promise<Response>
-): Promise<Response> {
+setEnvDefaults(process.env, config, true);
+
+export const GET = async (req: Request) => {
   try {
-    return await handler(req);
+    return await Auth(req, config);
   } catch (e) {
     console.error("Auth handler error:", e);
     return new Response(
       JSON.stringify({
         error: "Internal server error",
         detail: e instanceof Error ? e.message : String(e),
-        stack: e instanceof Error ? e.stack : undefined,
       }),
-      {
-        status: 500,
-        headers: { "content-type": "application/json" },
-      }
+      { status: 500, headers: { "content-type": "application/json" } }
     );
   }
-}
+};
 
-export const GET = (req: Request) => wrappedHandler(req, handlers.GET as any);
-export const POST = (req: Request) => wrappedHandler(req, handlers.POST as any);
+export const POST = GET;
