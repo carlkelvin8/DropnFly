@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+  EMPLOYEE
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  RECEIVED
+  IN_STORAGE
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  password     String
+  role         UserRole  @default(EMPLOYEE)
+  isApproved   Boolean   @default(false)
+  isActive     Boolean   @default(true)
+  currentLat   Float?
+  currentLng   Float?
+  lastLocationUpdate DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  bookings          Booking[]
+  activityLogs      ActivityLog[]
+  assignedBookings  BookingAssignment[]
+  locationUpdates   LocationUpdate[]
+  notifications     Notification[]
+}
+
+model StorageLocation {
+  id           String   @id @default(cuid())
+  name         String
+  address      String
+  city         String
+  capacity     Int
+  pricePerDay  Float
+  openingTime  String   @default("08:00")
+  closingTime  String   @default("20:00")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  bookings Booking[]
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  phone     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookings Booking[]
+}
+
+model Booking {
+  id              String        @id @default(cuid())
+  referenceNumber String        @unique
+  qrCode          String
+  userId          String?
+  customerId      String
+  locationId      String?
+  pickupLocation  String
+  dropOffLocation String
+  luggageDetails  String?
+  checkIn         DateTime
+  checkOut        DateTime?
+  numberOfBags    Int
+  totalPrice      Float         @default(0)
+  status          BookingStatus @default(PENDING)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user     User?            @relation(fields: [userId], references: [id])
+  customer Customer         @relation(fields: [customerId], references: [id])
+  location StorageLocation? @relation(fields: [locationId], references: [id])
+  assignments BookingAssignment[]
+}
+
+model BookingAssignment {
+  id        String   @id @default(cuid())
+  bookingId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model LocationUpdate {
+  id        String   @id @default(cuid())
+  userId    String
+  latitude  Float
+  longitude Float
+  accuracy  Float?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model SystemSetting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  message   String?
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead, createdAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
