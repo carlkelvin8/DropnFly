@@ -2,8 +2,22 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
+import crypto from "crypto";
+
+const secret =
+  process.env.AUTH_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  crypto
+    .createHash("sha256")
+    .update(
+      (process.env.VERCEL_DEPLOYMENT_ID || "dev") + "dropnfly-secret"
+    )
+    .digest("base64")
+    .slice(0, 32);
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  secret,
+  trustHost: true,
   providers: [
     Credentials({
       name: "credentials",
