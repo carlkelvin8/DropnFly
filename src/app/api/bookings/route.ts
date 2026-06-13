@@ -71,6 +71,11 @@ export async function POST(req: Request) {
 
     const checkIn = new Date(checkInStr);
     const checkOut = new Date(checkOutStr);
+
+    if (checkOut <= checkIn) {
+      return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
+    }
+
     const diffMs = checkOut.getTime() - checkIn.getTime();
     const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
     const totalPrice = Math.max(1, diffDays) * location.pricePerDay * numberOfBags;

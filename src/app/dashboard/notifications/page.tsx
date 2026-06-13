@@ -39,22 +39,23 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchNotifications();
-  }, []);
-
-  async function fetchNotifications() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/notifications?limit=100");
-      const data = await res.json();
-      setNotifications(data.notifications || []);
-      setUnreadCount(data.unreadCount || 0);
-    } catch {
-      toast.error("Failed to load notifications");
-    } finally {
-      setLoading(false);
+    let cancelled = false;
+    async function fn() {
+      try {
+        const res = await fetch("/api/notifications?limit=100");
+        const data = await res.json();
+        if (cancelled) return;
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+      } catch {
+        if (!cancelled) toast.error("Failed to load notifications");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-  }
+    fn();
+    return () => { cancelled = true; };
+  }, []);
 
   async function markAllRead() {
     try {

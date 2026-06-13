@@ -33,10 +33,19 @@ export function NotificationDropdown() {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchNotifications();
-
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
+    let cancelled = false;
+    async function fn() {
+      try {
+        const res = await fetch("/api/notifications?limit=5");
+        const data = await res.json();
+        if (cancelled) return;
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+      } catch {}
+    }
+    fn();
+    const interval = setInterval(fn, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   useEffect(() => {
@@ -48,15 +57,6 @@ export function NotificationDropdown() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  async function fetchNotifications() {
-    try {
-      const res = await fetch("/api/notifications?limit=5");
-      const data = await res.json();
-      setNotifications(data.notifications || []);
-      setUnreadCount(data.unreadCount || 0);
-    } catch {}
-  }
 
   async function markAllRead() {
     await fetch("/api/notifications", { method: "PATCH" });

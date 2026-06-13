@@ -13,8 +13,8 @@ export async function GET(req: Request) {
   const days =
     period === "week" ? 7 : period === "month" ? 30 : period === "year" ? 365 : 30;
 
-  let fromDate: string | null = searchParams.get("from");
-  let toDate: string | null = searchParams.get("to");
+  const fromDate: string | null = searchParams.get("from");
+  const toDate: string | null = searchParams.get("to");
 
   let since = new Date();
   since.setDate(since.getDate() - days);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,8 +61,12 @@ export default function EmployeesPage() {
     currentPage * perPage,
   );
 
+  const prevSearch = useRef(search);
   useEffect(() => {
-    setCurrentPage(1);
+    if (prevSearch.current !== search) {
+      prevSearch.current = search;
+      setCurrentPage(1);
+    }
   }, [search]);
 
   function handleDelete(id: string, name: string) {

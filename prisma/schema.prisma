@@ -61,14 +61,20 @@ model StorageLocation {
 }
 
 model Customer {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  phone     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  phone           String
+  password        String?
+  isApproved      Boolean  @default(true)
+  isActive        Boolean  @default(true)
+  image           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  bookings Booking[]
+  bookings        Booking[]
+  payments        Payment[]
+  notifications   CustomerNotification[]
 }
 
 model Booking {
@@ -81,17 +87,22 @@ model Booking {
   pickupLocation  String
   dropOffLocation String
   luggageDetails  String?
+  luggagePhotos   String[]
   checkIn         DateTime
   checkOut        DateTime?
   numberOfBags    Int
   totalPrice      Float         @default(0)
+  discount        Float         @default(0)
+  promoCodeId     String?
   status          BookingStatus @default(PENDING)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  user     User?            @relation(fields: [userId], references: [id])
-  customer Customer         @relation(fields: [customerId], references: [id])
-  location StorageLocation? @relation(fields: [locationId], references: [id])
+  user       User?            @relation(fields: [userId], references: [id])
+  customer   Customer         @relation(fields: [customerId], references: [id])
+  location   StorageLocation? @relation(fields: [locationId], references: [id])
+  promoCode  PromoCode?       @relation(fields: [promoCodeId], references: [id])
+  payments   Payment[]
   assignments BookingAssignment[]
 }
 
@@ -157,4 +168,88 @@ model PasswordResetToken {
   token     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  GCASH
+  MAYA
+  CARD
+  CASH
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  bookingId     String
+  customerId    String
+  amount        Float
+  method        PaymentMethod @default(CASH)
+  status        PaymentStatus @default(PENDING)
+  reference     String?
+  gatewayRef    String?       @unique
+  paidAt        DateTime?
+  refundedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  booking  Booking  @relation(fields: [bookingId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+model PromoCode {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  description String?
+  type        DiscountType @default(PERCENTAGE)
+  value       Float
+  maxUsage    Int          @default(100)
+  usedCount   Int          @default(0)
+  minAmount   Float        @default(0)
+  maxDiscount Float?
+  expiresAt   DateTime?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  bookings Booking[]
+}
+
+model CustomerNotification {
+  id        String   @id @default(cuid())
+  customerId String
+  type      String
+  title     String
+  message   String?
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([customerId, isRead, createdAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String?
+  customerId String?
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([customerId])
 }

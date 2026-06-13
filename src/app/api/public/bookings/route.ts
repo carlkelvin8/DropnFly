@@ -3,17 +3,28 @@ import QRCode from "qrcode";
 import { prisma } from "@/lib/prisma";
 import { generateReferenceNumber } from "@/lib/reference";
 import { sendConfirmationEmail } from "@/lib/email";
-import { notifyBookingCreated } from "@/lib/notifications";
+import { notifyBookingCreated, sendCustomerNotification } from "@/lib/notifications";
+import { getCustomerSession } from "@/lib/customer-auth";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const { name, email, phone, pickupLocation, dropOffLocation, numberOfBags, luggageDetails, preferredDate } = body;
+    const { name, email, phone, pickupLocation, dropOffLocation, numberOfBags, luggageDetails, preferredDate, promoCode } = body;
 
     if (!name || !email || !phone || !pickupLocation || !dropOffLocation || !numberOfBags || !preferredDate) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+
+    const checkInDate = new Date(preferredDate);
+    if (isNaN(checkInDate.getTime())) {
+      return NextResponse.json({ error: "Invalid date" }, { status: 400 });
+    }
+    if (checkInDate < new Date()) {
+      return NextResponse.json({ error: "Pickup date must be in the future" }, { status: 400 });
+    }
+
+    const customerSession = await getCustomerSession();
 
     let customer = await prisma.customer.findUnique({ where: { email } });
 
@@ -22,10 +33,33 @@ export async function POST(req: Request) {
         data: { name, email, phone },
       });
     } else {
-      customer = await prisma.customer.update({
-        where: { email },
-        data: { name, phone },
-      });
+      if (!customer.password && customerSession?.id === customer.id) {
+        customer = await prisma.customer.update({
+          where: { email },
+          data: { name, phone },
+        });
+      } else if (!customer.password) {
+        customer = await prisma.customer.update({
+          where: { email },
+          data: { name, phone },
+        });
+      }
+    }
+
+    const discount = 0;
+    let promoCodeId: string | null = null;
+
+    if (promoCode) {
+      const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.toUpperCase() } });
+      if (promo && promo.isActive && promo.usedCount < promo.maxUsage) {
+        if (!promo.expiresAt || new Date() <= promo.expiresAt) {
+          promoCodeId = promo.id;
+          await prisma.promoCode.update({
+            where: { id: promo.id },
+            data: { usedCount: { increment: 1 } },
+          });
+        }
+      }
     }
 
     const referenceNumber = generateReferenceNumber();
@@ -45,8 +79,10 @@ export async function POST(req: Request) {
         pickupLocation,
         dropOffLocation,
         luggageDetails: luggageDetails || null,
-        checkIn: new Date(preferredDate),
+        checkIn: checkInDate,
         numberOfBags: parseInt(numberOfBags),
+        discount,
+        promoCodeId,
         status: "PENDING",
       },
     });
@@ -59,7 +95,7 @@ export async function POST(req: Request) {
         qrCodeBase64: qrBase64,
         pickupLocation,
         dropOffLocation,
-        scheduledDate: new Date(preferredDate).toLocaleDateString("en-PH", {
+        scheduledDate: checkInDate.toLocaleDateString("en-PH", {
           weekday: "long",
           year: "numeric",
           month: "long",
@@ -70,6 +106,16 @@ export async function POST(req: Request) {
       });
     } catch {
       console.warn("Email sending failed, booking still created");
+    }
+
+    if (customer.password) {
+      await sendCustomerNotification({
+        customerId: customer.id,
+        type: "booking_created",
+        title: "Booking Confirmed",
+        message: `Booking ${referenceNumber} has been created successfully.`,
+        link: `/my-account/bookings/${booking.id}`,
+      });
     }
 
     const staffUsers = await prisma.user.findMany({

@@ -19,6 +19,8 @@ import {
   Sun,
   Moon,
   User,
+  DollarSign,
+  Tag,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useTheme } from "@/components/ThemeProvider";
@@ -29,6 +31,8 @@ const navItems = [
   { href: "/dashboard/bookings", label: "Bookings", icon: Package },
   { href: "/dashboard/locations", label: "Locations", icon: MapPin },
   { href: "/dashboard/customers", label: "Customers", icon: Users },
+  { href: "/dashboard/payments", label: "Payments", icon: DollarSign },
+  { href: "/dashboard/promo-codes", label: "Promo Codes", icon: Tag },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/employees", label: "Employees", icon: UserCog },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },

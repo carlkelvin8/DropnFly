@@ -24,6 +24,7 @@ import {
 const navLinks = [
   { href: "/book", label: "Book a Pickup" },
   { href: "/track", label: "Track Luggage" },
+  { href: "/my-account/login", label: "My Account" },
   { href: "/login", label: "Staff Login" },
 ];
 

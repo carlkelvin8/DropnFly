@@ -33,19 +33,17 @@ export function LiveMap({
   const pickupCoords = useRef({ lat: pickupLat, lng: pickupLng });
   const dropoffCoords = useRef({ lat: dropoffLat, lng: dropoffLng });
   const employeeCoords = useRef({ lat: employeeLat, lng: employeeLng });
-  pickupCoords.current = { lat: pickupLat, lng: pickupLng };
-  dropoffCoords.current = { lat: dropoffLat, lng: dropoffLng };
-  employeeCoords.current = { lat: employeeLat, lng: employeeLng };
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [noToken] = useState(!MAPBOX_TOKEN);
 
   useEffect(() => {
-    if (!MAPBOX_TOKEN) {
-      setError("Mapbox token not configured. Add NEXT_PUBLIC_MAPBOX_TOKEN to .env");
-      setLoading(false);
-      return;
-    }
+    pickupCoords.current = { lat: pickupLat, lng: pickupLng };
+    dropoffCoords.current = { lat: dropoffLat, lng: dropoffLng };
+    employeeCoords.current = { lat: employeeLat, lng: employeeLng };
+  }, [pickupLat, pickupLng, dropoffLat, dropoffLng, employeeLat, employeeLng]);
 
+  useEffect(() => {
+    if (!MAPBOX_TOKEN) return;
     if (!mapContainer.current || map.current) return;
 
     mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -63,9 +61,8 @@ export function LiveMap({
     map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
 
     map.current.on("load", () => {
-      setLoading(false);
-
       if (!map.current) return;
+      setLoading(false);
 
       if (pickupCoords.current.lat && pickupCoords.current.lng) {
         new mapboxgl.Marker({ color: "#22c55e" })
@@ -105,10 +102,10 @@ export function LiveMap({
     map.current.flyTo({ center: [employeeLng, employeeLat], zoom: 14 });
   }, [employeeLat, employeeLng, employeeName]);
 
-  if (error) {
+  if (noToken) {
     return (
       <div className="flex h-64 items-center justify-center rounded-lg border bg-muted">
-        <p className="text-sm text-muted-foreground">{error}</p>
+        <p className="text-sm text-muted-foreground">Mapbox token not configured. Add NEXT_PUBLIC_MAPBOX_TOKEN to .env</p>
       </div>
     );
   }

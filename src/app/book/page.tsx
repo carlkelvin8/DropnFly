@@ -16,6 +16,10 @@ export default function BookPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [promoDiscount, setPromoDiscount] = useState(0);
+  const [promoApplied, setPromoApplied] = useState("");
+  const [promoError, setPromoError] = useState("");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -32,6 +36,7 @@ export default function BookPage() {
       numberOfBags: formData.get("numberOfBags") as string,
       luggageDetails: formData.get("luggageDetails") as string,
       preferredDate: formData.get("preferredDate") as string,
+      promoCode: promoApplied || undefined,
     };
 
     let res: Response;
@@ -66,7 +71,7 @@ export default function BookPage() {
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
       <header className="sticky top-0 z-50 border-b bg-white/80 shadow-sm backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
-          <Link href="/" className="text-xl font-bold">
+              <Link href="/" className="text-xl font-bold">
             <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               Dropnfly
             </span>
@@ -76,7 +81,13 @@ export default function BookPage() {
               href="/track"
               className="text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
             >
-              Track Luggage
+              Track
+            </Link>
+            <Link
+              href="/my-account/login"
+              className="text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
+            >
+              My Account
             </Link>
           </nav>
         </div>
@@ -161,6 +172,71 @@ export default function BookPage() {
                     />
                   </div>
                 </div>
+              </div>
+
+              <div className="border-t" />
+
+              <div>
+                <div className="mb-4 flex items-center gap-2">
+                  <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" />
+                  </svg>
+                  <h3 className="text-lg font-semibold">Promo Code</h3>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={promoCode}
+                    onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                    placeholder="Enter promo code"
+                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={async () => {
+                      setPromoError("");
+                      setPromoDiscount(0);
+                      setPromoApplied("");
+                      if (!promoCode) return;
+                      try {
+                        const res = await fetch("/api/promo-codes/validate", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ code: promoCode }),
+                        });
+                        const data = await res.json();
+                        if (data.valid) {
+                          setPromoDiscount(data.discount);
+                          setPromoApplied(promoCode);
+                          setPromoCode("");
+                        } else {
+                          setPromoError("Invalid promo code");
+                        }
+                      } catch {
+                        setPromoError("Failed to validate");
+                      }
+                    }}
+                  >
+                    Apply
+                  </Button>
+                </div>
+                {promoApplied && (
+                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-green-50 p-2 text-sm text-green-700">
+                    <span>Promo &ldquo;{promoApplied}&rdquo; applied! Discount: &#x20B1;{promoDiscount.toFixed(2)}</span>
+                    <button
+                      type="button"
+                      onClick={() => { setPromoApplied(""); setPromoDiscount(0); }}
+                      className="ml-auto text-green-500 hover:text-green-700"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+                {promoError && (
+                  <p className="mt-1 text-sm text-red-500">{promoError}</p>
+                )}
               </div>
 
               {error && (

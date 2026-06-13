@@ -52,23 +52,27 @@ function FloatingOrb({
 }
 
 function Particle({ index }: { index: number }) {
-  const size = Math.random() * 3 + 1;
-  const x = Math.random() * 100;
-  const y = Math.random() * 100;
-  const duration = Math.random() * 8 + 6;
-  const delay = Math.random() * 5;
+  const [style] = useState(() => ({
+    width: Math.random() * 3 + 1,
+    left: `${Math.random() * 100}%`,
+    top: `${Math.random() * 100}%`,
+  }));
+  const [anim] = useState(() => ({
+    duration: Math.random() * 8 + 6,
+    delay: Math.random() * 5,
+  }));
 
   return (
     <motion.div
       className="absolute rounded-full bg-blue-400/30"
-      style={{ width: size, height: size, left: `${x}%`, top: `${y}%` }}
+      style={{ width: style.width, height: style.width, left: style.left, top: style.top }}
       animate={{
         y: [0, -30, 0],
         opacity: [0, 0.6, 0],
       }}
       transition={{
-        duration,
-        delay,
+        duration: anim.duration,
+        delay: anim.delay,
         repeat: Infinity,
         ease: "easeInOut",
       }}

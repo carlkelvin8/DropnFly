@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import nodemailer from "nodemailer";
+import { sendPushToUser, sendPushToCustomer } from "./push";
 
 function createTransporter() {
   return nodemailer.createTransport({
@@ -36,6 +37,12 @@ export async function sendNotification({
     });
   } catch {
     console.warn("Failed to create in-app notification");
+  }
+
+  try {
+    await sendPushToUser(userId, { title, body: message, url: link });
+  } catch {
+    console.warn("Failed to send push notification");
   }
 
   if (sendEmail) {
@@ -108,4 +115,32 @@ export async function notifyTaskAssigned(userId: string, bookingRef: string) {
     link: `/dashboard/my`,
     sendEmail: true,
   });
+}
+
+export async function sendCustomerNotification({
+  customerId,
+  type,
+  title,
+  message,
+  link,
+}: {
+  customerId: string;
+  type: string;
+  title: string;
+  message?: string;
+  link?: string;
+}) {
+  try {
+    await prisma.customerNotification.create({
+      data: { customerId, type, title, message, link },
+    });
+  } catch {
+    console.warn("Failed to send customer notification");
+  }
+
+  try {
+    await sendPushToCustomer(customerId, { title, body: message, url: link });
+  } catch {
+    console.warn("Failed to send customer push notification");
+  }
 }

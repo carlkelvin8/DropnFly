@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { ArrowLeft, Mail, Phone, MapPin, Calendar, Package, DollarSign, User, Navigation, Printer } from "lucide-react";
+import { ArrowLeft, Mail, Phone, MapPin, Calendar, Package, DollarSign, User, Navigation, Printer, Camera, Trash2, Tag } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -36,6 +36,8 @@ interface Booking {
   pickupLocation: string;
   dropOffLocation: string;
   luggageDetails: string | null;
+  luggagePhotos: string[];
+  discount: number;
   checkIn: string;
   checkOut: string | null;
   numberOfBags: number;
@@ -43,6 +45,8 @@ interface Booking {
   status: string;
   createdAt: string;
   assignments: { id: string; user: { name: string; email: string } }[];
+  payments?: { id: string; amount: number; method: string; status: string; paidAt: string | null }[];
+  promoCode?: { code: string } | null;
 }
 
 interface Employee {
@@ -79,6 +83,9 @@ export default function BookingDetailPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentSaving, setPaymentSaving] = useState(false);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -149,6 +156,79 @@ export default function BookingDetailPage() {
       toast.error("Failed to delete booking");
     }
     setDeleteConfirm(false);
+  }
+
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        const res = await fetch(`/api/bookings/${params.id}/photos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ photo: base64 }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setBooking((prev) => prev ? { ...prev, luggagePhotos: data.photos } : prev);
+          toast.success("Photo uploaded");
+        } else {
+          toast.error("Failed to upload photo");
+        }
+        setUploadingPhoto(false);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      toast.error("Failed to upload photo");
+      setUploadingPhoto(false);
+    }
+  }
+
+  async function handleDeletePhoto(index: number) {
+    const res = await fetch(`/api/bookings/${params.id}/photos`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setBooking((prev) => prev ? { ...prev, luggagePhotos: data.photos } : prev);
+      toast.success("Photo removed");
+    } else {
+      toast.error("Failed to remove photo");
+    }
+  }
+
+  async function handleAddPayment(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setPaymentSaving(true);
+    const formData = new FormData(e.currentTarget);
+    try {
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingId: params.id,
+          amount: parseFloat(formData.get("amount") as string),
+          method: formData.get("method"),
+          status: "PAID",
+        }),
+      });
+      if (res.ok) {
+        const getRes = await fetch(`/api/bookings/${params.id}`);
+        if (getRes.ok) setBooking(await getRes.json());
+        setShowPaymentForm(false);
+        toast.success("Payment recorded");
+      } else {
+        toast.error("Failed to record payment");
+      }
+    } catch {
+      toast.error("Failed to record payment");
+    }
+    setPaymentSaving(false);
   }
 
   if (!booking) {
@@ -367,6 +447,104 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Luggage Photos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-4 gap-2 mb-4">
+            {booking.luggagePhotos.map((photo, i) => (
+              <div key={i} className="relative group">
+                <img src={photo} alt={`Luggage ${i + 1}`} className="rounded-lg object-cover w-full h-24" />
+                <button
+                  onClick={() => handleDeletePhoto(i)}
+                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={uploadingPhoto} className="relative">
+              {uploadingPhoto ? "Uploading..." : "Add Photo"}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handlePhotoUpload}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+            </Button>
+            <span className="text-xs text-muted-foreground">{booking.luggagePhotos.length} photo(s)</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Payment</CardTitle>
+            <Button variant="outline" size="sm" onClick={() => setShowPaymentForm(!showPaymentForm)}>
+              Record Payment
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {showPaymentForm && (
+            <form onSubmit={handleAddPayment} className="flex gap-2 mb-4 p-3 border rounded-lg bg-muted/30">
+              <input
+                name="amount"
+                type="number"
+                step="0.01"
+                placeholder="Amount"
+                required
+                className="flex h-9 w-32 rounded-md border border-input bg-background px-3 py-1 text-sm"
+              />
+              <select
+                name="method"
+                required
+                className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+              >
+                <option value="CASH">Cash</option>
+                <option value="GCASH">GCash</option>
+                <option value="MAYA">Maya</option>
+                <option value="CARD">Card</option>
+              </select>
+              <Button type="submit" size="sm" disabled={paymentSaving}>
+                {paymentSaving ? "Saving..." : "Save"}
+              </Button>
+            </form>
+          )}
+
+          {booking.payments && booking.payments.length > 0 ? (
+            <div className="divide-y">
+              {booking.payments.map((p) => (
+                <div key={p.id} className="flex items-center justify-between py-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{formatCurrency(p.amount)}</span>
+                    <Badge variant="outline">{p.method}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={p.status === "PAID" ? "default" : "secondary"}>{p.status}</Badge>
+                    {p.paidAt && <span className="text-muted-foreground text-xs">{formatDate(p.paidAt)}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No payment recorded</p>
+          )}
+
+          {booking.promoCode && (
+            <div className="flex items-center gap-2 text-sm text-green-600">
+              <Tag className="h-4 w-4" />
+              Promo: <strong>{booking.promoCode.code}</strong> (Discount: {formatCurrency(booking.discount)})
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

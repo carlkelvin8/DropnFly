@@ -24,6 +24,8 @@ export async function GET(
       assignments: {
         include: { user: { select: { name: true, email: true } } },
       },
+      payments: { select: { id: true, amount: true, method: true, status: true, paidAt: true } },
+      promoCode: { select: { code: true } },
     },
   });
 
@@ -53,6 +55,16 @@ export async function PUT(
     }
 
     const { checkIn: checkInStr, checkOut: checkOutStr, numberOfBags, status } = parsed.data;
+
+    if (checkInStr && isNaN(new Date(checkInStr).getTime())) {
+      return NextResponse.json({ error: "Invalid check-in date" }, { status: 400 });
+    }
+    if (checkOutStr && isNaN(new Date(checkOutStr).getTime())) {
+      return NextResponse.json({ error: "Invalid check-out date" }, { status: 400 });
+    }
+    if (checkInStr && checkOutStr && new Date(checkOutStr) <= new Date(checkInStr)) {
+      return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
+    }
 
     const booking = await prisma.booking.update({
       where: { id },

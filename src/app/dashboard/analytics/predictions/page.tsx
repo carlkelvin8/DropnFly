@@ -15,7 +15,6 @@ import {
   RefreshCw,
   AlertCircle,
   Lightbulb,
-  ArrowLeft,
 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
@@ -38,13 +37,12 @@ export default function PredictionsPage() {
   const [error, setError] = useState("");
 
   async function fetchPredictions() {
-    setLoading(true);
-    setError("");
     try {
       const res = await fetch("/api/analytics/predictions");
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || "Failed to generate predictions");
+        setError(err.error || "Failed to generate predictions");
+        return;
       }
       const json = await res.json();
       setData(json);
@@ -55,9 +53,7 @@ export default function PredictionsPage() {
     }
   }
 
-  useEffect(() => {
-    fetchPredictions();
-  }, []);
+  useEffect(() => { queueMicrotask(() => fetchPredictions()); }, []);
 
   function getConfidenceColor(confidence: number) {
     if (confidence >= 70) return "from-green-500 to-emerald-400";
@@ -107,7 +103,7 @@ export default function PredictionsPage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={fetchPredictions}
+          onClick={() => { setLoading(true); setError(""); fetchPredictions(); }}
           disabled={loading}
         >
           <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />

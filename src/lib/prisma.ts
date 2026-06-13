@@ -24,7 +24,8 @@ function getPrisma() {
 }
 
 export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, prop) {
-    return (getPrisma() as any)[prop];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  get(_target, prop: any) {
+    return getPrisma()[prop as keyof PrismaClient];
   },
 });

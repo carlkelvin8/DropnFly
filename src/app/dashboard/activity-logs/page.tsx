@@ -53,7 +53,6 @@ export default function ActivityLogsPage() {
 
   useEffect(() => {
     const abort = new AbortController();
-    setLoading(true);
     const params = new URLSearchParams();
     if (entityFilter) params.set("entity", entityFilter);
     params.set("limit", "100");
@@ -79,9 +78,7 @@ export default function ActivityLogsPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
   const paginatedLogs = filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
-  useEffect(() => {
-    setPage(1);
-  }, [entityFilter, search]);
+  const pageKey = `${entityFilter}-${search}`;
 
   return (
     <div className="space-y-6">

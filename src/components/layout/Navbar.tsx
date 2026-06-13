@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationDropdown } from "@/components/notifications/NotificationDropdown";
+import { PushManager } from "@/components/PushManager";
 
 interface NavbarProps {
   onMenuClick: () => void;
@@ -23,6 +24,11 @@ export function Navbar({ onMenuClick }: NavbarProps) {
         <Menu className="h-5 w-5" />
       </Button>
       <div className="flex-1" />
+      <PushManager
+        subscribeUrl="/api/notifications/subscribe"
+        unsubscribeUrl="/api/notifications/subscribe"
+        vapidKeyUrl="/api/notifications/vapid-key"
+      />
       <NotificationDropdown />
       <div className="flex items-center gap-2 text-sm">
         <span className="text-muted-foreground">Welcome,</span>
