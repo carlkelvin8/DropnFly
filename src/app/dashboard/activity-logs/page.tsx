@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Table,
@@ -77,8 +75,6 @@ export default function ActivityLogsPage() {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
   const paginatedLogs = filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage);
-
-  const pageKey = `${entityFilter}-${search}`;
 
   return (
     <div className="space-y-6">

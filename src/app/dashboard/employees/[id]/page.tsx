@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +47,7 @@ interface Employee {
 
 export default function EmployeeDetailPage() {
   const params = useParams();
-  const router = useRouter();
+
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [saving, setSaving] = useState(false);
 

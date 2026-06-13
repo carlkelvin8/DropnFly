@@ -14,7 +14,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
-import { User, Mail, Shield, Calendar, ArrowLeft } from "lucide-react";
+import { User, Mail, Shield, Calendar } from "lucide-react";
 import Link from "next/link";
 
 interface Profile {

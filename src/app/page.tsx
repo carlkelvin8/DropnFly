@@ -15,7 +15,6 @@ import {
   HeadphonesIcon,
   ChevronRight,
   Star,
-  CheckCircle,
   ArrowRight,
   Menu,
   X,

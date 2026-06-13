@@ -21,7 +21,6 @@ import { KPISkeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import {
-  MapPin,
   Package,
   Users,
   DollarSign,

@@ -6,8 +6,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Table,
@@ -17,7 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Plus, MapPin, Pencil, Trash2, Search } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";

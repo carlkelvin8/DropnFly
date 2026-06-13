@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, Luggage, Package, Clock, MapPin, User, Bell } from "lucide-react";
+import { LogOut, Luggage, Package, Clock, MapPin, User, Trophy } from "lucide-react";
 import { PushManager } from "@/components/PushManager";
 
 interface Customer {
@@ -43,14 +43,16 @@ export default function CustomerDashboardPage() {
   const router = useRouter();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [points, setPoints] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const [meRes, bookingsRes] = await Promise.all([
+        const [meRes, bookingsRes, loyaltyRes] = await Promise.all([
           fetch("/api/auth/customer/me"),
           fetch("/api/customer/bookings"),
+          fetch("/api/customer/loyalty"),
         ]);
 
         if (!meRes.ok) {
@@ -64,6 +66,11 @@ export default function CustomerDashboardPage() {
         if (bookingsRes.ok) {
           const bookingsData = await bookingsRes.json();
           setBookings(bookingsData);
+        }
+
+        if (loyaltyRes.ok) {
+          const loyaltyData = await loyaltyRes.json();
+          setPoints(loyaltyData.points);
         }
       } catch {
         router.push("/my-account/login");
@@ -121,12 +128,12 @@ export default function CustomerDashboardPage() {
           <p className="text-gray-500">Manage your bookings and profile</p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-3 mb-8">
+        <div className="grid gap-6 md:grid-cols-4 mb-8">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Package className="h-5 w-5 text-blue-600" />
-                Active Bookings
+                Active
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -144,6 +151,19 @@ export default function CustomerDashboardPage() {
               <p className="text-3xl font-bold">{completedBookings.length}</p>
             </CardContent>
           </Card>
+          <Link href="/my-account/loyalty">
+            <Card className="cursor-pointer transition-shadow hover:shadow-md">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Trophy className="h-5 w-5 text-amber-500" />
+                  Points
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold text-amber-500">{points}</p>
+              </CardContent>
+            </Card>
+          </Link>
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-lg">

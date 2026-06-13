@@ -7,8 +7,6 @@ import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Table,
@@ -18,7 +16,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Plus, Eye, Search, Trash2, X, Download } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
@@ -39,16 +36,6 @@ interface Booking {
   status: string;
   createdAt: string;
 }
-
-const statusVariant: Record<string, "default" | "secondary" | "success" | "warning" | "destructive" | "outline"> = {
-  PENDING: "warning",
-  CONFIRMED: "secondary",
-  RECEIVED: "default",
-  IN_STORAGE: "default",
-  OUT_FOR_DELIVERY: "default",
-  DELIVERED: "success",
-  CANCELLED: "destructive",
-};
 
 const statusOptions = [
   { value: "", label: "All Statuses" },

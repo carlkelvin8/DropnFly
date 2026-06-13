@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { ArrowLeft, Mail, Phone, MapPin, Calendar, Package, DollarSign, User, Navigation, Printer, Camera, Trash2, Tag } from "lucide-react";
+import { ArrowLeft, Mail, Phone, MapPin, Calendar, Package, DollarSign, User, Navigation, Printer, Trash2, Tag, MessageCircle, Clock, Briefcase, Plus } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -56,6 +56,26 @@ interface Employee {
   isActive: boolean;
 }
 
+interface Extension {
+  id: string;
+  requestedCheckOut: string;
+  reason: string | null;
+  status: string;
+  requestedAt: string;
+  reviewedBy?: { name: string } | null;
+  reviewedAt?: string | null;
+}
+
+interface LuggageItem {
+  id: string;
+  tagNumber: string;
+  description: string | null;
+  status: string;
+  location: string | null;
+  checkInAt: string;
+  checkOutAt: string | null;
+}
+
 const statusOptions = [
   { value: "PENDING", label: "Pending" },
   { value: "CONFIRMED", label: "Confirmed" },
@@ -66,15 +86,7 @@ const statusOptions = [
   { value: "CANCELLED", label: "Cancelled" },
 ];
 
-const statusVariant: Record<string, "default" | "secondary" | "success" | "warning" | "destructive" | "outline"> = {
-  PENDING: "warning",
-  CONFIRMED: "secondary",
-  RECEIVED: "default",
-  IN_STORAGE: "default",
-  OUT_FOR_DELIVERY: "default",
-  DELIVERED: "success",
-  CANCELLED: "destructive",
-};
+
 
 export default function BookingDetailPage() {
   const params = useParams();
@@ -86,20 +98,80 @@ export default function BookingDetailPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentSaving, setPaymentSaving] = useState(false);
+  const [extensions, setExtensions] = useState<Extension[]>([]);
+  const [reviewing, setReviewing] = useState<string | null>(null);
+  const [luggageItems, setLuggageItems] = useState<LuggageItem[]>([]);
+  const [addingLuggage, setAddingLuggage] = useState(false);
 
   useEffect(() => {
     const abort = new AbortController();
     Promise.all([
       fetch(`/api/bookings/${params.id}`, { signal: abort.signal }).then((r) => r.json()),
       fetch("/api/employees", { signal: abort.signal }).then((r) => r.json()),
-    ]).then(([bookingData, empData]) => {
+      fetch(`/api/bookings/${params.id}/extensions`, { signal: abort.signal }).then((r) => r.json()),
+      fetch(`/api/bookings/${params.id}/luggage`, { signal: abort.signal }).then((r) => r.json()),
+    ]).then(([bookingData, empData, extData, luggageData]) => {
       if (!abort.signal.aborted) {
         setBooking(bookingData);
         setEmployees(empData || []);
+        setExtensions(extData || []);
+        setLuggageItems(luggageData || []);
       }
     }).catch(() => {});
     return () => abort.abort();
   }, [params.id]);
+
+  async function handleAddLuggage() {
+    setAddingLuggage(true);
+    try {
+      const res = await fetch(`/api/bookings/${params.id}/luggage`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      const item = await res.json();
+      setLuggageItems((prev) => [...prev, item]);
+      toast.success(`Added luggage ${item.tagNumber}`);
+    } catch {
+      toast.error("Failed to add luggage");
+    }
+    setAddingLuggage(false);
+  }
+
+  async function handleUpdateLuggageStatus(itemId: string, status: string) {
+    try {
+      const res = await fetch(`/api/luggage/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error();
+      const updated = await res.json();
+      setLuggageItems((prev) => prev.map((i) => i.id === itemId ? { ...i, ...updated } : i));
+      toast.success(`Luggage status updated to ${status.replace("_", " ")}`);
+    } catch {
+      toast.error("Failed to update luggage status");
+    }
+  }
+
+  async function handleReviewExtension(extId: string, status: string) {
+    setReviewing(extId);
+    try {
+      const res = await fetch(`/api/extensions/${extId}/review`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error();
+      const [extData, bookingData] = await Promise.all([
+        fetch(`/api/bookings/${params.id}/extensions`).then((r) => r.json()),
+        fetch(`/api/bookings/${params.id}`).then((r) => r.json()),
+      ]);
+      setExtensions(extData || []);
+      setBooking(bookingData);
+      toast.success(`Extension ${status.toLowerCase()}`);
+    } catch {
+      toast.error("Failed to review extension");
+    }
+    setReviewing(null);
+  }
 
   async function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
     setSaving(true);
@@ -421,6 +493,12 @@ export default function BookingDetailPage() {
                   Receipt
                 </Link>
               </Button>
+              <Button variant="outline" className="w-full" asChild>
+                <Link href={`/dashboard/chat/${booking.id}`}>
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  Chat with Customer
+                </Link>
+              </Button>
             </div>
 
             <div className="border-t pt-4">
@@ -541,6 +619,96 @@ export default function BookingDetailPage() {
             <div className="flex items-center gap-2 text-sm text-green-600">
               <Tag className="h-4 w-4" />
               Promo: <strong>{booking.promoCode.code}</strong> (Discount: {formatCurrency(booking.discount)})
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {extensions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Extension Requests</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {extensions.map((ext) => (
+              <div key={ext.id} className="rounded-lg border p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">Requested: {formatDate(ext.requestedCheckOut)}</span>
+                    <Badge variant={ext.status === "APPROVED" ? "default" : ext.status === "REJECTED" ? "destructive" : "warning"}>
+                      {ext.status}
+                    </Badge>
+                  </div>
+                  {ext.status === "PENDING" && (
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="default" onClick={() => handleReviewExtension(ext.id, "APPROVED")} disabled={reviewing === ext.id}>
+                        Approve
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleReviewExtension(ext.id, "REJECTED")} disabled={reviewing === ext.id}>
+                        Reject
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                {ext.reason && <p className="mt-1 text-sm text-muted-foreground">{ext.reason}</p>}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Requested {formatDate(ext.requestedAt)}
+                  {ext.reviewedBy && ` · Reviewed by ${ext.reviewedBy.name}`}
+                </p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Luggage Items</CardTitle>
+            <Button variant="outline" size="sm" onClick={handleAddLuggage} disabled={addingLuggage}>
+              <Plus className="mr-1 h-4 w-4" />
+              Add Bag
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {luggageItems.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No luggage items registered</p>
+          ) : (
+            <div className="divide-y">
+              {luggageItems.map((item) => (
+                <div key={item.id} className="flex items-center justify-between py-3">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-lg bg-primary/10 p-2">
+                      <Briefcase className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{item.tagNumber}</code>
+                        <Badge variant={item.status === "DELIVERED" ? "success" : item.status === "CANCELLED" ? "destructive" : item.status === "IN_STORAGE" ? "default" : "secondary"}>
+                          {item.status.replace("_", " ")}
+                        </Badge>
+                      </div>
+                      {item.description && <p className="mt-0.5 text-sm text-muted-foreground">{item.description}</p>}
+                      {item.location && <p className="text-xs text-muted-foreground">Location: {item.location}</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={item.status}
+                      onChange={(e) => handleUpdateLuggageStatus(item.id, e.target.value)}
+                      className="h-8 rounded border border-input bg-transparent px-2 text-xs"
+                    >
+                      <option value="CHECKED_IN">Checked In</option>
+                      <option value="IN_STORAGE">In Storage</option>
+                      <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
+                      <option value="DELIVERED">Delivered</option>
+                      <option value="CANCELLED">Cancelled</option>
+                    </select>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>

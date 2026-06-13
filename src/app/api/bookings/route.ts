@@ -6,11 +6,14 @@ import { generateReferenceNumber } from "@/lib/reference";
 import { logActivity } from "@/lib/activity";
 import { bookingSchema } from "@/lib/validations";
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const { searchParams } = new URL(req.url);
+  const include = searchParams.get("include");
 
   const bookings = await prisma.booking.findMany({
     orderBy: { createdAt: "desc" },
@@ -18,8 +21,25 @@ export async function GET() {
       customer: { select: { name: true, email: true } },
       location: { select: { name: true, city: true } },
       user: { select: { name: true } },
+      ...(include === "chat" ? {
+        _count: { select: { chatMessages: true } },
+      } : {}),
     },
   });
+
+  if (include === "chat") {
+    const withLastMessage = await Promise.all(
+      bookings.map(async (b) => {
+        const lastMessage = await prisma.chatMessage.findFirst({
+          where: { bookingId: b.id },
+          orderBy: { createdAt: "desc" },
+          select: { message: true, createdAt: true, isFromCustomer: true },
+        });
+        return { ...b, lastMessage };
+      })
+    );
+    return NextResponse.json(withLastMessage);
+  }
 
   return NextResponse.json(bookings);
 }

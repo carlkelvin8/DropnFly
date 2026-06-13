@@ -17,7 +17,6 @@ import {
   Users,
   DollarSign,
   BarChart3,
-  CalendarIcon,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 

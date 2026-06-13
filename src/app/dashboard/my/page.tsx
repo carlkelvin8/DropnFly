@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Navigation, MapPin } from "lucide-react";
+import { Navigation } from "lucide-react";
 import Link from "next/link";
 
 interface AssignedBooking {

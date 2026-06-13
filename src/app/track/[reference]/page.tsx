@@ -18,7 +18,6 @@ import {
   Luggage,
   ChevronLeft,
   Navigation,
-  Circle,
 } from "lucide-react";
 
 interface BookingData {

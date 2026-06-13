@@ -42,6 +42,8 @@ model User {
   assignedBookings  BookingAssignment[]
   locationUpdates   LocationUpdate[]
   notifications     Notification[]
+  extensionReviews  BookingExtension[]
+  chatMessages      ChatMessage[]
 }
 
 model StorageLocation {
@@ -69,12 +71,16 @@ model Customer {
   isApproved      Boolean  @default(true)
   isActive        Boolean  @default(true)
   image           String?
+  points          Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  bookings        Booking[]
-  payments        Payment[]
-  notifications   CustomerNotification[]
+  bookings          Booking[]
+  payments          Payment[]
+  notifications     CustomerNotification[]
+  chatMessages      ChatMessage[]
+  reviews           BookingReview[]
+  pointsTransactions PointsTransaction[]
 }
 
 model Booking {
@@ -104,6 +110,10 @@ model Booking {
   promoCode  PromoCode?       @relation(fields: [promoCodeId], references: [id])
   payments   Payment[]
   assignments BookingAssignment[]
+  extensions BookingExtension[]
+  chatMessages     ChatMessage[]
+  review           BookingReview?
+  luggageItems     LuggageItem[]
 }
 
 model BookingAssignment {
@@ -252,4 +262,91 @@ model PushSubscription {
 
   @@index([userId])
   @@index([customerId])
+}
+
+enum ExtensionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model BookingExtension {
+  id                String          @id @default(cuid())
+  bookingId         String
+  requestedCheckOut DateTime
+  reason            String?
+  status            ExtensionStatus @default(PENDING)
+  requestedAt       DateTime        @default(now())
+  reviewedById      String?
+  reviewedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  booking    Booking @relation(fields: [bookingId], references: [id])
+  reviewedBy User?   @relation(fields: [reviewedById], references: [id])
+
+  @@index([bookingId])
+}
+
+model ChatMessage {
+  id             String   @id @default(cuid())
+  bookingId      String
+  senderId       String?
+  customerId     String?
+  message        String
+  isFromCustomer Boolean  @default(false)
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  booking  Booking   @relation(fields: [bookingId], references: [id])
+  sender   User?     @relation(fields: [senderId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  @@index([bookingId, createdAt])
+}
+
+model BookingReview {
+  id         String   @id @default(cuid())
+  bookingId  String   @unique
+  customerId String
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  booking  Booking  @relation(fields: [bookingId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([bookingId])
+}
+
+model PointsTransaction {
+  id          String   @id @default(cuid())
+  customerId  String
+  points      Int
+  type        String   @default("EARNED")
+  reference   String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([customerId, createdAt])
+}
+
+model LuggageItem {
+  id          String    @id @default(cuid())
+  bookingId   String
+  tagNumber   String    @unique
+  description String?
+  status      String    @default("CHECKED_IN")
+  location    String?
+  checkInAt   DateTime  @default(now())
+  checkOutAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+  @@index([tagNumber])
 }

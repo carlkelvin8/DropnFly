@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, Luggage, ExternalLink } from "lucide-react";
+import { CheckCircle, ExternalLink } from "lucide-react";
 
 interface BookingData {
   referenceNumber: string;

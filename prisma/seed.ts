@@ -76,7 +76,6 @@ async function main() {
   }
 
   // ── Bookings ──
-  const statuses = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"] as const;
 
   const now = new Date();
   const bookingData = [
@@ -190,6 +189,139 @@ async function main() {
     });
   }
   console.log("Created/updated 5 system settings");
+
+  // ── Booking Extensions ──
+  const firstBooking = createdBookings[0];
+  const secondBooking = createdBookings[1];
+  if (firstBooking) {
+    const existingExt = await prisma.bookingExtension.findFirst({ where: { bookingId: firstBooking.id } });
+    if (!existingExt) {
+      const checkOut = new Date(now);
+      checkOut.setDate(checkOut.getDate() + 1);
+      await prisma.bookingExtension.create({
+        data: {
+          bookingId: firstBooking.id,
+          requestedCheckOut: checkOut,
+          reason: "Need an extra day to pick up luggage",
+          status: "APPROVED",
+          reviewedById: adminUser.id,
+          reviewedAt: new Date(),
+        },
+      });
+      console.log("Created booking extension (approved)");
+    } else {
+      console.log("Booking extension already exists, skipping");
+    }
+  }
+
+  if (secondBooking) {
+    const existingExt = await prisma.bookingExtension.findFirst({ where: { bookingId: secondBooking.id } });
+    if (!existingExt) {
+      const checkOut = new Date(now);
+      checkOut.setDate(checkOut.getDate() + 2);
+      await prisma.bookingExtension.create({
+        data: {
+          bookingId: secondBooking.id,
+          requestedCheckOut: checkOut,
+          reason: "Delayed flight, need extension",
+          status: "PENDING",
+        },
+      });
+      console.log("Created booking extension (pending)");
+    } else {
+      console.log("Booking extension already exists, skipping");
+    }
+  }
+
+  // ── Chat Messages ──
+  if (firstBooking) {
+    const existingMsg = await prisma.chatMessage.findFirst({ where: { bookingId: firstBooking.id } });
+    if (!existingMsg) {
+      const customer = createdCustomers.find((c) => c.email === "john@email.com")!;
+      const staffUser = createdUsers.find((u) => u.email === "staff@dropnfly.ph")!;
+      await prisma.chatMessage.create({
+        data: { bookingId: firstBooking.id, customerId: customer.id, message: "Hi, when will my luggage be delivered?", isFromCustomer: true },
+      });
+      await prisma.chatMessage.create({
+        data: { bookingId: firstBooking.id, senderId: staffUser.id, message: "Your luggage is on the way! ETA is within 2 hours.", isFromCustomer: false },
+      });
+      await prisma.chatMessage.create({
+        data: { bookingId: firstBooking.id, customerId: customer.id, message: "Thank you!", isFromCustomer: true },
+      });
+      console.log("Created 3 chat messages");
+    } else {
+      console.log("Chat messages already exist, skipping");
+    }
+  }
+
+  // ── Booking Reviews ──
+  if (firstBooking) {
+    const existingReview = await prisma.bookingReview.findUnique({ where: { bookingId: firstBooking.id } });
+    if (!existingReview) {
+      const customer = createdCustomers.find((c) => c.email === "john@email.com")!;
+      await prisma.bookingReview.create({
+        data: { bookingId: firstBooking.id, customerId: customer.id, rating: 5, comment: "Great service! Fast delivery and friendly staff." },
+      });
+      console.log("Created booking review (5 stars)");
+    } else {
+      console.log("Booking review already exists, skipping");
+    }
+  }
+
+  // ── Luggage Items ──
+  for (const b of createdBookings.slice(0, 3)) {
+    const existing = await prisma.luggageItem.findFirst({ where: { bookingId: b.id } });
+    if (existing) { console.log(`Luggage items for ${b.ref} already exist, skipping`); continue; }
+    const bookingRecord = await prisma.booking.findUnique({ where: { id: b.id }, select: { numberOfBags: true, referenceNumber: true } });
+    const bagCount = bookingRecord?.numberOfBags || 1;
+    for (let i = 0; i < bagCount; i++) {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let code = "";
+      for (let j = 0; j < 6; j++) code += chars[Math.floor(Math.random() * chars.length)];
+      await prisma.luggageItem.create({
+        data: {
+          bookingId: b.id,
+          tagNumber: `BAG-${code}`,
+          description: `Bag ${i + 1} of ${bagCount}`,
+          status: b === createdBookings[0] ? "DELIVERED" : b === createdBookings[1] ? "IN_STORAGE" : "CHECKED_IN",
+          location: b === createdBookings[1] ? "Shelf A-12" : null,
+        },
+      });
+    }
+    console.log(`Created ${bagCount} luggage items for ${b.ref}`);
+  }
+
+  // ── Loyalty Points ──
+  const john = createdCustomers.find((c) => c.email === "john@email.com");
+  if (john && firstBooking) {
+    const existingTx = await prisma.pointsTransaction.findFirst({ where: { customerId: john.id } });
+    if (!existingTx) {
+      await prisma.customer.update({ where: { id: john.id }, data: { points: 250 } });
+      await prisma.pointsTransaction.create({
+        data: { customerId: john.id, points: 200, type: "EARNED", reference: firstBooking.id, description: "Earned from booking DROPFLY-SEED-001" },
+      });
+      await prisma.pointsTransaction.create({
+        data: { customerId: john.id, points: 50, type: "EARNED", reference: firstBooking.id, description: "Bonus points for first booking" },
+      });
+      console.log("Created loyalty points for John (250 pts)");
+    } else {
+      console.log("Points already exist for John, skipping");
+    }
+  }
+
+  const jane = createdCustomers.find((c) => c.email === "jane@email.com");
+  if (jane) {
+    const existingTx = await prisma.pointsTransaction.findFirst({ where: { customerId: jane.id } });
+    if (!existingTx) {
+      await prisma.customer.update({ where: { id: jane.id }, data: { points: 100 } });
+      await prisma.pointsTransaction.create({
+        data: { customerId: jane.id, points: 100, type: "EARNED", reference: "seed-bonus", description: "Welcome points" },
+      });
+      console.log("Created loyalty points for Jane (100 pts)");
+    } else {
+      console.log("Points already exist for Jane, skipping");
+    }
+  }
 
   console.log("\n✅ Seed complete!");
 }

@@ -95,6 +95,27 @@ export async function PUT(
         booking.referenceNumber,
         body.status
       );
+
+      if (body.status === "DELIVERED") {
+        const pointsEarned = Math.floor(booking.totalPrice / 10);
+        if (pointsEarned > 0) {
+          await Promise.all([
+            prisma.customer.update({
+              where: { id: booking.customerId },
+              data: { points: { increment: pointsEarned } },
+            }),
+            prisma.pointsTransaction.create({
+              data: {
+                customerId: booking.customerId,
+                points: pointsEarned,
+                type: "EARNED",
+                reference: booking.id,
+                description: `Earned from booking ${booking.referenceNumber}`,
+              },
+            }),
+          ]);
+        }
+      }
     }
 
     return NextResponse.json(booking);

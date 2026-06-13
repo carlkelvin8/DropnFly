@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,7 +63,7 @@ const statusDot: Record<string, string> = {
 
 export default function CustomerDetailPage() {
   const params = useParams();
-  const router = useRouter();
+
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);

@@ -21,6 +21,9 @@ import {
   User,
   DollarSign,
   Tag,
+  MessageCircle,
+  FileDown,
+  Trophy,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useTheme } from "@/components/ThemeProvider";
@@ -33,10 +36,13 @@ const navItems = [
   { href: "/dashboard/customers", label: "Customers", icon: Users },
   { href: "/dashboard/payments", label: "Payments", icon: DollarSign },
   { href: "/dashboard/promo-codes", label: "Promo Codes", icon: Tag },
+  { href: "/dashboard/loyalty", label: "Loyalty", icon: Trophy },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/employees", label: "Employees", icon: UserCog },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
   { href: "/dashboard/activity-logs", label: "Activity Logs", icon: ClipboardList },
+  { href: "/dashboard/chat", label: "Chat", icon: MessageCircle },
+  { href: "/dashboard/reports", label: "Reports", icon: FileDown },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
 ];
 

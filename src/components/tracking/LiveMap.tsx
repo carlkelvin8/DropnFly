@@ -18,7 +18,6 @@ interface LiveMapProps {
 }
 
 export function LiveMap({
-  referenceNumber,
   employeeLat,
   employeeLng,
   employeeName,

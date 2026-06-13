@@ -51,7 +51,7 @@ function FloatingOrb({
   );
 }
 
-function Particle({ index }: { index: number }) {
+function Particle() {
   const [style] = useState(() => ({
     width: Math.random() * 3 + 1,
     left: `${Math.random() * 100}%`,
