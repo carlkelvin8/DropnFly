@@ -12,6 +12,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { CheckCircle, ExternalLink } from "lucide-react";
 
+interface LuggageItem {
+  type: string;
+  qty: number;
+  price: number;
+}
+
 interface BookingData {
   referenceNumber: string;
   qrCode: string;
@@ -19,6 +25,8 @@ interface BookingData {
   dropOffLocation: string;
   checkIn: string;
   numberOfBags: number;
+  luggageDetails: string | null;
+  totalPrice: number;
   status: string;
   customer: { name: string; email: string };
 }
@@ -126,10 +134,37 @@ export default function ConfirmPage() {
                 </p>
               </div>
               <div className="rounded-lg border bg-gray-50/50 p-3">
-                <p className="text-gray-500">Number of Luggage</p>
-                <p className="font-medium">{booking.numberOfBags}</p>
+                <p className="text-gray-500">Luggage</p>
+                {(() => {
+                  let items: LuggageItem[] = [];
+                  try {
+                    if (booking.luggageDetails) items = JSON.parse(booking.luggageDetails);
+                  } catch {}
+                  return items.length > 0 ? (
+                    <div className="mt-1 space-y-0.5">
+                      {items.map((item, i) => (
+                        <p key={i} className="text-sm font-medium">
+                          {item.type}: {item.qty}x (&#x20B1;{(item.price * item.qty).toFixed(2)})
+                        </p>
+                      ))}
+                      <p className="pt-1 text-xs text-gray-500">Total: {booking.numberOfBags} bag{booking.numberOfBags > 1 ? "s" : ""}</p>
+                    </div>
+                  ) : (
+                    <p className="font-medium">{booking.numberOfBags} bag{booking.numberOfBags > 1 ? "s" : ""}</p>
+                  );
+                })()}
               </div>
             </div>
+
+            {booking.totalPrice > 0 && (
+              <div className="rounded-lg border border-green-200 bg-green-50/50 p-3 text-sm">
+                <p className="text-gray-500">Payment</p>
+                <p className="mt-1 font-medium text-green-700">
+                  Total: &#x20B1;{booking.totalPrice.toFixed(2)}
+                </p>
+                <p className="text-xs text-green-600">Down payment processed. Remaining balance collectible on pickup/delivery.</p>
+              </div>
+            )}
 
             <div className="flex justify-center">
               <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 p-4 shadow-sm">

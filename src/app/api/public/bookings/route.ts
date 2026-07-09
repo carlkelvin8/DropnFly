@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const { name, email, phone, pickupLocation, dropOffLocation, numberOfBags, luggageDetails, preferredDate, promoCode } = body;
+    const { name, email, phone, countryOfOrigin, cityOfOrigin, pickupLocation, dropOffLocation, numberOfBags, luggageDetails, preferredDate, deliveryDate, promoCode, totalPrice, downPayment } = body;
 
     if (!name || !email || !phone || !pickupLocation || !dropOffLocation || !numberOfBags || !preferredDate) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -24,24 +24,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Pickup date must be in the future" }, { status: 400 });
     }
 
+    let checkOutDate: Date | null = null;
+    if (deliveryDate) {
+      checkOutDate = new Date(deliveryDate);
+      if (isNaN(checkOutDate.getTime())) {
+        return NextResponse.json({ error: "Invalid delivery date" }, { status: 400 });
+      }
+      if (checkOutDate <= checkInDate) {
+        return NextResponse.json({ error: "Delivery date must be after pickup date" }, { status: 400 });
+      }
+    }
+
     const customerSession = await getCustomerSession();
 
     let customer = await prisma.customer.findUnique({ where: { email } });
 
     if (!customer) {
       customer = await prisma.customer.create({
-        data: { name, email, phone },
+        data: { name, email, phone, countryOfOrigin: countryOfOrigin || null, cityOfOrigin: cityOfOrigin || null },
       });
     } else {
+      const updateData: Record<string, string> = { name, phone };
+      if (countryOfOrigin) updateData.countryOfOrigin = countryOfOrigin;
+      if (cityOfOrigin) updateData.cityOfOrigin = cityOfOrigin;
+
       if (!customer.password && customerSession?.id === customer.id) {
         customer = await prisma.customer.update({
           where: { email },
-          data: { name, phone },
+          data: updateData,
         });
       } else if (!customer.password) {
         customer = await prisma.customer.update({
           where: { email },
-          data: { name, phone },
+          data: updateData,
         });
       }
     }
@@ -71,6 +86,8 @@ export async function POST(req: Request) {
 
     const qrBase64 = qrCode.replace(/^data:image\/png;base64,/, "");
 
+    const downPaymentAmount = downPayment ? parseFloat(downPayment) : 0;
+
     const booking = await prisma.booking.create({
       data: {
         referenceNumber,
@@ -80,10 +97,15 @@ export async function POST(req: Request) {
         dropOffLocation,
         luggageDetails: luggageDetails || null,
         checkIn: checkInDate,
+        checkOut: checkOutDate,
         numberOfBags: parseInt(numberOfBags),
+        totalPrice: totalPrice ? parseFloat(totalPrice) : 0,
         discount,
         promoCodeId,
         status: "PENDING",
+        payments: downPaymentAmount > 0
+          ? { create: { amount: downPaymentAmount, method: "CASH", status: "PAID", paidAt: new Date(), customerId: customer.id } }
+          : undefined,
       },
     });
 

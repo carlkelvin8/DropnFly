@@ -21,10 +21,9 @@ import {
 } from "lucide-react";
 
 const navLinks = [
-  { href: "/book", label: "Book a Pickup" },
-  { href: "/track", label: "Track Luggage" },
-  { href: "/my-account/login", label: "My Account" },
-  { href: "/login", label: "Staff Login" },
+  { href: "#how-it-works", label: "How It Works" },
+  { href: "#why-choose-us", label: "Why Choose Us" },
+  { href: "#testimonials", label: "Testimonials" },
 ];
 
 const features = [
@@ -341,7 +340,7 @@ export default function Home() {
               href="/book"
               className="group inline-flex h-12 items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-8 text-sm font-semibold text-white shadow-xl shadow-blue-600/30 transition-all hover:shadow-2xl hover:shadow-blue-600/40 hover:brightness-110"
             >
-              Book a Pickup
+              Book Now
               <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
             <Link
@@ -420,7 +419,7 @@ export default function Home() {
       </section>
 
       {/* How It Works */}
-      <section className="py-20 md:py-28">
+      <section id="how-it-works" className="py-20 md:py-28">
         <div className="container mx-auto px-4">
           <FadeIn>
             <div className="mx-auto max-w-2xl text-center">
@@ -460,7 +459,7 @@ export default function Home() {
       </section>
 
       {/* Features Grid */}
-      <section className="border-y bg-muted/30 py-20 md:py-28">
+      <section id="why-choose-us" className="border-y bg-muted/30 py-20 md:py-28">
         <div className="container mx-auto px-4">
           <FadeIn>
             <div className="mx-auto max-w-2xl text-center">
@@ -502,7 +501,7 @@ export default function Home() {
       </section>
 
       {/* Testimonials */}
-      <section className="py-20 md:py-28">
+      <section id="testimonials" className="py-20 md:py-28">
         <div className="container mx-auto px-4">
           <FadeIn>
             <div className="mx-auto max-w-2xl text-center">
@@ -629,7 +628,6 @@ export default function Home() {
                 {[
                   { href: "/book", label: "Book a Pickup" },
                   { href: "/track", label: "Track Luggage" },
-                  { href: "/login", label: "Staff Login" },
                 ].map((l) => (
                   <li key={l.href}>
                     <Link

@@ -13,6 +13,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (body.status) data.status = body.status;
   if (body.location !== undefined) data.location = body.location;
   if (body.description !== undefined) data.description = body.description;
+  if (body.flag !== undefined) data.flag = body.flag;
   if (body.status === "DELIVERED" || body.status === "CANCELLED") data.checkOutAt = new Date();
 
   const item = await prisma.luggageItem.update({ where: { id }, data });

@@ -13,6 +13,8 @@ export const publicBookingSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email"),
   phone: z.string().min(1, "Phone is required"),
+  countryOfOrigin: z.string().optional(),
+  cityOfOrigin: z.string().optional(),
   pickupLocation: z.string().min(1, "Pickup location is required"),
   dropOffLocation: z.string().min(1, "Drop-off location is required"),
   numberOfBags: z.coerce.number().min(1, "At least 1 bag"),

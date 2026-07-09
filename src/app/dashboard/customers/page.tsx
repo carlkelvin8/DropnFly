@@ -1,164 +1,211 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Plus, Eye, Trash2, Users, Search } from "lucide-react";
-import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
-import { TableSkeleton } from "@/components/ui/skeleton";
-import { Pagination } from "@/components/ui/pagination";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Search, User, Phone, Mail, Package, Loader2, Eye } from "lucide-react";
+import Link from "next/link";
+import { formatDate, formatCurrency } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface Customer {
   id: string;
   name: string;
   email: string;
   phone: string;
-  _count: { bookings: number };
+  totalBookings: number;
   createdAt: string;
 }
 
-const ITEMS_PER_PAGE = 10;
+interface Booking {
+  id: string;
+  referenceNumber: string;
+  pickupLocation: string;
+  dropOffLocation: string;
+  numberOfBags: number;
+  totalPrice: number;
+  status: string;
+  totalPaid: number;
+  balance: number;
+  rider: string | null;
+  createdAt: string;
+}
 
 export default function CustomersPage() {
+  const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/customers")
-      .then((res) => res.json())
-      .then(setCustomers)
-      .finally(() => setLoading(false));
-  }, []);
-
-  const filtered = customers.filter((c) => {
-    const q = search.toLowerCase();
-    return !q || c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || c.phone.toLowerCase().includes(q);
-  });
-
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
-
-  async function handleDelete(id: string) {
+  async function handleSearch() {
+    if (query.length < 2) return toast.error("Enter at least 2 characters");
+    setLoading(true);
+    setSearched(true);
+    setSelectedCustomer(null);
+    setBookings([]);
     try {
-      const res = await fetch(`/api/customers/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete customer");
-      setCustomers((prev) => prev.filter((c) => c.id !== id));
-      toast.success("Customer deleted successfully");
+      const res = await fetch(`/api/customers/search?q=${encodeURIComponent(query)}`);
+      if (!res.ok) throw new Error();
+      setCustomers(await res.json());
     } catch {
-      toast.error("Failed to delete customer");
+      toast.error("Search failed");
+      setCustomers([]);
     }
-    setDeleteConfirm(null);
+    setLoading(false);
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Customers</h1>
-        <Button asChild>
-          <Link href="/dashboard/customers/new">
-            <Plus className="mr-2 h-4 w-4" /> Add Customer
-          </Link>
-        </Button>
-      </div>
+  async function handleSelectCustomer(c: Customer) {
+    setSelectedCustomer(c);
+    setBookingsLoading(true);
+    setBookings([]);
+    try {
+      const res = await fetch(`/api/customers/${c.id}/bookings`);
+      if (!res.ok) throw new Error();
+      setBookings(await res.json());
+    } catch {
+      toast.error("Failed to load bookings");
+    }
+    setBookingsLoading(false);
+  }
 
-      <div className="relative">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search by name, email, or phone..."
-          className="pl-9"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-        />
-      </div>
+  const statusBadge: Record<string, string> = {
+    PENDING: "bg-yellow-100 text-yellow-700",
+    CONFIRMED: "bg-blue-100 text-blue-700",
+    RECEIVED: "bg-purple-100 text-purple-700",
+    IN_STORAGE: "bg-indigo-100 text-indigo-700",
+    OUT_FOR_DELIVERY: "bg-orange-100 text-orange-700",
+    DELIVERED: "bg-green-100 text-green-700",
+    CANCELLED: "bg-red-100 text-red-700",
+  };
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-6">
+      <h1 className="text-2xl font-bold">Customer Records</h1>
+      <p className="text-sm text-muted-foreground">
+        Search for a customer to view their transaction history. Results are hidden until you search.
+      </p>
 
       <Card>
-        <CardContent>
-          {loading ? (
-            <TableSkeleton />
-          ) : (
-            <Table>
-              <TableHeader className="bg-muted/50 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Total Bookings</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginated.map((customer) => (
-                  <TableRow key={customer.id} className="border-b transition-colors hover:bg-muted/50">
-                    <TableCell className="font-medium">
-                      {customer.name}
-                    </TableCell>
-                    <TableCell>{customer.email}</TableCell>
-                    <TableCell>{customer.phone}</TableCell>
-                    <TableCell>{customer._count.bookings}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" asChild>
-                          <Link href={`/dashboard/customers/${customer.id}`}>
-                            <Eye className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() =>
-                            setDeleteConfirm({ id: customer.id, name: customer.name })
-                          }
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {paginated.length === 0 && (
-                  <TableRow className="border-b transition-colors hover:bg-muted/50">
-                    <TableCell colSpan={5}>
-                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                        <Users className="h-12 w-12 mb-4" />
-                        <p className="text-lg font-medium">{customers.length === 0 ? "No customers yet" : "No customers match your search"}</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
+        <CardContent className="p-4">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, email, or phone..."
+                className="pl-9"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              />
+            </div>
+            <Button onClick={handleSearch} disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Search
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+      {searched && !selectedCustomer && (
+        <div className="space-y-3">
+          {customers.length === 0 && !loading ? (
+            <Card>
+              <CardContent className="p-8 text-center text-muted-foreground">
+                <User className="mx-auto h-8 w-8 mb-2 opacity-50" />
+                <p>No customers found matching "{query}"</p>
+              </CardContent>
+            </Card>
+          ) : (
+            customers.map((c) => (
+              <Card key={c.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSelectCustomer(c)}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                        <User className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{c.name}</p>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{c.email}</span>
+                          <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.phone}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium">{c.totalBookings} booking{c.totalBookings !== 1 ? "s" : ""}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(c.createdAt)}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      )}
 
-      <ConfirmDialog
-        open={deleteConfirm !== null}
-        onClose={() => setDeleteConfirm(null)}
-        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm.id)}
-        title="Delete Customer"
-        message={`Are you sure you want to delete customer ${deleteConfirm?.name ?? ""}? This action cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-      />
+      {selectedCustomer && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" onClick={() => setSelectedCustomer(null)}>
+              ← Back to results
+            </Button>
+            <h2 className="text-lg font-semibold">{selectedCustomer.name} — Transactions</h2>
+          </div>
+
+          {bookingsLoading ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+              </CardContent>
+            </Card>
+          ) : bookings.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-muted-foreground">
+                <Package className="mx-auto h-8 w-8 mb-2 opacity-50" />
+                <p>No transactions found for this customer</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {bookings.map((b) => (
+                <Card key={b.id}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Link href={`/dashboard/bookings/${b.id}`} className="font-mono text-sm font-bold text-primary hover:underline">
+                            {b.referenceNumber}
+                          </Link>
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadge[b.status] || "bg-gray-100 text-gray-700"}`}>
+                            {b.status.replace("_", " ")}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {b.pickupLocation} → {b.dropOffLocation}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {b.numberOfBags} bag{b.numberOfBags !== 1 ? "s" : ""} · {formatCurrency(b.totalPrice)}
+                          {b.balance > 0 && <span className="text-red-500 ml-2">{formatCurrency(b.balance)} due</span>}
+                          {b.rider && <span className="ml-2">Rider: {b.rider}</span>}
+                        </p>
+                      </div>
+                      <Button variant="ghost" size="icon" asChild>
+                        <Link href={`/dashboard/bookings/${b.id}`}><Eye className="h-4 w-4" /></Link>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

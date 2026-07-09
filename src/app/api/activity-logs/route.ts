@@ -11,20 +11,35 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const entity = searchParams.get("entity");
   const action = searchParams.get("action");
-  const limit = parseInt(searchParams.get("limit") || "50");
+  const search = searchParams.get("search");
+  const page = parseInt(searchParams.get("page") || "1");
+  const limit = parseInt(searchParams.get("limit") || "30");
 
   const where: Record<string, unknown> = {};
   if (entity) where.entity = entity;
   if (action) where.action = action;
 
-  const logs = await prisma.activityLog.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: Math.min(limit, 200),
-    include: {
-      user: { select: { name: true, email: true } },
-    },
-  });
+  if (search) {
+    where.OR = [
+      { details: { contains: search } },
+      { user: { name: { contains: search } } },
+    ];
+  }
 
-  return NextResponse.json(logs);
+  const skip = (page - 1) * limit;
+
+  const [logs, total] = await Promise.all([
+    prisma.activityLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: Math.min(limit, 200),
+      skip,
+      include: {
+        user: { select: { name: true, email: true } },
+      },
+    }),
+    prisma.activityLog.count({ where }),
+  ]);
+
+  return NextResponse.json({ logs, total, page, limit, totalPages: Math.ceil(total / limit) });
 }

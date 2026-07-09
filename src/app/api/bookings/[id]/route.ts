@@ -3,7 +3,11 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { notifyBookingStatusChanged } from "@/lib/notifications";
-import { bookingSchema } from "@/lib/validations";
+
+const VALID_STATUS = [
+  "PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE",
+  "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW",
+] as const;
 
 export async function GET(
   _req: Request,
@@ -49,31 +53,38 @@ export async function PUT(
     const { id } = await params;
     const body = await req.json();
 
-    const parsed = bookingSchema.partial().safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
-    }
+    const data: Record<string, unknown> = {};
 
-    const { checkIn: checkInStr, checkOut: checkOutStr, numberOfBags, status } = parsed.data;
-
-    if (checkInStr && isNaN(new Date(checkInStr).getTime())) {
-      return NextResponse.json({ error: "Invalid check-in date" }, { status: 400 });
+    if (body.checkIn) {
+      const d = new Date(body.checkIn);
+      if (isNaN(d.getTime())) return NextResponse.json({ error: "Invalid check-in date" }, { status: 400 });
+      data.checkIn = d;
     }
-    if (checkOutStr && isNaN(new Date(checkOutStr).getTime())) {
-      return NextResponse.json({ error: "Invalid check-out date" }, { status: 400 });
+    if (body.checkOut) {
+      const d = new Date(body.checkOut);
+      if (isNaN(d.getTime())) return NextResponse.json({ error: "Invalid check-out date" }, { status: 400 });
+      data.checkOut = d;
     }
-    if (checkInStr && checkOutStr && new Date(checkOutStr) <= new Date(checkInStr)) {
+    if (data.checkIn && data.checkOut && new Date(data.checkOut as Date) <= new Date(data.checkIn as Date)) {
       return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
+    }
+
+    if (body.numberOfBags !== undefined) data.numberOfBags = body.numberOfBags;
+    if (body.pickupLocation !== undefined) data.pickupLocation = body.pickupLocation;
+    if (body.dropOffLocation !== undefined) data.dropOffLocation = body.dropOffLocation;
+    if (body.luggageDetails !== undefined) data.luggageDetails = body.luggageDetails;
+    if (body.totalPrice !== undefined) data.totalPrice = body.totalPrice;
+
+    if (body.status) {
+      if (!VALID_STATUS.includes(body.status)) {
+        return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+      }
+      data.status = body.status;
     }
 
     const booking = await prisma.booking.update({
       where: { id },
-      data: {
-        ...(checkInStr ? { checkIn: new Date(checkInStr) } : {}),
-        ...(checkOutStr ? { checkOut: new Date(checkOutStr) } : {}),
-        ...(numberOfBags ? { numberOfBags } : {}),
-        ...(status ? { status: status as "PENDING" | "CONFIRMED" | "RECEIVED" | "IN_STORAGE" | "OUT_FOR_DELIVERY" | "DELIVERED" | "CANCELLED" } : {}),
-      },
+      data: data as any,
     });
 
     if (body.status) {

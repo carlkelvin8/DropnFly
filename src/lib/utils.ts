@@ -25,6 +25,26 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+export function formatRelativeTime(date: Date | string): string {
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "";
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 60) return "just now";
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffDay < 7) return `${diffDay}d ago`;
+    return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(d);
+  } catch {
+    return "";
+  }
+}
+
 export function calculateTotalPrice(
   pricePerDay: number,
   checkIn: Date,

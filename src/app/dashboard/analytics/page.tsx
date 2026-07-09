@@ -17,6 +17,11 @@ import {
   Users,
   DollarSign,
   BarChart3,
+  Brain,
+  FileText,
+  RefreshCw,
+  AlertCircle,
+  Lightbulb,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -400,6 +405,132 @@ export default function AnalyticsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* AI Reports */}
+      <AiReportsSection />
+    </div>
+  );
+}
+
+function AiReportsSection() {
+  const [reportType, setReportType] = useState<"descriptive" | "predictive" | "financial">("descriptive");
+  const [report, setReport] = useState<{ title: string; summary: string; sections: { heading: string; content: string }[]; generatedAt: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function generateReport() {
+    setLoading(true);
+    setError("");
+    setReport(null);
+    try {
+      const res = await fetch(`/api/analytics/reports?type=${reportType}`);
+      if (!res.ok) {
+        const err = await res.json();
+        setError(err.error || "Failed to generate report");
+        return;
+      }
+      const json = await res.json();
+      setReport(json);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Report generation failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const reportTypes = [
+    { id: "descriptive" as const, label: "Descriptive", desc: "Past performance analysis", icon: FileText, color: "border-t-blue-500", iconBg: "bg-blue-100 text-blue-600" },
+    { id: "predictive" as const, label: "Predictive", desc: "Future trend forecasts", icon: TrendingUp, color: "border-t-violet-500", iconBg: "bg-violet-100 text-violet-600" },
+    { id: "financial" as const, label: "Financial", desc: "Revenue & profitability", icon: DollarSign, color: "border-t-emerald-500", iconBg: "bg-emerald-100 text-emerald-600" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">AI Reports</h2>
+        <Badge variant="secondary" className="gap-1.5 px-2.5 py-1">
+          <Brain className="h-3.5 w-3.5" />
+          Gemini AI
+        </Badge>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        {reportTypes.map((rt) => {
+          const Icon = rt.icon;
+          const isActive = reportType === rt.id;
+          return (
+            <button
+              key={rt.id}
+              onClick={() => { setReportType(rt.id); setReport(null); setError(""); }}
+              className={`rounded-xl border-2 p-4 text-left transition-all hover:shadow-md ${
+                isActive ? `${rt.color} shadow-md bg-muted/20` : "border-transparent"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`rounded-lg p-2 ${rt.iconBg}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-semibold">{rt.label}</p>
+                  <p className="text-xs text-muted-foreground">{rt.desc}</p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <Button onClick={generateReport} disabled={loading} className="w-full sm:w-auto">
+        {loading ? (
+          <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Generating...</>
+        ) : (
+          <><Brain className="mr-2 h-4 w-4" /> Generate {reportTypes.find((r) => r.id === reportType)?.label} Report</>
+        )}
+      </Button>
+
+      {error && (
+        <Card className="border-t-2 border-t-yellow-500">
+          <CardContent className="flex items-start gap-4 p-4">
+            <AlertCircle className="h-5 w-5 shrink-0 text-yellow-600" />
+            <div>
+              <p className="font-medium text-yellow-800">Report unavailable</p>
+              <p className="text-sm text-yellow-700">{error}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {report && (
+        <Card className="border-t-2 border-t-primary shadow-md">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileText className="h-4 w-4 text-primary" />
+                {report.title}
+              </CardTitle>
+              <span className="text-[10px] text-muted-foreground">
+                Generated {new Date(report.generatedAt).toLocaleString()}
+              </span>
+            </div>
+            <CardDescription className="text-sm leading-relaxed">
+              {report.summary}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {report.sections.map((section, i) => (
+              <div key={i} className="rounded-lg border bg-muted/20 p-4">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                    {i + 1}
+                  </span>
+                  <h4 className="font-medium text-sm">{section.heading}</h4>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">{section.content}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
