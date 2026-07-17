@@ -130,7 +130,7 @@ export default function TrackResultPage() {
 
   useEffect(() => {
     const abort = new AbortController();
-    fetch(`/api/bookings/${params.reference}/scans`, { signal: abort.signal })
+    fetch(`/api/bookings/by-ref/${params.reference}/scans`, { signal: abort.signal })
       .then((res) => res.json())
       .then((data) => { if (!abort.signal.aborted && Array.isArray(data)) setScanEvents(data); })
       .catch(() => {});

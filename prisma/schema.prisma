@@ -48,6 +48,8 @@ model User {
   notifications     Notification[]
   extensionReviews  BookingExtension[]
   chatMessages      ChatMessage[]
+  scanEvents        ScanEvent[]
+  incidentTimelines IncidentTimeline[]
 }
 
 model StorageLocation {
@@ -87,6 +89,7 @@ model Customer {
   chatMessages      ChatMessage[]
   reviews           BookingReview[]
   pointsTransactions PointsTransaction[]
+  incidentReports   IncidentReport[]
 }
 
 model Booking {
@@ -121,6 +124,8 @@ model Booking {
   review           BookingReview?
   luggageItems     LuggageItem[]
   scanEvents       ScanEvent[]
+  baggageTags      BaggageTag[]
+  incidentReports  IncidentReport[]
 }
 
 model ScanEvent {
@@ -368,7 +373,7 @@ model LuggageItem {
   location    String?
   checkInAt   DateTime  @default(now())
   checkOutAt  DateTime?
-  flag        String?   @default(null) // LOST, DAMAGED, null
+  flag        String? // LOST, DAMAGED, null
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
