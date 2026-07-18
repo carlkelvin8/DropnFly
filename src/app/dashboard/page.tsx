@@ -18,8 +18,12 @@ import {
   Users,
   CalendarDays,
   Clock,
+  Truck,
+  Timer,
+  MapPin,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LabelList } from "recharts";
+import Link from "next/link";
 
 interface DashboardData {
   capacityUsage: { used: number; total: number; percent: number };
@@ -29,6 +33,9 @@ interface DashboardData {
   totalUsers: number;
   totalBookings: number;
   deliveredBookings: number;
+  pendingDeliveries: number;
+  outForDelivery: number;
+  avgDeliveryTimeHours: number;
   durationBuckets: Record<string, number>;
   bagDistribution: Record<string, number>;
 }
@@ -91,7 +98,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <Card className="border-t-2 border-t-cyan-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Available Capacity</CardTitle>
@@ -123,43 +130,75 @@ export default function DashboardPage() {
 
         <Card className="border-t-2 border-t-emerald-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Claimed Items (This Month)</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Completed</CardTitle>
             <div className="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
               <Inbox className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.claimedThisMonth}</div>
-            <p className="text-xs text-muted-foreground">Delivered this month</p>
+            <div className="text-2xl font-bold">{data.deliveredBookings}</div>
+            <p className="text-xs text-muted-foreground">{data.claimedThisMonth} this month</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-t-2 border-t-amber-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Deliveries</CardTitle>
+            <div className="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
+              <Truck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{data.pendingDeliveries + data.outForDelivery}</div>
+            <p className="text-xs text-muted-foreground">{data.outForDelivery} out for delivery</p>
           </CardContent>
         </Card>
 
         <Card className="border-t-2 border-t-violet-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Completed Transactions</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Avg Delivery Time</CardTitle>
             <div className="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
-              <CheckCircle2 className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+              <Timer className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {data.avgDeliveryTimeHours >= 24
+                ? `${(data.avgDeliveryTimeHours / 24).toFixed(1)}d`
+                : `${data.avgDeliveryTimeHours.toFixed(1)}h`}
+            </div>
+            <p className="text-xs text-muted-foreground">Check-in to delivery</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-t-2 border-t-indigo-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Completion Rate</CardTitle>
+            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+              <CheckCircle2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data.completionRate}%</div>
-            <p className="text-xs text-muted-foreground">{data.deliveredBookings} of {data.totalBookings} completed</p>
+            <p className="text-xs text-muted-foreground">{data.deliveredBookings} of {data.totalBookings}</p>
           </CardContent>
         </Card>
 
         {isAdmin && (
-          <Card className="border-t-2 border-t-amber-500">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
-              <div className="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
-                <Users className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{data.totalUsers}</div>
-              <p className="text-xs text-muted-foreground">Registered staff &amp; admins</p>
-            </CardContent>
-          </Card>
+          <Link href="/dashboard/tracking">
+            <Card className="border-t-2 border-t-rose-500 cursor-pointer transition-shadow hover:shadow-md h-full">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Route Playback</CardTitle>
+                <div className="rounded-lg bg-rose-100 p-2 dark:bg-rose-900/30">
+                  <MapPin className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{data.totalUsers}</div>
+                <p className="text-xs text-muted-foreground">View rider history</p>
+              </CardContent>
+            </Card>
+          </Link>
         )}
       </div>
 

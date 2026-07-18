@@ -34,6 +34,7 @@ import { useEffect, useState } from "react";
 
 const ADMIN_ITEMS = new Set([
   "/dashboard/analytics",
+  "/dashboard/tracking",
   "/dashboard/settings",
   "/dashboard/employees",
   "/dashboard/activity-logs",
@@ -55,6 +56,7 @@ const allNavItems = [
   { href: "/dashboard/promo-codes", label: "Promo Codes", icon: Tag },
   { href: "/dashboard/loyalty", label: "Loyalty", icon: Trophy },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/dashboard/tracking", label: "Route Playback", icon: Navigation },
   { href: "/dashboard/employees", label: "Employees", icon: UserCog },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
   { href: "/dashboard/activity-logs", label: "Activity Logs", icon: ClipboardList },

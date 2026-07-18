@@ -24,6 +24,8 @@ export async function GET() {
       totalUsers,
       bookingDurations,
       luggageData,
+      pendingDeliveries,
+      outForDelivery,
     ] = await Promise.all([
       prisma.storageLocation.count({ where: { isActive: true } }),
       prisma.booking.count(),
@@ -51,6 +53,12 @@ export async function GET() {
         select: { luggageDetails: true },
         take: 500,
       }),
+      prisma.booking.count({
+        where: { status: "PENDING" },
+      }),
+      prisma.booking.count({
+        where: { status: "OUT_FOR_DELIVERY" },
+      }),
     ]);
 
     const capacityTotal = capacityResult._sum.capacity ?? 0;
@@ -58,9 +66,14 @@ export async function GET() {
     const completionRate = totalBookings > 0 ? Math.round((deliveredBookings / totalBookings) * 100) : 0;
 
     const durationBuckets: Record<string, number> = { "0-1": 0, "2-3": 0, "4-7": 0, "8-14": 0, "15+": 0 };
+    let totalDeliveryHours = 0;
+    let deliveryCount = 0;
     for (const b of bookingDurations) {
       if (b.checkIn && b.checkOut) {
         const days = Math.ceil((b.checkOut.getTime() - b.checkIn.getTime()) / (1000 * 60 * 60 * 24));
+        const hours = (b.checkOut.getTime() - b.checkIn.getTime()) / (1000 * 60 * 60);
+        totalDeliveryHours += hours;
+        deliveryCount++;
         if (days <= 1) durationBuckets["0-1"]++;
         else if (days <= 3) durationBuckets["2-3"]++;
         else if (days <= 7) durationBuckets["4-7"]++;
@@ -68,6 +81,7 @@ export async function GET() {
         else durationBuckets["15+"]++;
       }
     }
+    const avgDeliveryTimeHours = deliveryCount > 0 ? totalDeliveryHours / deliveryCount : 0;
 
     const bagDistribution: Record<string, number> = {};
     for (const b of luggageData) {
@@ -88,6 +102,9 @@ export async function GET() {
       totalUsers,
       totalBookings,
       deliveredBookings,
+      pendingDeliveries,
+      outForDelivery,
+      avgDeliveryTimeHours: Math.round(avgDeliveryTimeHours * 10) / 10,
       durationBuckets,
       bagDistribution,
     });
