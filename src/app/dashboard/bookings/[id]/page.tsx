@@ -78,6 +78,7 @@ interface LuggageItem {
   description: string | null;
   status: string;
   location: string | null;
+  flag: string | null;
   checkInAt: string;
   checkOutAt: string | null;
 }

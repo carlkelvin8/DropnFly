@@ -135,7 +135,7 @@ function LoginForm() {
 
         {/* Particles */}
         {Array.from({ length: 30 }).map((_, i) => (
-          <Particle key={i} index={i} />
+          <Particle key={i} />
         ))}
       </div>
 

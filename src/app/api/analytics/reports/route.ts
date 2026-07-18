@@ -60,7 +60,7 @@ export async function GET(req: Request) {
       avgBookingValue: totalBookings > 0 ? Math.round((revenueAgg._sum.totalPrice || 0) / totalBookings) : 0,
     };
 
-    const result = await generateReport(type, analyticsData as Record<string, unknown>);
+    const result = await generateReport(type as "descriptive" | "predictive" | "financial", analyticsData as Record<string, unknown>);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Report generation failed";

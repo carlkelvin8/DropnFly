@@ -43,7 +43,7 @@ export async function GET() {
       }),
       prisma.user.count(),
       prisma.booking.findMany({
-        where: { checkIn: { not: null }, checkOut: { not: null }, status: "DELIVERED" },
+        where: { checkOut: { not: null }, status: "DELIVERED" },
         select: { checkIn: true, checkOut: true },
       }),
       prisma.booking.findMany({

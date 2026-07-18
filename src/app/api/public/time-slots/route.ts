@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
   }
 
   for (const b of existingBookings) {
-    const dt = isPickup ? b.checkIn : b.checkOut;
+    const dt = isPickup ? (b as { checkIn: Date }).checkIn : (b as { checkOut: Date | null }).checkOut;
     if (!dt) continue;
     const hours = dt.getUTCHours().toString().padStart(2, "0");
     const minutes = dt.getUTCMinutes().toString().padStart(2, "0");
