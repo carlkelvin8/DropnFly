@@ -467,6 +467,10 @@ export default function BookingDetailPage() {
 
   async function handleRequestTags() {
     if (tagRequestCount < 1) return toast.error("Invalid count");
+    if (luggageItems.length >= 3) return toast.error("Maximum 3 baggage tags per booking");
+    if (luggageItems.length + tagRequestCount > 3) {
+      return toast.error(`Can only assign ${3 - luggageItems.length} more tag(s). Maximum is 3.`);
+    }
     setRequestingTags(true);
     try {
       const res = await fetch("/api/baggage-tags/request", {
@@ -477,7 +481,8 @@ export default function BookingDetailPage() {
       if (res.ok) {
         const items = await res.json();
         setLuggageItems((prev) => [...prev, ...items]);
-        toast.success(`Requested ${items.length} baggage tag(s)`);
+        toast.success(`Assigned ${items.length} baggage tag(s)`);
+        setTagRequestCount(1);
       } else {
         const err = await res.json();
         toast.error(err.error || "Failed to request tags");
@@ -672,6 +677,12 @@ export default function BookingDetailPage() {
                 <span>Subtotal ({booking.numberOfBags} bag{booking.numberOfBags > 1 ? "s" : ""})</span>
                 <span>{formatCurrency(booking.totalPrice + (booking.promoCode ? booking.discount : 0))}</span>
               </div>
+              {booking.numberOfBags > 3 && (
+                <div className="flex items-center justify-between text-sm text-amber-600">
+                  <span>Extra bag fee ({booking.numberOfBags - 3} × ₱100)</span>
+                  <span>+{formatCurrency((booking.numberOfBags - 3) * 100)}</span>
+                </div>
+              )}
               {booking.promoCode && (
                 <div className="flex items-center justify-between text-sm text-green-600">
                   <span>Promo Discount</span>
@@ -1123,21 +1134,77 @@ export default function BookingDetailPage() {
               </div>
               <CardTitle>Baggage Tags</CardTitle>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="number" min="1" max="10"
-                value={tagRequestCount} onChange={(e) => setTagRequestCount(parseInt(e.target.value) || 1)}
-                className="flex h-8 w-16 rounded-md border border-input bg-background px-2 text-xs shadow-sm"
-              />
-              <Button size="sm" variant="outline" onClick={handleRequestTags} disabled={requestingTags}>
-                <Plus className="mr-1 h-3 w-3" /> Request Tags
-              </Button>
-            </div>
           </div>
+          {booking && (
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <span className="rounded-md bg-muted px-2 py-1">
+                Customer bags: <strong>{booking.numberOfBags}</strong>
+              </span>
+              <span className="rounded-md bg-muted px-2 py-1">
+                Tags assigned: <strong>{luggageItems.length}</strong>
+              </span>
+              {booking.numberOfBags > 3 && (
+                <span className="rounded-md bg-amber-50 border border-amber-200 px-2 py-1 text-amber-700">
+                  +₱{(booking.numberOfBags - 3) * 100} extra ({booking.numberOfBags - 3} bag{booking.numberOfBags - 3 > 1 ? "s" : ""} over limit)
+                </span>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
+          {/* Tag Request Controls */}
+          <div className="mb-4 rounded-lg border bg-muted/30 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-muted-foreground">Request baggage tags (max 3 per booking)</p>
+              {luggageItems.length >= 3 && (
+                <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded">Limit reached</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center rounded-lg border">
+                <button
+                  type="button"
+                  onClick={() => setTagRequestCount(Math.max(1, tagRequestCount - 1))}
+                  className="flex h-8 w-8 items-center justify-center text-sm font-medium hover:bg-muted transition-colors rounded-l-lg"
+                  disabled={tagRequestCount <= 1}
+                >
+                  −
+                </button>
+                <span className="flex h-8 w-10 items-center justify-center border-x text-sm font-bold">
+                  {tagRequestCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setTagRequestCount(Math.min(3 - luggageItems.length, tagRequestCount + 1))}
+                  className="flex h-8 w-8 items-center justify-center text-sm font-medium hover:bg-muted transition-colors rounded-r-lg"
+                  disabled={tagRequestCount >= (3 - luggageItems.length)}
+                >
+                  +
+                </button>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleRequestTags}
+                disabled={requestingTags || luggageItems.length >= 3 || tagRequestCount < 1}
+                className="bg-teal-600 hover:bg-teal-700"
+              >
+                {requestingTags ? (
+                  <><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent mr-1" /> Requesting...</>
+                ) : (
+                  <><Plus className="mr-1 h-3 w-3" /> Assign {tagRequestCount} Tag{tagRequestCount > 1 ? "s" : ""}</>
+                )}
+              </Button>
+            </div>
+            {booking && booking.numberOfBags > 3 && (
+              <p className="mt-2 text-[11px] text-amber-600">
+                ⚠️ Customer has {booking.numberOfBags} bags. Standard limit is 3 bags. Additional ₱100/bag applies for {booking.numberOfBags - 3} extra bag{booking.numberOfBags - 3 > 1 ? "s" : ""}.
+              </p>
+            )}
+          </div>
+
+          {/* Tag List */}
           {luggageItems.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No baggage tags requested yet</p>
+            <p className="text-sm text-muted-foreground">No baggage tags assigned yet</p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {luggageItems.map((item) => {
