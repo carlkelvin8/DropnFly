@@ -98,7 +98,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      {/* Primary KPIs - 4 columns */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <Card className="border-t-2 border-t-cyan-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Available Capacity</CardTitle>
@@ -153,7 +154,10 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground">{data.outForDelivery} out for delivery</p>
           </CardContent>
         </Card>
+      </div>
 
+      {/* Secondary KPIs - 3 columns */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
         <Card className="border-t-2 border-t-violet-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Avg Delivery Time</CardTitle>
