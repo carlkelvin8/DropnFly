@@ -95,10 +95,8 @@ const statusOptions = [
 ];
 
 const ADDITIONAL_SERVICES = [
-  { id: "wrapping", name: "Wrapping / Packaging", price: 50, icon: "📦" },
-  { id: "insurance", name: "Insurance", price: 100, icon: "🛡️" },
-  { id: "express", name: "Express Delivery", price: 200, icon: "⚡" },
-  { id: "special-handling", name: "Special Handling", price: 150, icon: "🔧" },
+  { id: "pickup", name: "Pick-up from Customer", price: 180, icon: "📦", description: "We pick up the luggage from the customer" },
+  { id: "delivery", name: "Deliver to Customer", price: 180, icon: "🚚", description: "We deliver the luggage to the customer" },
 ];
 
 export default function BookingDetailPage() {
@@ -938,11 +936,11 @@ export default function BookingDetailPage() {
               <ShoppingBag className="h-4 w-4 text-purple-600" />
             </div>
             <CardTitle>Additional Services</CardTitle>
-            <CardDescription>Optional services customer can avail post-confirmation</CardDescription>
+            <CardDescription>Add extra services to this booking. Additional payment is required.</CardDescription>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+          <div className="grid gap-3 sm:grid-cols-2 mb-4">
             {ADDITIONAL_SERVICES.map((svc) => (
               <div
                 key={svc.id}
@@ -951,21 +949,40 @@ export default function BookingDetailPage() {
                   next.has(svc.id) ? next.delete(svc.id) : next.add(svc.id);
                   setSelectedServices(next);
                 }}
-                className={`cursor-pointer rounded-lg border p-3 transition-all ${
+                className={`cursor-pointer rounded-xl border-2 p-4 transition-all ${
                   selectedServices.has(svc.id)
-                    ? "border-purple-400 bg-purple-50 ring-1 ring-purple-400"
-                    : "hover:bg-muted"
+                    ? "border-purple-400 bg-purple-50 ring-1 ring-purple-400 dark:bg-purple-950/20"
+                    : "border-muted hover:border-purple-200 hover:bg-muted/50"
                 }`}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-lg">{svc.icon}</span>
-                  {selectedServices.has(svc.id) && <CheckCircle className="h-4 w-4 text-purple-600" />}
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    {selectedServices.has(svc.id) ? (
+                      <CheckCircle className="h-5 w-5 text-purple-600" />
+                    ) : (
+                      <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />
+                    )}
+                    <span className="text-lg">{svc.icon}</span>
+                  </div>
+                  <span className="text-sm font-bold text-purple-600">₱{svc.price}</span>
                 </div>
-                <p className="text-sm font-medium">{svc.name}</p>
-                <p className="text-xs text-muted-foreground mt-1">{formatCurrency(svc.price)}</p>
+                <p className="text-sm font-semibold">{svc.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{svc.description}</p>
               </div>
             ))}
           </div>
+
+          {selectedServices.size > 0 && (
+            <div className="rounded-lg border bg-muted/30 p-3 mb-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Additional Amount:</span>
+                <span className="text-sm font-bold">
+                  ₱{ADDITIONAL_SERVICES.filter((s) => selectedServices.has(s.id)).reduce((sum, s) => sum + s.price, 0)}
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-end gap-3">
             <div className="flex-1">
               <Label className="text-xs">Notes (optional)</Label>
@@ -976,18 +993,10 @@ export default function BookingDetailPage() {
                 className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
               />
             </div>
-            <Button onClick={handleAddServices} disabled={selectedServices.size === 0}>
-              <ShoppingBag className="mr-2 h-4 w-4" /> Add Services
+            <Button onClick={handleAddServices} disabled={selectedServices.size === 0} className="bg-purple-600 hover:bg-purple-700">
+              <ShoppingBag className="mr-2 h-4 w-4" /> Add & Process
             </Button>
           </div>
-          {selectedServices.size > 0 && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Selected: {ADDITIONAL_SERVICES.filter((s) => selectedServices.has(s.id)).map((s) => s.name).join(", ")}
-              &nbsp;— Total: {formatCurrency(
-                ADDITIONAL_SERVICES.filter((s) => selectedServices.has(s.id)).reduce((sum, s) => sum + s.price, 0)
-              )}
-            </p>
-          )}
         </CardContent>
       </Card>
 
