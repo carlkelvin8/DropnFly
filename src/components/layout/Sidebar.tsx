@@ -32,16 +32,22 @@ import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "@/components/ThemeProvider";
 import { useEffect, useState } from "react";
 
-const ADMIN_ITEMS = new Set([
-  "/dashboard/analytics",
-  "/dashboard/tracking",
+const ADMIN_ONLY_ITEMS = new Set([
   "/dashboard/settings",
   "/dashboard/employees",
   "/dashboard/activity-logs",
+]);
+
+const STAFF_AND_ABOVE_ITEMS = new Set([
+  "/dashboard/analytics",
+  "/dashboard/tracking",
   "/dashboard/reports",
   "/dashboard/promo-codes",
   "/dashboard/loyalty",
   "/dashboard/incidents",
+  "/dashboard/customers",
+  "/dashboard/payments",
+  "/dashboard/locations",
 ]);
 
 const allNavItems = [
@@ -76,13 +82,21 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const { data: session } = useSession();
   const role = session?.user?.role;
   const isAdmin = role === "ADMIN";
+  const isStaff = role === "STAFF";
   const [lastSync, setLastSync] = useState<string>("");
 
   useEffect(() => {
     setLastSync(new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }));
   }, []);
 
-  const visibleItems = isAdmin ? allNavItems : allNavItems.filter((item) => !ADMIN_ITEMS.has(item.href));
+  const visibleItems = allNavItems.filter((item) => {
+    // ADMIN sees everything
+    if (isAdmin) return true;
+    // STAFF sees everything except ADMIN_ONLY_ITEMS
+    if (isStaff) return !ADMIN_ONLY_ITEMS.has(item.href);
+    // EMPLOYEE sees everything except ADMIN_ONLY + STAFF_AND_ABOVE
+    return !ADMIN_ONLY_ITEMS.has(item.href) && !STAFF_AND_ABOVE_ITEMS.has(item.href);
+  });
 
   return (
     <aside className="flex w-64 flex-col border-r bg-sidebar-background">
