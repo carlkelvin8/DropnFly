@@ -17,6 +17,7 @@ import {
   Calendar,
   Luggage,
   ChevronLeft,
+  Home,
   Navigation,
   User,
   MessageCircle,
@@ -27,6 +28,8 @@ import {
   Truck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { PublicHeader } from "@/components/layout/PublicHeader";
+import { PublicFooter } from "@/components/layout/PublicFooter";
 
 interface BookingData {
   referenceNumber: string;
@@ -174,14 +177,23 @@ export default function TrackResultPage() {
 
   if (notFound) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <h1 className="text-2xl font-bold">Booking Not Found</h1>
-        <p className="text-gray-500">
-          No booking found with reference &quot;{params.reference}&quot;
-        </p>
-        <Button asChild>
-          <Link href="/track">Try Again</Link>
-        </Button>
+      <div className="min-h-screen bg-blue-50/50">
+        <PublicHeader showBackToHome />
+        <div className="flex flex-col items-center justify-center gap-4 py-24">
+          <h1 className="text-2xl font-bold">Booking Not Found</h1>
+          <p className="text-gray-500">
+            No booking found with reference &quot;{params.reference}&quot;
+          </p>
+          <div className="flex gap-3">
+            <Button asChild variant="outline">
+              <Link href="/track">Try Again</Link>
+            </Button>
+            <Button asChild className="bg-blue-600 text-white hover:bg-blue-700">
+              <Link href="/"><Home className="mr-2 h-4 w-4" /> Back to Home</Link>
+            </Button>
+          </div>
+        </div>
+        <PublicFooter />
       </div>
     );
   }
@@ -198,29 +210,15 @@ export default function TrackResultPage() {
   const currentStep = config.step;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
-      <header className="sticky top-0 z-50 border-b bg-white/80 shadow-sm backdrop-blur-sm">
-        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-4">
-          <Link href="/" className="text-xl font-bold">
-            <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              Dropnfly
-            </span>
-          </Link>
-          <Button variant="ghost" asChild>
-            <Link href="/track" className="flex items-center gap-1">
-              <ChevronLeft className="h-4 w-4" />
-              Search Again
-            </Link>
-          </Button>
-        </div>
-      </header>
+    <div className="min-h-screen bg-blue-50/50">
+      <PublicHeader showBackToHome />
 
       <main className="mx-auto max-w-3xl px-4 py-8">
         <div className="mb-6 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 shadow-lg shadow-blue-200">
             <Package className="h-6 w-6 text-blue-600" />
           </div>
-          <h1 className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-2xl font-bold text-transparent">
+          <h1 className="text-2xl font-bold text-blue-700">
             Luggage Status
           </h1>
           <p className="mt-1 font-mono text-lg tracking-wider text-blue-700">
@@ -239,7 +237,7 @@ export default function TrackResultPage() {
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-green-500 to-emerald-500 text-lg font-bold text-white shadow-md">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-600 text-lg font-bold text-white shadow-md">
                   {rider.profilePic ? (
                     <img src={rider.profilePic} alt={rider.name} className="h-14 w-14 rounded-full object-cover" />
                   ) : (
@@ -313,7 +311,7 @@ export default function TrackResultPage() {
 
               <div className="mt-4 flex gap-2">
                 {hasRecentLocation && (
-                  <Button asChild className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-lg transition-all hover:from-green-700 hover:to-emerald-700 hover:shadow-xl">
+                  <Button asChild className="flex-1 bg-green-600 text-white shadow-lg transition-all hover:bg-green-700 hover:shadow-xl">
                     <Link href={`/track/map/${params.reference}`}>
                       <Navigation className="mr-1.5 h-4 w-4" />
                       View Rider&apos;s Location
@@ -370,7 +368,7 @@ export default function TrackResultPage() {
                         <div
                           className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm leading-relaxed ${
                             msg.isFromCustomer
-                              ? "rounded-tr-none bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
+                              ? "rounded-tr-none bg-blue-600 text-white"
                               : "rounded-tl-none bg-muted"
                           }`}
                         >
@@ -397,7 +395,7 @@ export default function TrackResultPage() {
                     <button
                       onClick={sendChat}
                       disabled={!chatInput.trim() || chatLoading}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all hover:brightness-110 disabled:opacity-40"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition-all hover:bg-blue-700 disabled:opacity-40"
                     >
                       <Send className="h-4 w-4" />
                     </button>
@@ -568,9 +566,9 @@ export default function TrackResultPage() {
               );
             })()}
 
-            <div className="mt-4 flex justify-center gap-3 border-t pt-4">
+            <div className="mt-6 flex flex-wrap justify-center gap-3 border-t pt-4">
               {hasRecentLocation && (
-                <Button asChild className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg transition-all hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl">
+                <Button asChild className="bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl">
                   <Link href={`/track/map/${params.reference}`}>
                     <Navigation className="mr-2 h-4 w-4" />
                     Live Map
@@ -580,10 +578,15 @@ export default function TrackResultPage() {
               <Button asChild variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
                 <Link href="/book">Book Another Pickup</Link>
               </Button>
+              <Button asChild variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+                <Link href="/"><Home className="mr-2 h-4 w-4" /> Back to Home</Link>
+              </Button>
             </div>
           </CardContent>
         </Card>
       </main>
+
+      <PublicFooter />
 
       {showPhotoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setShowPhotoModal(null)}>

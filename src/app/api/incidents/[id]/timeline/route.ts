@@ -7,6 +7,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!["ADMIN", "STAFF"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const { id: incidentId } = await params;
 

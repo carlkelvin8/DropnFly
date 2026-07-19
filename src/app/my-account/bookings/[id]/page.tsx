@@ -39,7 +39,7 @@ interface BookingDetail {
   };
   location?: { name: string; city: string; address: string } | null;
   payments?: { amount: number; status: string; method: string; paidAt: string | null }[];
-  assignments?: { user: { name: string } }[];
+  assignments?: { user: { name: string; vehicleType?: string | null; plateNumber?: string | null } }[];
   luggageItems?: { id: string; tagNumber: string; description: string | null; status: string }[];
 }
 
@@ -168,8 +168,32 @@ export default function CustomerBookingDetailPage() {
   const canExtend = !["CANCELLED", "DELIVERED"].includes(booking.status);
   const extraBags = Math.max(0, booking.numberOfBags - 3);
   const extraBagFee = extraBags * 100;
-  const basePrice = booking.totalPrice - extraBagFee + booking.discount;
-  const additionalServices = booking.luggageDetails?.match(/\[Additional Services:.*?\]/g) || [];
+  let luggageSubtotal = 0;
+  try {
+    const parsed: { type: string; qty: number; price: number }[] = booking.luggageDetails ? JSON.parse(booking.luggageDetails) : [];
+    luggageSubtotal = parsed.reduce((sum, item) => sum + item.price * item.qty, 0);
+  } catch {}
+  const basePrice = luggageSubtotal > 0 ? luggageSubtotal : booking.totalPrice - extraBagFee + booking.discount;
+  const additionalServices = (() => {
+    const services: string[] = [];
+    if (booking.luggageDetails) {
+      try {
+        const parsed = JSON.parse(booking.luggageDetails);
+        if (Array.isArray(parsed)) {
+          const svc = parsed.find((item: Record<string, unknown>) => item.services || item.additionalServices);
+          if (svc) {
+            const list = (svc.services || svc.additionalServices) as string[];
+            if (Array.isArray(list)) services.push(...list);
+          }
+        }
+      } catch {
+        // Not JSON, check for text pattern
+      }
+    }
+    const textMatches = booking.luggageDetails?.match(/\[Additional Services:.*?\]/g) || [];
+    textMatches.forEach((m) => services.push(m));
+    return services;
+  })();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/50">
@@ -228,7 +252,7 @@ export default function CustomerBookingDetailPage() {
                 Customer Information
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="flex items-center gap-2.5 text-sm">
                   <User className="h-4 w-4 text-gray-400" />
@@ -248,6 +272,17 @@ export default function CustomerBookingDetailPage() {
                     <div><p className="text-[11px] text-gray-400">Origin</p><p className="font-medium">{booking.customer.cityOfOrigin ? `${booking.customer.cityOfOrigin}, ` : ""}{booking.customer.countryOfOrigin}</p></div>
                   </div>
                 )}
+              </div>
+              <div className="flex items-center gap-4 rounded-lg border bg-blue-50/50 px-4 py-3">
+                <div>
+                  <p className="text-[11px] text-gray-400 uppercase">Booking Reference</p>
+                  <p className="text-sm font-bold font-mono text-blue-700">{booking.referenceNumber}</p>
+                </div>
+                <div className="h-8 w-px bg-blue-200" />
+                <div>
+                  <p className="text-[11px] text-gray-400 uppercase">Booked On</p>
+                  <p className="text-sm font-medium">{new Date(booking.createdAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -271,6 +306,11 @@ export default function CustomerBookingDetailPage() {
                   <p className="text-[11px] font-medium text-gray-400 uppercase">Pickup</p>
                 </div>
                 <p className="text-sm font-medium">{booking.pickupLocation}</p>
+                {booking.pickupLocation.includes(" - ") && (
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    {booking.pickupLocation.split(" - ")[1]?.trim()}
+                  </p>
+                )}
               </div>
               <div className="rounded-lg border bg-gray-50 p-3">
                 <div className="flex items-center gap-2 mb-1">
@@ -278,6 +318,11 @@ export default function CustomerBookingDetailPage() {
                   <p className="text-[11px] font-medium text-gray-400 uppercase">Drop-off</p>
                 </div>
                 <p className="text-sm font-medium">{booking.dropOffLocation}</p>
+                {booking.dropOffLocation.includes(" - ") && (
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    {booking.dropOffLocation.split(" - ")[1]?.trim()}
+                  </p>
+                )}
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -287,6 +332,7 @@ export default function CustomerBookingDetailPage() {
                   <p className="text-[11px] font-medium text-gray-400 uppercase">Check-in</p>
                 </div>
                 <p className="text-sm font-medium">{new Date(booking.checkIn).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}</p>
+                <p className="text-[11px] text-gray-400">{new Date(booking.checkIn).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}</p>
               </div>
               {booking.checkOut && (
                 <div className="rounded-lg border bg-gray-50 p-3">
@@ -295,6 +341,7 @@ export default function CustomerBookingDetailPage() {
                     <p className="text-[11px] font-medium text-gray-400 uppercase">Check-out</p>
                   </div>
                   <p className="text-sm font-medium">{new Date(booking.checkOut).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}</p>
+                  <p className="text-[11px] text-gray-400">{new Date(booking.checkOut).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}</p>
                 </div>
               )}
               {booking.location && (
@@ -304,11 +351,38 @@ export default function CustomerBookingDetailPage() {
                     <p className="text-[11px] font-medium text-gray-400 uppercase">Storage</p>
                   </div>
                   <p className="text-sm font-medium">{booking.location.name}</p>
+                  <p className="text-[11px] text-gray-400">{booking.location.city}</p>
                 </div>
               )}
             </div>
+            {booking.checkIn && booking.checkOut && (
+              <div className="flex items-center gap-2 rounded-lg border bg-indigo-50/50 px-3 py-2">
+                <Clock className="h-3.5 w-3.5 text-indigo-500" />
+                <span className="text-xs text-indigo-700">
+                  Storage Duration:{" "}
+                  <strong>
+                    {(() => {
+                      const diff = Math.abs(new Date(booking.checkOut).getTime() - new Date(booking.checkIn).getTime());
+                      const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+                      return `${days} day${days !== 1 ? "s" : ""}`;
+                    })()}
+                  </strong>
+                </span>
+              </div>
+            )}
             {booking.assignments && booking.assignments.length > 0 && (
-              <div className="text-xs text-muted-foreground">Assigned rider: <strong>{booking.assignments[0].user.name}</strong></div>
+              <div className="rounded-lg border bg-gray-50 px-3 py-2">
+                <p className="text-[11px] text-gray-400 uppercase mb-1">Assigned Rider</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">{booking.assignments[0].user.name}</p>
+                  {booking.assignments[0].user.vehicleType && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      {booking.assignments[0].user.vehicleType}
+                      {booking.assignments[0].user.plateNumber ? ` · ${booking.assignments[0].user.plateNumber}` : ""}
+                    </Badge>
+                  )}
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -325,10 +399,41 @@ export default function CustomerBookingDetailPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between rounded-lg bg-gray-50 border p-3">
-              <span className="text-sm text-gray-600">Number of Bags</span>
+              <span className="text-sm text-gray-600">Total Bags</span>
               <span className="text-lg font-bold">{booking.numberOfBags}</span>
             </div>
-            {booking.numberOfBags > 3 && (
+            {(() => {
+              let parsed: { type: string; qty: number; price: number }[] = [];
+              try {
+                if (booking.luggageDetails) parsed = JSON.parse(booking.luggageDetails);
+              } catch {}
+              if (parsed.length === 0) return null;
+              const typeColorMap: Record<string, string> = {
+                "Extra Small": "bg-emerald-100 text-emerald-700",
+                Small: "bg-blue-100 text-blue-700",
+                Standard: "bg-violet-100 text-violet-700",
+                Large: "bg-amber-100 text-amber-700",
+              };
+              return (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 uppercase mb-2">Luggage Breakdown</p>
+                  <div className="rounded-lg border divide-y">
+                    {parsed.map((item, i) => (
+                      <div key={i} className="flex items-center justify-between px-3 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${typeColorMap[item.type] || "bg-gray-100 text-gray-700"}`}>
+                            {item.type}
+                          </span>
+                          <span className="text-xs text-gray-500">×{item.qty}</span>
+                        </div>
+                        <span className="text-sm font-medium">₱{(item.price * item.qty).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            {extraBags > 0 && (
               <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 p-3">
                 <div>
                   <p className="text-sm font-medium text-amber-800">Extra bag fee</p>
@@ -347,16 +452,11 @@ export default function CustomerBookingDetailPage() {
                       <div>
                         <code className="text-xs font-mono font-bold">{item.tagNumber}</code>
                         <p className="text-[10px] text-gray-400">{item.status.replace(/_/g, " ")}</p>
+                        {item.description && <p className="text-[10px] text-gray-400">{item.description}</p>}
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-            {booking.luggageDetails && !booking.luggageDetails.startsWith("[") && (
-              <div>
-                <p className="text-xs font-medium text-gray-400 uppercase mb-1">Description</p>
-                <p className="text-sm text-gray-600">{booking.luggageDetails.split("\n").filter(l => !l.startsWith("[")).join(", ")}</p>
               </div>
             )}
           </CardContent>
@@ -372,15 +472,16 @@ export default function CustomerBookingDetailPage() {
               Payment
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <div className="space-y-2 rounded-lg border p-4">
+              <p className="text-xs font-medium text-gray-400 uppercase mb-1">Price Breakdown</p>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Base price ({Math.min(booking.numberOfBags, 3)} bag{Math.min(booking.numberOfBags, 3) > 1 ? "s" : ""})</span>
+                <span className="text-gray-500">Luggage ({Math.min(booking.numberOfBags, 3)} bag{Math.min(booking.numberOfBags, 3) > 1 ? "s" : ""})</span>
                 <span>₱{basePrice.toFixed(2)}</span>
               </div>
               {extraBags > 0 && (
                 <div className="flex justify-between text-sm text-amber-600">
-                  <span>Extra bags ({extraBags} × ₱100)</span>
+                  <span>Extra bag fee ({extraBags} × ₱100)</span>
                   <span>+₱{extraBagFee.toFixed(2)}</span>
                 </div>
               )}
@@ -391,51 +492,98 @@ export default function CustomerBookingDetailPage() {
                 </div>
               )}
               <div className="flex justify-between font-semibold border-t pt-2 mt-2">
-                <span>Total</span>
+                <span>Grand Total</span>
                 <span className="text-lg">₱{booking.totalPrice.toFixed(2)}</span>
               </div>
             </div>
-            {booking.payments && booking.payments.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {booking.payments.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-lg bg-gray-50 border p-3 text-sm">
-                    <div>
-                      <p className="font-medium">{p.method}</p>
-                      <p className="text-xs text-gray-400">{p.paidAt ? new Date(p.paidAt).toLocaleString() : "Pending"}</p>
+            {booking.payments && booking.payments.length > 0 && (() => {
+              const totalPaid = booking.payments!.filter((p) => p.status === "PAID").reduce((s, p) => s + p.amount, 0);
+              const remaining = booking.totalPrice - totalPaid;
+              return (
+                <div className="rounded-lg border p-4">
+                  <p className="text-xs font-medium text-gray-400 uppercase mb-2">Payment Summary</p>
+                  <div className="flex gap-3">
+                    <div className="flex-1 rounded-lg bg-emerald-50 px-3 py-2">
+                      <p className="text-[11px] text-emerald-600">Paid</p>
+                      <p className="text-sm font-bold text-emerald-700">₱{totalPaid.toFixed(2)}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold">₱{p.amount.toFixed(2)}</p>
-                      <Badge variant={p.status === "PAID" ? "default" : "secondary"} className="text-[10px]">{p.status}</Badge>
-                    </div>
+                    {remaining > 0 && (
+                      <div className="flex-1 rounded-lg bg-amber-50 px-3 py-2">
+                        <p className="text-[11px] text-amber-600">Remaining</p>
+                        <p className="text-sm font-bold text-amber-700">₱{remaining.toFixed(2)}</p>
+                      </div>
+                    )}
+                    {remaining <= 0 && (
+                      <div className="flex-1 rounded-lg bg-blue-50 px-3 py-2">
+                        <p className="text-[11px] text-blue-600">Status</p>
+                        <p className="text-sm font-bold text-blue-700">Fully Paid</p>
+                      </div>
+                    )}
                   </div>
-                ))}
+                </div>
+              );
+            })()}
+            {booking.payments && booking.payments.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-400 uppercase mb-2">Payment History</p>
+                <div className="space-y-2">
+                  {booking.payments.map((p, i) => {
+                    const methodIcons: Record<string, string> = { GCASH: "G", MAYA: "M", CARD: "C", CASH: "$" };
+                    const methodColors: Record<string, string> = { GCASH: "bg-blue-600", MAYA: "bg-green-600", CARD: "bg-violet-600", CASH: "bg-gray-600" };
+                    return (
+                      <div key={i} className="flex items-center justify-between rounded-lg bg-gray-50 border p-3 text-sm">
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-8 w-8 items-center justify-center rounded-full text-white text-xs font-bold ${methodColors[p.method] || "bg-gray-400"}`}>
+                            {methodIcons[p.method] || "?"}
+                          </div>
+                          <div>
+                            <p className="font-medium">{p.method}</p>
+                            <p className="text-xs text-gray-400">{p.paidAt ? new Date(p.paidAt).toLocaleString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "Pending"}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold">₱{p.amount.toFixed(2)}</p>
+                          <Badge variant={p.status === "PAID" ? "default" : "secondary"} className="text-[10px]">{p.status}</Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </CardContent>
         </Card>
 
         {/* 5. Additional Services */}
-        {additionalServices.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100">
-                  <ShoppingBag className="h-4 w-4 text-purple-600" />
-                </div>
-                Additional Services
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {additionalServices.map((svc, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-lg border bg-purple-50/50 p-3 text-sm">
-                    <span className="text-purple-800">{svc.replace(/[\[\]]/g, "")}</span>
-                  </div>
-                ))}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100">
+                <ShoppingBag className="h-4 w-4 text-purple-600" />
               </div>
-            </CardContent>
-          </Card>
-        )}
+              Additional Services
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {additionalServices.length > 0 ? (
+              <div className="space-y-2">
+                {additionalServices.map((svc, i) => {
+                  const cleaned = svc.replace(/[\[\]]/g, "").replace("Additional Services:", "").trim();
+                  return (
+                    <div key={i} className="flex items-center gap-2.5 rounded-lg border bg-purple-50/50 px-3 py-2.5 text-sm">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-100">
+                        <svg className="h-3 w-3 text-purple-600" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                      </div>
+                      <span className="text-purple-800 font-medium">{cleaned}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 text-center py-2">No additional services requested.</p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Luggage Photos */}
         {booking.luggagePhotos.length > 0 && (

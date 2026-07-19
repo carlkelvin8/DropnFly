@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import type { BookingStatus } from "@/generated/prisma/client";
 
 // actions: start-pickup, arrive-pickup, complete-pickup, start-delivery, arrive-delivery, complete-delivery
 const ACTION_MAP: Record<string, string> = {
@@ -44,7 +45,7 @@ export async function POST(
     const [updated] = await Promise.all([
       prisma.booking.update({
         where: { id },
-        data: { status: newStatus as any },
+        data: { status: newStatus as BookingStatus },
       }),
       prisma.scanEvent.create({
         data: {
@@ -53,8 +54,8 @@ export async function POST(
           status: newStatus,
           photo: photo || null,
           note: note || `Task action: ${action}`,
-          latitude: latitude || null,
-          longitude: longitude || null,
+          latitude: latitude ?? null,
+          longitude: longitude ?? null,
         },
       }),
     ]);
@@ -68,23 +69,28 @@ export async function POST(
     });
 
     if (newStatus === "DELIVERED") {
-      const pointsEarned = Math.floor(updated.totalPrice / 10);
-      if (pointsEarned > 0) {
-        await Promise.all([
-          prisma.customer.update({
-            where: { id: booking.customerId },
-            data: { points: { increment: pointsEarned } },
-          }),
-          prisma.pointsTransaction.create({
-            data: {
-              customerId: booking.customerId,
-              points: pointsEarned,
-              type: "EARNED",
-              reference: booking.id,
-              description: `Earned from booking ${booking.referenceNumber}`,
-            },
-          }),
-        ]);
+      const existingPoints = await prisma.pointsTransaction.findFirst({
+        where: { reference: booking.id, type: "EARNED" },
+      });
+      if (!existingPoints) {
+        const pointsEarned = Math.floor(updated.totalPrice / 10);
+        if (pointsEarned > 0) {
+          await Promise.all([
+            prisma.customer.update({
+              where: { id: booking.customerId },
+              data: { points: { increment: pointsEarned } },
+            }),
+            prisma.pointsTransaction.create({
+              data: {
+                customerId: booking.customerId,
+                points: pointsEarned,
+                type: "EARNED",
+                reference: booking.id,
+                description: `Earned from booking ${booking.referenceNumber}`,
+              },
+            }),
+          ]);
+        }
       }
     }
 

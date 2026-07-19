@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { generateReferenceNumber } from "@/lib/reference";
+import type { BookingStatus } from "@/generated/prisma/client";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -102,30 +104,42 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    // POST logic unchanged - preserved from original
-    const { customerId, locationId, numberOfBags, checkIn, checkOut, status } = body;
+    const { customerId, locationId, numberOfBags, checkIn, checkOut, status, totalPrice: clientTotalPrice, paymentMethod, downPayment } = body;
 
-    if (!customerId || !locationId || !numberOfBags || !checkIn || !checkOut) {
+    if (!customerId || !numberOfBags || !checkIn) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const location = await prisma.storageLocation.findUnique({ where: { id: locationId } });
-    if (!location) return NextResponse.json({ error: "Location not found" }, { status: 404 });
+    const VALID_STATUSES: BookingStatus[] = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW"];
+    const bookingStatus: BookingStatus = VALID_STATUSES.includes(status) ? status : "PENDING";
+
+    let location = null;
+    if (locationId) {
+      location = await prisma.storageLocation.findUnique({ where: { id: locationId } });
+      if (!location) return NextResponse.json({ error: "Location not found" }, { status: 404 });
+    }
 
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
 
     const checkInDate = new Date(checkIn);
-    const checkOutDate = new Date(checkOut);
-    if (checkOutDate <= checkInDate) {
-      return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
+    let totalPrice: number;
+
+    if (clientTotalPrice) {
+      totalPrice = parseFloat(clientTotalPrice);
+    } else if (checkOut && location) {
+      const checkOutDate = new Date(checkOut);
+      if (checkOutDate <= checkInDate) {
+        return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
+      }
+      const diffMs = checkOutDate.getTime() - checkInDate.getTime();
+      const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      totalPrice = Math.max(1, diffDays) * location.pricePerDay * numberOfBags;
+    } else {
+      totalPrice = 0;
     }
 
-    const diffMs = checkOutDate.getTime() - checkInDate.getTime();
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    const totalPrice = Math.max(1, diffDays) * location.pricePerDay * numberOfBags;
-
-    const referenceNumber = `BK-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const referenceNumber = generateReferenceNumber();
 
     const QRCode = (await import("qrcode")).default;
     const qrCode = await QRCode.toDataURL(referenceNumber, { width: 300, margin: 2 });
@@ -137,14 +151,17 @@ export async function POST(req: Request) {
         qrCode: qrBase64,
         userId: session.user.id,
         customerId,
-        locationId,
+        locationId: locationId || null,
         pickupLocation: body.pickupLocation || "",
         dropOffLocation: body.dropOffLocation || "",
         checkIn: checkInDate,
-        checkOut: checkOutDate,
+        checkOut: body.checkOut ? new Date(body.checkOut) : null,
         numberOfBags,
         totalPrice,
-        status: (status || "PENDING") as any,
+        status: bookingStatus,
+        payments: downPayment > 0
+          ? { create: { amount: parseFloat(downPayment), method: paymentMethod || "CASH", status: "PAID", paidAt: new Date(), customerId } }
+          : undefined,
       },
       include: { customer: { select: { name: true } }, location: { select: { name: true } } },
     });

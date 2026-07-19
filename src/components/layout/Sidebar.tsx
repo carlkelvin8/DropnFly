@@ -15,18 +15,16 @@ import {
   ClipboardList,
   Navigation,
   Bell,
-  BarChart3,
   Sun,
   Moon,
   User,
   DollarSign,
-  Tag,
   MessageCircle,
   FileDown,
-  Trophy,
   QrCode,
   Truck,
   AlertTriangle,
+  Ticket,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "@/components/ThemeProvider";
@@ -39,35 +37,26 @@ const ADMIN_ONLY_ITEMS = new Set([
 ]);
 
 const STAFF_AND_ABOVE_ITEMS = new Set([
-  "/dashboard/analytics",
-  "/dashboard/tracking",
-  "/dashboard/reports",
-  "/dashboard/promo-codes",
-  "/dashboard/loyalty",
-  "/dashboard/incidents",
+  "/dashboard/financial",
+  "/dashboard/logistics",
   "/dashboard/customers",
-  "/dashboard/payments",
-  "/dashboard/locations",
+  "/dashboard/incidents",
 ]);
 
 const allNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/my", label: "My Dashboard", icon: Navigation },
   { href: "/dashboard/bookings", label: "Bookings", icon: Package },
+  { href: "/dashboard/promo-codes", label: "Promo Codes", icon: Ticket },
   { href: "/dashboard/scanner", label: "Scanner", icon: QrCode },
-  { href: "/dashboard/logistics", label: "Logistics", icon: Truck },
-  { href: "/dashboard/locations", label: "Locations", icon: MapPin },
+  { href: "/dashboard/logistics", label: "Logistics & Routes", icon: Truck },
   { href: "/dashboard/customers", label: "Customers", icon: Users },
-  { href: "/dashboard/payments", label: "Payments", icon: DollarSign },
-  { href: "/dashboard/promo-codes", label: "Promo Codes", icon: Tag },
-  { href: "/dashboard/loyalty", label: "Loyalty", icon: Trophy },
-  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/dashboard/tracking", label: "Route Playback", icon: Navigation },
+  { href: "/dashboard/financial", label: "Financial Oversight", icon: DollarSign },
+  { href: "/dashboard/chat", label: "Chat", icon: MessageCircle },
+  { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/dashboard/employees", label: "Employees", icon: UserCog },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
   { href: "/dashboard/activity-logs", label: "Activity Logs", icon: ClipboardList },
-  { href: "/dashboard/chat", label: "Chat", icon: MessageCircle },
-  { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/dashboard/reports", label: "Reports", icon: FileDown },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
 ];
@@ -90,11 +79,8 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   }, []);
 
   const visibleItems = allNavItems.filter((item) => {
-    // ADMIN sees everything
     if (isAdmin) return true;
-    // STAFF sees everything except ADMIN_ONLY_ITEMS
     if (isStaff) return !ADMIN_ONLY_ITEMS.has(item.href);
-    // EMPLOYEE sees everything except ADMIN_ONLY + STAFF_AND_ABOVE
     return !ADMIN_ONLY_ITEMS.has(item.href) && !STAFF_AND_ABOVE_ITEMS.has(item.href);
   });
 

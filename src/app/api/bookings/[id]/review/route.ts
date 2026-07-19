@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { getCustomerSession } from "@/lib/customer-auth";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  const customer = await getCustomerSession();
+  if (!session?.user && !customer) return new NextResponse("Unauthorized", { status: 401 });
+
   const { id } = await params;
   const review = await prisma.bookingReview.findUnique({
     where: { bookingId: id },

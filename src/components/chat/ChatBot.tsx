@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, X, Send, Bot, User, ChevronDown } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, ChevronDown, HeadphonesIcon, ExternalLink } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -36,6 +36,7 @@ export default function ChatBot() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [showLiveAgent, setShowLiveAgent] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -54,11 +55,29 @@ export default function ChatBot() {
     setShowScrollBtn(!atBottom);
   };
 
+  const LIVE_AGENT_KEYWORDS = /\b(live agent|human|talk to someone|real person|speak to|speak with|talk to a|chat with staff|agent|support staff|customer service)\b/i;
+
   async function handleSend() {
     const text = input.trim();
     if (!text || loading) return;
 
     setInput("");
+
+    if (LIVE_AGENT_KEYWORDS.test(text)) {
+      const userMsg: Message = { role: "user", content: text };
+      setMessages((prev) => [
+        ...prev,
+        userMsg,
+        {
+          role: "assistant",
+          content:
+            "I'd be happy to connect you with a live agent! If you have an active booking, you can chat directly with our staff through the tracking page. Just enter your booking reference number to get started.",
+        },
+      ]);
+      setShowLiveAgent(true);
+      return;
+    }
+
     const userMsg: Message = { role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
@@ -210,6 +229,34 @@ export default function ChatBot() {
                   ))}
 
                   {loading && <TypingIndicator />}
+
+                  {showLiveAgent && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/30"
+                    >
+                      <div className="mb-3 flex items-center gap-2">
+                        <HeadphonesIcon className="h-5 w-5 text-blue-600" />
+                        <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">
+                          Chat with a Live Agent
+                        </p>
+                      </div>
+                      <p className="mb-3 text-xs text-blue-700/80 dark:text-blue-300/70">
+                        Have a booking? Enter your reference number on the tracking page to start a real-time conversation with our staff.
+                      </p>
+                      <a
+                        href="/track"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
+                      >
+                        Go to Tracking Page
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </motion.div>
+                  )}
+
                   <div ref={messagesEndRef} />
                 </div>
               </div>
@@ -231,6 +278,25 @@ export default function ChatBot() {
 
               {/* Input */}
               <div className="border-t p-4">
+                {!showLiveAgent && (
+                  <button
+                    onClick={() => {
+                      setShowLiveAgent(true);
+                      setMessages((prev) => [
+                        ...prev,
+                        {
+                          role: "assistant",
+                          content:
+                            "I'd be happy to connect you with a live agent! If you have an active booking, you can chat directly with our staff through the tracking page. Just enter your booking reference number to get started.",
+                        },
+                      ]);
+                    }}
+                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-muted-foreground/30 py-1.5 text-xs text-muted-foreground transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/30"
+                  >
+                    <HeadphonesIcon className="h-3.5 w-3.5" />
+                    Talk to a human
+                  </button>
+                )}
                 <div className="flex items-center gap-2">
                   <input
                     type="text"

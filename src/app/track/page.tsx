@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/card";
 import Link from "next/link";
 import { Search, Camera, Luggage } from "lucide-react";
+import { PublicHeader } from "@/components/layout/PublicHeader";
+import { PublicFooter } from "@/components/layout/PublicFooter";
 
 export default function TrackPage() {
   const router = useRouter();
@@ -27,31 +29,15 @@ export default function TrackPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
-      <header className="sticky top-0 z-50 border-b bg-white/80 shadow-sm backdrop-blur-sm">
-        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-4">
-          <Link href="/" className="text-xl font-bold">
-            <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              Dropnfly
-            </span>
-          </Link>
-          <nav className="flex items-center gap-4">
-            <Link
-              href="/book"
-              className="text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
-            >
-              Book a Pickup
-            </Link>
-          </nav>
-        </div>
-      </header>
+    <div className="min-h-screen bg-blue-50/50">
+      <PublicHeader showBackToHome />
 
       <main className="mx-auto max-w-xl px-4 py-16">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 shadow-lg shadow-blue-200">
             <Luggage className="h-7 w-7 text-blue-600" />
           </div>
-          <h1 className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-3xl font-bold text-transparent">
+          <h1 className="text-3xl font-bold text-blue-700">
             Track My Luggage
           </h1>
           <p className="mt-2 text-gray-600">
@@ -79,7 +65,7 @@ export default function TrackPage() {
                     className="font-mono uppercase"
                     required
                   />
-                  <Button type="submit" className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md hover:from-blue-700 hover:to-indigo-700">
+                  <Button type="submit" className="bg-blue-600 text-white shadow-md hover:bg-blue-700">
                     <Search className="mr-2 h-4 w-4" />
                     Track
                   </Button>
@@ -101,6 +87,8 @@ export default function TrackPage() {
           </CardContent>
         </Card>
       </main>
+
+      <PublicFooter />
     </div>
   );
 }

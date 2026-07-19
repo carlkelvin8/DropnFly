@@ -44,16 +44,10 @@ export async function POST(req: Request) {
         data: { name, email, phone, countryOfOrigin: countryOfOrigin || null, cityOfOrigin: cityOfOrigin || null },
       });
     } else {
-      const updateData: Record<string, string> = { name, phone };
-      if (countryOfOrigin) updateData.countryOfOrigin = countryOfOrigin;
-      if (cityOfOrigin) updateData.cityOfOrigin = cityOfOrigin;
-
-      if (!customer.password && customerSession?.id === customer.id) {
-        customer = await prisma.customer.update({
-          where: { email },
-          data: updateData,
-        });
-      } else if (!customer.password) {
+      if (customerSession?.id === customer.id) {
+        const updateData: Record<string, string> = { name, phone };
+        if (countryOfOrigin) updateData.countryOfOrigin = countryOfOrigin;
+        if (cityOfOrigin) updateData.cityOfOrigin = cityOfOrigin;
         customer = await prisma.customer.update({
           where: { email },
           data: updateData,
@@ -61,13 +55,22 @@ export async function POST(req: Request) {
       }
     }
 
-    const discount = 0;
+    let discount = 0;
     let promoCodeId: string | null = null;
 
     if (promoCode) {
       const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.toUpperCase() } });
       if (promo && promo.isActive && promo.usedCount < promo.maxUsage) {
         if (!promo.expiresAt || new Date() <= promo.expiresAt) {
+          const orderAmount = totalPrice ? parseFloat(totalPrice) : 0;
+          if (orderAmount >= promo.minAmount) {
+            if (promo.type === "PERCENTAGE") {
+              discount = orderAmount * (promo.value / 100);
+              if (promo.maxDiscount) discount = Math.min(discount, promo.maxDiscount);
+            } else {
+              discount = promo.value;
+            }
+          }
           promoCodeId = promo.id;
           await prisma.promoCode.update({
             where: { id: promo.id },

@@ -10,7 +10,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, ExternalLink } from "lucide-react";
+import { CheckCircle, ExternalLink, Home } from "lucide-react";
+import { PublicHeader } from "@/components/layout/PublicHeader";
+import { PublicFooter } from "@/components/layout/PublicFooter";
 
 interface LuggageItem {
   type: string;
@@ -53,34 +55,15 @@ export default function ConfirmPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
-      <header className="sticky top-0 z-50 border-b bg-white/80 shadow-sm backdrop-blur-sm">
-        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-4">
-          <Link href="/" className="text-xl font-bold">
-            <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              Dropnfly
-            </span>
-          </Link>
-          <nav className="flex items-center gap-4">
-            <Link
-              href="/track"
-              className="text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
-            >
-              Track Luggage
-            </Link>
-            <Button asChild className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md hover:from-blue-700 hover:to-indigo-700">
-              <Link href="/book">Book Again</Link>
-            </Button>
-          </nav>
-        </div>
-      </header>
+    <div className="min-h-screen bg-blue-50/50">
+      <PublicHeader showBackToHome />
 
       <main className="mx-auto max-w-3xl px-4 py-12">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-green-100 shadow-lg shadow-green-200">
             <CheckCircle className="h-10 w-10 text-green-600" />
           </div>
-          <h1 className="bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-3xl font-bold text-transparent">
+          <h1 className="text-3xl font-bold text-green-700">
             Booking Confirmed!
           </h1>
           <p className="mt-2 text-gray-600">
@@ -94,7 +77,7 @@ export default function ConfirmPage() {
             <CardTitle>Booking Summary</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 p-4 text-center shadow-sm">
+            <div className="rounded-lg bg-blue-50 p-4 text-center shadow-sm">
               <p className="text-sm text-gray-600">Reference Number</p>
               <p className="mt-1 text-2xl font-bold tracking-wider text-blue-700">
                 {booking.referenceNumber}
@@ -177,17 +160,22 @@ export default function ConfirmPage() {
               </div>
             </div>
 
-            <div className="flex justify-center gap-4">
-              <Button asChild className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg transition-all hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl">
+            <div className="flex flex-wrap justify-center gap-3">
+              <Button asChild className="bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl">
                 <Link href={`/track/${booking.referenceNumber}`}>
                   <ExternalLink className="mr-2 h-4 w-4" />
                   Track My Luggage
                 </Link>
               </Button>
+              <Button asChild variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+                <Link href="/"><Home className="mr-2 h-4 w-4" /> Back to Home</Link>
+              </Button>
             </div>
           </CardContent>
         </Card>
       </main>
+
+      <PublicFooter />
     </div>
   );
 }

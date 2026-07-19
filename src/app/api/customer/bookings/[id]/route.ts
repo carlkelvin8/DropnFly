@@ -18,7 +18,7 @@ export async function GET(
       location: true,
       payments: true,
       customer: { select: { name: true, email: true, phone: true, countryOfOrigin: true, cityOfOrigin: true } },
-      assignments: { include: { user: { select: { name: true } } } },
+      assignments: { include: { user: { select: { name: true, vehicleType: true, plateNumber: true } } } },
       luggageItems: { select: { id: true, tagNumber: true, description: true, status: true } },
     },
   });

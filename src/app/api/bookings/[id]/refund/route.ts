@@ -11,6 +11,9 @@ export async function POST(
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!["ADMIN", "STAFF"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   try {
     const { id } = await params;
@@ -71,10 +74,12 @@ export async function POST(
       const toRefund = Math.min(payment.amount, remaining);
       remaining -= toRefund;
 
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { refundedAt: new Date(), status: "REFUNDED" },
-      });
+      if (toRefund >= payment.amount) {
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { refundedAt: new Date(), status: "REFUNDED" },
+        });
+      }
     }
 
     await logActivity({

@@ -467,9 +467,10 @@ export default function BookingDetailPage() {
 
   async function handleRequestTags() {
     if (tagRequestCount < 1) return toast.error("Invalid count");
-    if (luggageItems.length >= 3) return toast.error("Maximum 3 baggage tags per booking");
-    if (luggageItems.length + tagRequestCount > 3) {
-      return toast.error(`Can only assign ${3 - luggageItems.length} more tag(s). Maximum is 3.`);
+    const maxBags = booking?.numberOfBags || 3;
+    if (luggageItems.length >= maxBags) return toast.error(`Maximum ${maxBags} baggage tag(s) per booking`);
+    if (luggageItems.length + tagRequestCount > maxBags) {
+      return toast.error(`Can only assign ${maxBags - luggageItems.length} more tag(s). Maximum is ${maxBags}.`);
     }
     setRequestingTags(true);
     try {
@@ -1155,8 +1156,10 @@ export default function BookingDetailPage() {
           {/* Tag Request Controls */}
           <div className="mb-4 rounded-lg border bg-muted/30 p-3">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-muted-foreground">Request baggage tags (max 3 per booking)</p>
-              {luggageItems.length >= 3 && (
+              <p className="text-xs font-medium text-muted-foreground">
+                Request baggage tags (max {booking?.numberOfBags || 3} for this booking)
+              </p>
+              {booking && luggageItems.length >= booking.numberOfBags && (
                 <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded">Limit reached</span>
               )}
             </div>
@@ -1175,9 +1178,9 @@ export default function BookingDetailPage() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setTagRequestCount(Math.min(3 - luggageItems.length, tagRequestCount + 1))}
+                  onClick={() => setTagRequestCount(Math.min((booking?.numberOfBags || 3) - luggageItems.length, tagRequestCount + 1))}
                   className="flex h-8 w-8 items-center justify-center text-sm font-medium hover:bg-muted transition-colors rounded-r-lg"
-                  disabled={tagRequestCount >= (3 - luggageItems.length)}
+                  disabled={tagRequestCount >= ((booking?.numberOfBags || 3) - luggageItems.length)}
                 >
                   +
                 </button>
@@ -1185,7 +1188,7 @@ export default function BookingDetailPage() {
               <Button
                 size="sm"
                 onClick={handleRequestTags}
-                disabled={requestingTags || luggageItems.length >= 3 || tagRequestCount < 1}
+                disabled={requestingTags || (booking ? luggageItems.length >= booking.numberOfBags : luggageItems.length >= 3) || tagRequestCount < 1}
                 className="bg-teal-600 hover:bg-teal-700"
               >
                 {requestingTags ? (
@@ -1195,11 +1198,6 @@ export default function BookingDetailPage() {
                 )}
               </Button>
             </div>
-            {booking && booking.numberOfBags > 3 && (
-              <p className="mt-2 text-[11px] text-amber-600">
-                ⚠️ Customer has {booking.numberOfBags} bags. Standard limit is 3 bags. Additional ₱100/bag applies for {booking.numberOfBags - 3} extra bag{booking.numberOfBags - 3 > 1 ? "s" : ""}.
-              </p>
-            )}
           </div>
 
           {/* Tag List */}

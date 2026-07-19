@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { notifyBookingStatusChanged } from "@/lib/notifications";
+import type { BookingStatus } from "@/generated/prisma/client";
 
 const VALID_STATUS = [
   "PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE",
@@ -84,7 +85,7 @@ export async function PUT(
 
     const booking = await prisma.booking.update({
       where: { id },
-      data: data as any,
+      data: data as { status?: BookingStatus; [key: string]: unknown },
     });
 
     if (body.status) {
@@ -108,23 +109,28 @@ export async function PUT(
       );
 
       if (body.status === "DELIVERED") {
-        const pointsEarned = Math.floor(booking.totalPrice / 10);
-        if (pointsEarned > 0) {
-          await Promise.all([
-            prisma.customer.update({
-              where: { id: booking.customerId },
-              data: { points: { increment: pointsEarned } },
-            }),
-            prisma.pointsTransaction.create({
-              data: {
-                customerId: booking.customerId,
-                points: pointsEarned,
-                type: "EARNED",
-                reference: booking.id,
-                description: `Earned from booking ${booking.referenceNumber}`,
-              },
-            }),
-          ]);
+        const existingPoints = await prisma.pointsTransaction.findFirst({
+          where: { reference: id, type: "EARNED" },
+        });
+        if (!existingPoints) {
+          const pointsEarned = Math.floor(booking.totalPrice / 10);
+          if (pointsEarned > 0) {
+            await Promise.all([
+              prisma.customer.update({
+                where: { id: booking.customerId },
+                data: { points: { increment: pointsEarned } },
+              }),
+              prisma.pointsTransaction.create({
+                data: {
+                  customerId: booking.customerId,
+                  points: pointsEarned,
+                  type: "EARNED",
+                  reference: booking.id,
+                  description: `Earned from booking ${booking.referenceNumber}`,
+                },
+              }),
+            ]);
+          }
         }
       }
     }
@@ -150,7 +156,18 @@ export async function DELETE(
   try {
     const { id } = await params;
     const booking = await prisma.booking.findUnique({ where: { id }, select: { referenceNumber: true } });
-    await prisma.booking.delete({ where: { id } });
+
+    await prisma.$transaction([
+      prisma.payment.deleteMany({ where: { bookingId: id } }),
+      prisma.bookingAssignment.deleteMany({ where: { bookingId: id } }),
+      prisma.scanEvent.deleteMany({ where: { bookingId: id } }),
+      prisma.chatMessage.deleteMany({ where: { bookingId: id } }),
+      prisma.bookingReview.deleteMany({ where: { bookingId: id } }),
+      prisma.bookingExtension.deleteMany({ where: { bookingId: id } }),
+      prisma.luggageItem.deleteMany({ where: { bookingId: id } }),
+      prisma.incidentReport.deleteMany({ where: { bookingId: id } }),
+      prisma.booking.delete({ where: { id } }),
+    ]);
 
     await logActivity({
       userId: session.user.id,

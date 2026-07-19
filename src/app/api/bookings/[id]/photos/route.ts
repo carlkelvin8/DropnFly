@@ -20,9 +20,17 @@ export async function POST(
       return NextResponse.json({ error: "Photo data is required" }, { status: 400 });
     }
 
+    if (typeof photo !== "string" || photo.length > 5_000_000) {
+      return NextResponse.json({ error: "Photo too large (max 5MB)" }, { status: 400 });
+    }
+
     const booking = await prisma.booking.findUnique({ where: { id } });
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
+
+    if (booking.luggagePhotos.length >= 10) {
+      return NextResponse.json({ error: "Maximum 10 photos per booking" }, { status: 400 });
     }
 
     const updated = await prisma.booking.update({
@@ -59,15 +67,20 @@ export async function DELETE(
     const { id } = await params;
     const { index } = await req.json();
 
+    if (typeof index !== "number" || index < 0) {
+      return NextResponse.json({ error: "Valid index is required" }, { status: 400 });
+    }
+
     const booking = await prisma.booking.findUnique({ where: { id } });
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
 
     const photos = [...booking.luggagePhotos];
-    if (index >= 0 && index < photos.length) {
-      photos.splice(index, 1);
+    if (index >= photos.length) {
+      return NextResponse.json({ error: "Index out of range" }, { status: 400 });
     }
+    photos.splice(index, 1);
 
     await prisma.booking.update({ where: { id }, data: { luggagePhotos: photos } });
 

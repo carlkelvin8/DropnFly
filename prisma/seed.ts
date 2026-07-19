@@ -6,6 +6,26 @@ import bcrypt from "bcryptjs";
 const adapter = new PrismaPg({ connectionString: process.env.SUPABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
+function generateRef() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return `DROPFLY-${code}`;
+}
+
+function randomDate(daysAgo: number, daysRange: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo + Math.floor(Math.random() * daysRange));
+  d.setHours(6 + Math.floor(Math.random() * 14), Math.floor(Math.random() * 60), 0, 0);
+  return d;
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
 async function main() {
   const hashedPassword = await bcrypt.hash("password123", 12);
 
@@ -15,7 +35,8 @@ async function main() {
     { name: "Staff Juan", email: "staff@dropnfly.ph", role: "STAFF" as const, isApproved: true },
     { name: "Maria Santos", email: "maria@dropnfly.ph", role: "STAFF" as const, isApproved: true },
     { name: "Pedro Reyes", email: "pedro@dropnfly.ph", role: "STAFF" as const, isApproved: true },
-    { name: "Ana Cruz", email: "ana@dropnfly.ph", role: "EMPLOYEE" as const, isApproved: false },
+    { name: "Ana Cruz", email: "ana@dropnfly.ph", role: "EMPLOYEE" as const, isApproved: true, vehicleType: "Motorcycle", plateNumber: "ABC 1234" },
+    { name: "Rico Bautista", email: "rico@dropnfly.ph", role: "EMPLOYEE" as const, isApproved: true, vehicleType: "Scooter", plateNumber: "XYZ 5678" },
   ];
 
   const createdUsers: { email: string; id: string }[] = [];
@@ -31,13 +52,9 @@ async function main() {
     console.log(`Created user: ${u.email} / password123`);
   }
 
-  // ── Storage Locations ──
+  // ── Storage Location: Villamor, Pasay City (single location) ──
   const locationData = [
-    { name: "Makati Main Branch", address: "123 Ayala Ave", city: "Makati", capacity: 150, pricePerDay: 50, openingTime: "06:00", closingTime: "22:00" },
-    { name: "BGC Branch", address: "45 Bonifacio High Street", city: "Taguig", capacity: 100, pricePerDay: 60, openingTime: "07:00", closingTime: "21:00" },
-    { name: "MOA Branch", address: "SM Mall of Asia", city: "Pasay", capacity: 200, pricePerDay: 45, openingTime: "08:00", closingTime: "23:00" },
-    { name: "Ortigas Branch", address: "Ortigas Center", city: "Pasig", capacity: 80, pricePerDay: 55, openingTime: "06:00", closingTime: "20:00" },
-    { name: "Quezon City Branch", address: "88 North Ave", city: "Quezon City", capacity: 120, pricePerDay: 40, openingTime: "07:00", closingTime: "22:00" },
+    { name: "Dropnfly Villamor", address: "Villamor Air Base, Pasay City", city: "Pasay", capacity: 200, pricePerDay: 50, openingTime: "06:00", closingTime: "22:00" },
   ];
 
   const createdLocations: { name: string; id: string }[] = [];
@@ -55,11 +72,16 @@ async function main() {
 
   // ── Customers ──
   const customerData = [
-    { name: "John Doe", email: "john@email.com", phone: "09171234567" },
-    { name: "Jane Smith", email: "jane@email.com", phone: "09179876543" },
-    { name: "Bob Johnson", email: "bob@email.com", phone: "09175551234" },
-    { name: "Alice Williams", email: "alice@email.com", phone: "09174445566" },
-    { name: "Charlie Brown", email: "charlie@email.com", phone: "09173332211" },
+    { name: "Juan Dela Cruz", email: "juan@email.com", phone: "+639171234567", countryOfOrigin: "Philippines", cityOfOrigin: "Manila" },
+    { name: "Maria Clara", email: "maria.clara@email.com", phone: "+639179876543", countryOfOrigin: "Philippines", cityOfOrigin: "Cebu" },
+    { name: "John Smith", email: "john.smith@email.com", phone: "+14155551234", countryOfOrigin: "United States", cityOfOrigin: "San Francisco" },
+    { name: "Yuki Tanaka", email: "yuki@email.com", phone: "+81901234567", countryOfOrigin: "Japan", cityOfOrigin: "Tokyo" },
+    { name: "Lee Soo-jin", email: "soojin@email.com", phone: "+82101234567", countryOfOrigin: "South Korea", cityOfOrigin: "Seoul" },
+    { name: "Carlos Garcia", email: "carlos@email.com", phone: "+639181234567", countryOfOrigin: "Philippines", cityOfOrigin: "Davao" },
+    { name: "Sarah Wilson", email: "sarah@email.com", phone: "+447911123456", countryOfOrigin: "United Kingdom", cityOfOrigin: "London" },
+    { name: "Ahmed Hassan", email: "ahmed@email.com", phone: "+971501234567", countryOfOrigin: "UAE", cityOfOrigin: "Dubai" },
+    { name: "Anna Schmidt", email: "anna@email.com", phone: "+491701234567", countryOfOrigin: "Germany", cityOfOrigin: "Berlin" },
+    { name: "Roberto Silva", email: "roberto@email.com", phone: "+5511987654321", countryOfOrigin: "Brazil", cityOfOrigin: "São Paulo" },
   ];
 
   const createdCustomers: { email: string; id: string }[] = [];
@@ -75,96 +97,167 @@ async function main() {
     console.log(`Created customer: ${c.name}`);
   }
 
-  // ── Bookings ──
+  // ── Bookings with realistic data ──
+  const adminUser = createdUsers.find((u) => u.email === "admin@dropnfly.ph")!;
+  const location = createdLocations[0];
 
-  const now = new Date();
-  const bookingData = [
-    { ref: "DROPFLY-SEED-001", customerEmail: "john@email.com", locName: "Makati Main Branch", bags: 2, days: 1, status: "DELIVERED" as const, staffEmail: "staff@dropnfly.ph", luggage: "2 suitcases, black" },
-    { ref: "DROPFLY-SEED-002", customerEmail: "jane@email.com", locName: "BGC Branch", bags: 1, days: 3, status: "IN_STORAGE" as const, staffEmail: "maria@dropnfly.ph", luggage: "Backpack, blue" },
-    { ref: "DROPFLY-SEED-003", customerEmail: "bob@email.com", locName: "MOA Branch", bags: 3, days: 2, status: "CONFIRMED" as const, staffEmail: "pedro@dropnfly.ph", luggage: "3 boxes, assorted" },
-    { ref: "DROPFLY-SEED-004", customerEmail: "alice@email.com", locName: "Ortigas Branch", bags: 1, days: 5, status: "PENDING" as const, staffEmail: null, luggage: "Laptop bag" },
-    { ref: "DROPFLY-SEED-005", customerEmail: "charlie@email.com", locName: "Quezon City Branch", bags: 4, days: 1, status: "OUT_FOR_DELIVERY" as const, staffEmail: "staff@dropnfly.ph", luggage: "4 duffel bags, red" },
+  const bookingConfigs = [
+    { custIdx: 0, bags: 2, days: 1, status: "DELIVERED" as const, staffIdx: 1, terminal: "NAIA Terminal 1", airline: "Philippine Airlines", luggage: JSON.stringify([{ type: "Standard", qty: 1, price: 250 }, { type: "Small", qty: 1, price: 200 }]), services: ["Pick-up from Customer"], payment: "full" },
+    { custIdx: 1, bags: 1, days: 3, status: "IN_STORAGE" as const, staffIdx: 2, terminal: "NAIA Terminal 3", airline: "Cebu Pacific", luggage: JSON.stringify([{ type: "Standard", qty: 1, price: 250 }]), services: [], payment: "full" },
+    { custIdx: 2, bags: 3, days: 2, status: "CONFIRMED" as const, staffIdx: 3, terminal: "NAIA Terminal 1", airline: "United Airlines", luggage: JSON.stringify([{ type: "Large", qty: 1, price: 300 }, { type: "Small", qty: 2, price: 200 }]), services: ["Deliver to Customer"], payment: "dp" },
+    { custIdx: 3, bags: 1, days: 5, status: "PENDING" as const, staffIdx: null, terminal: "NAIA Terminal 3", airline: "Japan Airlines", luggage: JSON.stringify([{ type: "Standard", qty: 1, price: 250 }]), services: [], payment: "dp" },
+    { custIdx: 4, bags: 4, days: 1, status: "OUT_FOR_DELIVERY" as const, staffIdx: 4, terminal: "NAIA Terminal 1", airline: "Korean Air", luggage: JSON.stringify([{ type: "Small", qty: 2, price: 200 }, { type: "Standard", qty: 1, price: 250 }, { type: "Large", qty: 1, price: 300 }]), services: ["Pick-up from Customer", "Deliver to Customer"], payment: "full" },
+    { custIdx: 5, bags: 2, days: 4, status: "DELIVERED" as const, staffIdx: 5, terminal: "NAIA Terminal 2", airline: "Singapore Airlines", luggage: JSON.stringify([{ type: "Standard", qty: 2, price: 250 }]), services: ["Pick-up from Customer"], payment: "full" },
+    { custIdx: 6, bags: 1, days: 7, status: "IN_STORAGE" as const, staffIdx: 2, terminal: "NAIA Terminal 3", airline: "Emirates", luggage: JSON.stringify([{ type: "Large", qty: 1, price: 300 }]), services: ["Deliver to Customer"], payment: "full" },
+    { custIdx: 7, bags: 2, days: 2, status: "RECEIVED" as const, staffIdx: 1, terminal: "NAIA Terminal 1", airline: "Qatar Airways", luggage: JSON.stringify([{ type: "Small", qty: 1, price: 200 }, { type: "Extra Small", qty: 1, price: 150 }]), services: ["Pick-up from Customer"], payment: "dp" },
+    { custIdx: 8, bags: 3, days: 3, status: "CONFIRMED" as const, staffIdx: 3, terminal: "NAIA Terminal 3", airline: "Cathay Pacific", luggage: JSON.stringify([{ type: "Standard", qty: 1, price: 250 }, { type: "Small", qty: 1, price: 200 }, { type: "Extra Small", qty: 1, price: 150 }]), services: [], payment: "dp" },
+    { custIdx: 9, bags: 5, days: 1, status: "DELIVERED" as const, staffIdx: 4, terminal: "NAIA Terminal 1", airline: "Turkish Airlines", luggage: JSON.stringify([{ type: "Standard", qty: 2, price: 250 }, { type: "Large", qty: 1, price: 300 }, { type: "Small", qty: 2, price: 200 }]), services: ["Pick-up from Customer", "Deliver to Customer"], payment: "full" },
+    { custIdx: 0, bags: 1, days: 2, status: "DELIVERED" as const, staffIdx: 5, terminal: "NAIA Terminal 3", airline: "Philippine Airlines", luggage: JSON.stringify([{ type: "Small", qty: 1, price: 200 }]), services: [], payment: "full" },
+    { custIdx: 1, bags: 2, days: 1, status: "PENDING" as const, staffIdx: null, terminal: "NAIA Terminal 1", airline: "AirAsia Philippines", luggage: JSON.stringify([{ type: "Standard", qty: 2, price: 250 }]), services: ["Pick-up from Customer"], payment: "dp" },
+    { custIdx: 2, bags: 1, days: 3, status: "DELIVERED" as const, staffIdx: 1, terminal: "NAIA Terminal 2", airline: "Etihad Airways", luggage: JSON.stringify([{ type: "Standard", qty: 1, price: 250 }]), services: ["Deliver to Customer"], payment: "full" },
   ];
 
-  const adminUser = createdUsers.find((u) => u.email === "admin@dropnfly.ph")!;
   const createdBookings: { ref: string; id: string }[] = [];
 
-  for (const b of bookingData) {
-    const existing = await prisma.booking.findUnique({ where: { referenceNumber: b.ref } });
+  const DELIVERED_STATUSES = new Set(["DELIVERED"]);
+  const PAST_STATUSES = new Set(["CANCELLED", "NO_SHOW"]);
+
+  for (let i = 0; i < bookingConfigs.length; i++) {
+    const b = bookingConfigs[i];
+    const ref = generateRef();
+    const existing = await prisma.booking.findFirst({ where: { referenceNumber: ref } });
     if (existing) {
-      createdBookings.push({ ref: b.ref, id: existing.id });
-      console.log(`Booking ${b.ref} already exists, skipping`);
+      createdBookings.push({ ref: existing.referenceNumber, id: existing.id });
+      console.log(`Booking ${existing.referenceNumber} already exists, skipping`);
       continue;
     }
 
-    const customer = createdCustomers.find((c) => c.email === b.customerEmail)!;
-    const location = createdLocations.find((l) => l.name === b.locName)!;
-    const staffUser = b.staffEmail ? createdUsers.find((u) => u.email === b.staffEmail) : null;
+    const customer = createdCustomers[b.custIdx];
+    const staffUser = b.staffIdx !== null ? createdUsers[b.staffIdx] : null;
 
-    const checkIn = new Date(now);
-    checkIn.setDate(checkIn.getDate() - Math.floor(Math.random() * 10));
-    const checkOut = new Date(checkIn);
-    checkOut.setDate(checkOut.getDate() + b.days);
+    let pickupDate: Date;
+    let deliveryDate: Date;
 
-    const locationObj = await prisma.storageLocation.findUnique({ where: { id: location.id } });
-    const totalPrice = Math.max(1, b.days) * (locationObj?.pricePerDay || 50) * b.bags;
+    if (DELIVERED_STATUSES.has(b.status)) {
+      pickupDate = randomDate(5 + i * 1, 3);
+      deliveryDate = addDays(pickupDate, b.days);
+    } else if (PAST_STATUSES.has(b.status as string)) {
+      pickupDate = randomDate(10 + i, 2);
+      deliveryDate = addDays(pickupDate, b.days);
+    } else {
+      const futureDays = 1 + Math.floor(Math.random() * 5);
+      pickupDate = addDays(new Date(), futureDays);
+      deliveryDate = addDays(pickupDate, b.days);
+    }
+
+    const luggageItems = JSON.parse(b.luggage);
+    const baseTotal = luggageItems.reduce((sum: number, item: { qty: number; price: number }) => sum + item.qty * item.price, 0);
+    const extraFee = b.bags > 3 ? 100 : 0;
+    const servicesFee = b.services.length * 180;
+    const totalPrice = baseTotal + extraFee + servicesFee;
+    const downPayment = b.payment === "full" ? totalPrice : Math.ceil(totalPrice * 0.5);
 
     const booking = await prisma.booking.create({
       data: {
-        referenceNumber: b.ref,
+        referenceNumber: ref,
         qrCode: "seed-qr-placeholder",
         userId: staffUser?.id || adminUser.id,
         customerId: customer.id,
         locationId: location.id,
-        pickupLocation: locationObj?.address || "",
-        dropOffLocation: "Customer Destination",
+        pickupLocation: `${b.terminal} - ${b.airline}`,
+        dropOffLocation: "Villamor, Pasay City",
         luggageDetails: b.luggage,
-        checkIn,
-        checkOut,
+        checkIn: pickupDate,
+        checkOut: deliveryDate,
         numberOfBags: b.bags,
         totalPrice,
         status: b.status,
       },
     });
-    createdBookings.push({ ref: b.ref, id: booking.id });
-    console.log(`Created booking: ${b.ref} (${b.status})`);
+    createdBookings.push({ ref: ref, id: booking.id });
+    console.log(`Created booking: ${ref} (${b.status}) - ₱${totalPrice}`);
 
-    // Create assignment if staff assigned
+    // Create assignment
     if (staffUser) {
       await prisma.bookingAssignment.create({
         data: { bookingId: booking.id, userId: staffUser.id },
       });
     }
+
+    // Create payment record
+    if (b.payment === "full") {
+      await prisma.payment.create({
+        data: {
+          bookingId: booking.id,
+          customerId: customer.id,
+          amount: totalPrice,
+          method: "CASH",
+          status: "PAID",
+          paidAt: pickupDate,
+        },
+      });
+    } else {
+      await prisma.payment.create({
+        data: {
+          bookingId: booking.id,
+          customerId: customer.id,
+          amount: downPayment,
+          method: "GCASH",
+          status: "PAID",
+          paidAt: pickupDate,
+        },
+      });
+    }
+
+    // Create loyalty points for DELIVERED bookings
+    if (DELIVERED_STATUSES.has(b.status)) {
+      const pointsEarned = Math.floor(totalPrice / 10);
+      if (pointsEarned > 0) {
+        await prisma.customer.update({
+          where: { id: customer.id },
+          data: { points: { increment: pointsEarned } },
+        });
+        await prisma.pointsTransaction.create({
+          data: {
+            customerId: customer.id,
+            points: pointsEarned,
+            type: "EARNED",
+            reference: booking.id,
+            description: `Earned from booking ${ref}`,
+          },
+        });
+      }
+    }
   }
 
   // ── Activity Logs ──
-  const logActions = ["CREATE", "UPDATE", "UPDATE", "DELETE"];
-  const logEntities = ["Booking", "Customer", "User", "SystemSetting"];
-  for (let i = 0; i < 5; i++) {
+  const logActions = ["CREATE", "UPDATE", "UPDATE", "DELETE", "CREATE", "UPDATE"];
+  const logEntities = ["Booking", "Customer", "Booking", "SystemSetting", "Booking", "Booking"];
+  for (let i = 0; i < 6; i++) {
     const booking = createdBookings[i % createdBookings.length];
     await prisma.activityLog.create({
       data: {
         userId: adminUser.id,
-        action: logActions[i % logActions.length],
-        entity: logEntities[i % logEntities.length],
+        action: logActions[i],
+        entity: logEntities[i],
         entityId: booking.id,
-        details: `Seed activity log #${i + 1}`,
-        createdAt: new Date(now.getTime() - i * 3600000),
+        details: `Activity log #${i + 1}: ${logActions[i]} ${logEntities[i]}`,
+        createdAt: new Date(Date.now() - i * 3600000),
       },
     });
   }
-  console.log("Created 5 activity logs");
+  console.log("Created 6 activity logs");
 
   // ── Notifications ──
-  for (const user of createdUsers) {
-    for (let i = 0; i < 2; i++) {
+  for (const user of createdUsers.slice(0, 3)) {
+    for (let i = 0; i < 3; i++) {
       const booking = createdBookings[i % createdBookings.length];
       await prisma.notification.create({
         data: {
           userId: user.id,
-          type: i === 0 ? "booking_created" : "status_update",
-          title: i === 0 ? "New Booking Created" : "Booking Status Updated",
-          message: `Booking ${booking.ref} was ${i === 0 ? "created" : "updated"}`,
+          type: i === 0 ? "booking_created" : i === 1 ? "status_update" : "payment_received",
+          title: i === 0 ? "New Booking Created" : i === 1 ? "Booking Status Updated" : "Payment Received",
+          message: `Booking ${booking.ref} was ${i === 0 ? "created" : i === 1 ? "updated" : "paid"}`,
           link: `/dashboard/bookings/${booking.id}`,
           isRead: i === 0,
         },
@@ -176,10 +269,14 @@ async function main() {
   // ── System Settings ──
   const settingData = [
     { key: "price_per_bag", value: "50" },
-    { key: "max_capacity", value: "500" },
+    { key: "max_capacity", value: "200" },
     { key: "business_hours_start", value: "06:00" },
     { key: "business_hours_end", value: "22:00" },
     { key: "allow_online_booking", value: "true" },
+    { key: "extra_bag_fee", value: "100" },
+    { key: "extra_bag_threshold", value: "3" },
+    { key: "service_pickup_fee", value: "180" },
+    { key: "service_delivery_fee", value: "180" },
   ];
   for (const s of settingData) {
     await prisma.systemSetting.upsert({
@@ -188,7 +285,7 @@ async function main() {
       create: { key: s.key, value: s.value },
     });
   }
-  console.log("Created/updated 5 system settings");
+  console.log("Created/updated system settings");
 
   // ── Booking Extensions ──
   const firstBooking = createdBookings[0];
@@ -196,12 +293,10 @@ async function main() {
   if (firstBooking) {
     const existingExt = await prisma.bookingExtension.findFirst({ where: { bookingId: firstBooking.id } });
     if (!existingExt) {
-      const checkOut = new Date(now);
-      checkOut.setDate(checkOut.getDate() + 1);
       await prisma.bookingExtension.create({
         data: {
           bookingId: firstBooking.id,
-          requestedCheckOut: checkOut,
+          requestedCheckOut: addDays(new Date(), 1),
           reason: "Need an extra day to pick up luggage",
           status: "APPROVED",
           reviewedById: adminUser.id,
@@ -209,27 +304,21 @@ async function main() {
         },
       });
       console.log("Created booking extension (approved)");
-    } else {
-      console.log("Booking extension already exists, skipping");
     }
   }
 
   if (secondBooking) {
     const existingExt = await prisma.bookingExtension.findFirst({ where: { bookingId: secondBooking.id } });
     if (!existingExt) {
-      const checkOut = new Date(now);
-      checkOut.setDate(checkOut.getDate() + 2);
       await prisma.bookingExtension.create({
         data: {
           bookingId: secondBooking.id,
-          requestedCheckOut: checkOut,
+          requestedCheckOut: addDays(new Date(), 2),
           reason: "Delayed flight, need extension",
           status: "PENDING",
         },
       });
       console.log("Created booking extension (pending)");
-    } else {
-      console.log("Booking extension already exists, skipping");
     }
   }
 
@@ -237,8 +326,8 @@ async function main() {
   if (firstBooking) {
     const existingMsg = await prisma.chatMessage.findFirst({ where: { bookingId: firstBooking.id } });
     if (!existingMsg) {
-      const customer = createdCustomers.find((c) => c.email === "john@email.com")!;
-      const staffUser = createdUsers.find((u) => u.email === "staff@dropnfly.ph")!;
+      const customer = createdCustomers[0];
+      const staffUser = createdUsers[1];
       await prisma.chatMessage.create({
         data: { bookingId: firstBooking.id, customerId: customer.id, message: "Hi, when will my luggage be delivered?", isFromCustomer: true },
       });
@@ -249,8 +338,6 @@ async function main() {
         data: { bookingId: firstBooking.id, customerId: customer.id, message: "Thank you!", isFromCustomer: true },
       });
       console.log("Created 3 chat messages");
-    } else {
-      console.log("Chat messages already exist, skipping");
     }
   }
 
@@ -258,69 +345,37 @@ async function main() {
   if (firstBooking) {
     const existingReview = await prisma.bookingReview.findUnique({ where: { bookingId: firstBooking.id } });
     if (!existingReview) {
-      const customer = createdCustomers.find((c) => c.email === "john@email.com")!;
+      const customer = createdCustomers[0];
       await prisma.bookingReview.create({
         data: { bookingId: firstBooking.id, customerId: customer.id, rating: 5, comment: "Great service! Fast delivery and friendly staff." },
       });
       console.log("Created booking review (5 stars)");
-    } else {
-      console.log("Booking review already exists, skipping");
     }
   }
 
-  // ── Luggage Items ──
-  for (const b of createdBookings.slice(0, 3)) {
+  // ── Luggage Items with tags ──
+  for (const b of createdBookings.slice(0, 6)) {
     const existing = await prisma.luggageItem.findFirst({ where: { bookingId: b.id } });
-    if (existing) { console.log(`Luggage items for ${b.ref} already exist, skipping`); continue; }
-    const bookingRecord = await prisma.booking.findUnique({ where: { id: b.id }, select: { numberOfBags: true, referenceNumber: true } });
+    if (existing) continue;
+    const bookingRecord = await prisma.booking.findUnique({ where: { id: b.id }, select: { numberOfBags: true } });
     const bagCount = bookingRecord?.numberOfBags || 1;
     for (let i = 0; i < bagCount; i++) {
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
       let code = "";
       for (let j = 0; j < 6; j++) code += chars[Math.floor(Math.random() * chars.length)];
+      const statuses = ["DELIVERED", "IN_STORAGE", "CHECKED_IN", "IN_STORAGE", "DELIVERED", "DELIVERED"];
+      const bIdx = createdBookings.indexOf(b);
       await prisma.luggageItem.create({
         data: {
           bookingId: b.id,
           tagNumber: `BAG-${code}`,
           description: `Bag ${i + 1} of ${bagCount}`,
-          status: b === createdBookings[0] ? "DELIVERED" : b === createdBookings[1] ? "IN_STORAGE" : "CHECKED_IN",
-          location: b === createdBookings[1] ? "Shelf A-12" : null,
+          status: statuses[bIdx] || "CHECKED_IN",
+          location: statuses[bIdx] === "IN_STORAGE" ? `Shelf ${String.fromCharCode(65 + (i % 5))}-${10 + i}` : null,
         },
       });
     }
     console.log(`Created ${bagCount} luggage items for ${b.ref}`);
-  }
-
-  // ── Loyalty Points ──
-  const john = createdCustomers.find((c) => c.email === "john@email.com");
-  if (john && firstBooking) {
-    const existingTx = await prisma.pointsTransaction.findFirst({ where: { customerId: john.id } });
-    if (!existingTx) {
-      await prisma.customer.update({ where: { id: john.id }, data: { points: 250 } });
-      await prisma.pointsTransaction.create({
-        data: { customerId: john.id, points: 200, type: "EARNED", reference: firstBooking.id, description: "Earned from booking DROPFLY-SEED-001" },
-      });
-      await prisma.pointsTransaction.create({
-        data: { customerId: john.id, points: 50, type: "EARNED", reference: firstBooking.id, description: "Bonus points for first booking" },
-      });
-      console.log("Created loyalty points for John (250 pts)");
-    } else {
-      console.log("Points already exist for John, skipping");
-    }
-  }
-
-  const jane = createdCustomers.find((c) => c.email === "jane@email.com");
-  if (jane) {
-    const existingTx = await prisma.pointsTransaction.findFirst({ where: { customerId: jane.id } });
-    if (!existingTx) {
-      await prisma.customer.update({ where: { id: jane.id }, data: { points: 100 } });
-      await prisma.pointsTransaction.create({
-        data: { customerId: jane.id, points: 100, type: "EARNED", reference: "seed-bonus", description: "Welcome points" },
-      });
-      console.log("Created loyalty points for Jane (100 pts)");
-    } else {
-      console.log("Points already exist for Jane, skipping");
-    }
   }
 
   console.log("\n✅ Seed complete!");

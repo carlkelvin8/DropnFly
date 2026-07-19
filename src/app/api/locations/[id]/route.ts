@@ -74,6 +74,13 @@ export async function DELETE(
 
   try {
     const { id } = await params;
+    const bookingCount = await prisma.booking.count({ where: { locationId: id } });
+    if (bookingCount > 0) {
+      return NextResponse.json(
+        { error: `Cannot delete: ${bookingCount} booking(s) reference this location` },
+        { status: 400 }
+      );
+    }
     await prisma.storageLocation.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch {
