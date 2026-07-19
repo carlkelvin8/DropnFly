@@ -8,7 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, MapPin, Calendar, Luggage, Package, AlertCircle, Clock, MessageCircle, Send, Star } from "lucide-react";
+import {
+  ArrowLeft, MapPin, Calendar, Luggage, Package, AlertCircle, Clock,
+  MessageCircle, Send, Star, User, CreditCard, Tag, ShoppingBag,
+  Phone, Mail, Globe, Building,
+} from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 
@@ -26,41 +30,31 @@ interface BookingDetail {
   checkIn: string;
   checkOut: string | null;
   createdAt: string;
+  customer?: {
+    name: string;
+    email: string;
+    phone: string;
+    countryOfOrigin?: string | null;
+    cityOfOrigin?: string | null;
+  };
   location?: { name: string; city: string; address: string } | null;
   payments?: { amount: number; status: string; method: string; paidAt: string | null }[];
   assignments?: { user: { name: string } }[];
+  luggageItems?: { id: string; tagNumber: string; description: string | null; status: string }[];
 }
 
-interface ChatMsg {
-  id: string;
-  message: string;
-  isFromCustomer: boolean;
-  createdAt: string;
-}
+interface ChatMsg { id: string; message: string; isFromCustomer: boolean; createdAt: string; }
+interface BookingReview { id: string; rating: number; comment: string | null; createdAt: string; }
+interface Extension { id: string; requestedCheckOut: string; reason: string | null; status: string; requestedAt: string; }
 
-interface BookingReview {
-  id: string;
-  rating: number;
-  comment: string | null;
-  createdAt: string;
-}
-
-interface Extension {
-  id: string;
-  requestedCheckOut: string;
-  reason: string | null;
-  status: string;
-  requestedAt: string;
-}
-
-const statusColors: Record<string, string> = {
-  PENDING: "bg-yellow-100 text-yellow-800",
-  CONFIRMED: "bg-blue-100 text-blue-800",
-  RECEIVED: "bg-purple-100 text-purple-800",
-  IN_STORAGE: "bg-indigo-100 text-indigo-800",
-  OUT_FOR_DELIVERY: "bg-orange-100 text-orange-800",
-  DELIVERED: "bg-green-100 text-green-800",
-  CANCELLED: "bg-red-100 text-red-800",
+const statusConfig: Record<string, { label: string; color: string; step: number }> = {
+  PENDING: { label: "Pending", color: "bg-amber-100 text-amber-800 border-amber-200", step: 0 },
+  CONFIRMED: { label: "Confirmed", color: "bg-blue-100 text-blue-800 border-blue-200", step: 1 },
+  RECEIVED: { label: "Picked Up", color: "bg-purple-100 text-purple-800 border-purple-200", step: 2 },
+  IN_STORAGE: { label: "In Storage", color: "bg-indigo-100 text-indigo-800 border-indigo-200", step: 3 },
+  OUT_FOR_DELIVERY: { label: "Out for Delivery", color: "bg-orange-100 text-orange-800 border-orange-200", step: 4 },
+  DELIVERED: { label: "Delivered", color: "bg-emerald-100 text-emerald-800 border-emerald-200", step: 5 },
+  CANCELLED: { label: "Cancelled", color: "bg-red-100 text-red-800 border-red-200", step: -1 },
 };
 
 const statusSteps = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"];
@@ -72,19 +66,16 @@ export default function CustomerBookingDetailPage() {
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState("");
-
   const [showExtend, setShowExtend] = useState(false);
   const [extendDate, setExtendDate] = useState("");
   const [extendReason, setExtendReason] = useState("");
   const [submittingExtend, setSubmittingExtend] = useState(false);
   const [extensions, setExtensions] = useState<Extension[]>([]);
-
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [chatText, setChatText] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
-
   const [review, setReview] = useState<BookingReview | null>(null);
   const [showReview, setShowReview] = useState(false);
   const [rating, setRating] = useState(0);
@@ -97,78 +88,48 @@ export default function CustomerBookingDetailPage() {
       try {
         const res = await fetch(`/api/customer/bookings/${id}`);
         if (!res.ok) throw new Error("Not found");
-        const data = await res.json();
-        setBooking(data);
-      } catch {
-        router.push("/my-account");
-      } finally {
-        setLoading(false);
-      }
+        setBooking(await res.json());
+      } catch { router.push("/my-account"); }
+      finally { setLoading(false); }
     }
     load();
   }, [id, router]);
 
   useEffect(() => {
     if (!showChat || !id) return;
-    fetch(`/api/customer/bookings/${id}/chat`)
-      .then((r) => r.json())
-      .then(setMessages)
-      .catch(() => {});
+    fetch(`/api/customer/bookings/${id}/chat`).then((r) => r.json()).then(setMessages).catch(() => {});
   }, [showChat, id]);
 
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   useEffect(() => {
     if (booking?.status === "DELIVERED") {
-      fetch(`/api/bookings/${id}/review`)
-        .then((r) => r.json())
-        .then((data) => { if (data) setReview(data); })
-        .catch(() => {});
+      fetch(`/api/bookings/${id}/review`).then((r) => r.json()).then((d) => { if (d) setReview(d); }).catch(() => {});
     }
   }, [booking?.status, id]);
 
   async function handleCancel() {
     if (!confirm("Are you sure you want to cancel this booking?")) return;
-    setCancelling(true);
-    setError("");
+    setCancelling(true); setError("");
     try {
-      const res = await fetch(`/api/customer/bookings/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cancel" }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || "Failed to cancel"); return; }
+      const res = await fetch(`/api/customer/bookings/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel" }) });
+      if (!res.ok) { const d = await res.json(); setError(d.error || "Failed"); return; }
       router.refresh();
-    } catch {
-      setError("Network error");
-    } finally {
-      setCancelling(false);
-    }
+    } catch { setError("Network error"); }
+    finally { setCancelling(false); }
   }
 
   async function handleExtend(e: React.FormEvent) {
-    e.preventDefault();
-    if (!extendDate) return;
+    e.preventDefault(); if (!extendDate) return;
     setSubmittingExtend(true);
     try {
-      const res = await fetch(`/api/bookings/${id}/extensions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestedCheckOut: extendDate, reason: extendReason }),
-      });
+      const res = await fetch(`/api/bookings/${id}/extensions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestedCheckOut: extendDate, reason: extendReason }) });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed"); }
       const ext = await res.json();
       setExtensions((prev) => [...prev, ext]);
-      setShowExtend(false);
-      setExtendDate("");
-      setExtendReason("");
+      setShowExtend(false); setExtendDate(""); setExtendReason("");
       toast.success("Extension request submitted");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to request extension");
-    }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
     setSubmittingExtend(false);
   }
 
@@ -176,18 +137,11 @@ export default function CustomerBookingDetailPage() {
     if (!chatText.trim() || sendingChat) return;
     setSendingChat(true);
     try {
-      const res = await fetch(`/api/customer/bookings/${id}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: chatText }),
-      });
+      const res = await fetch(`/api/customer/bookings/${id}/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: chatText }) });
       if (!res.ok) throw new Error();
       const msg = await res.json();
-      setMessages((prev) => [...prev, msg]);
-      setChatText("");
-    } catch {
-      toast.error("Failed to send message");
-    }
+      setMessages((prev) => [...prev, msg]); setChatText("");
+    } catch { toast.error("Failed to send"); }
     setSendingChat(false);
   }
 
@@ -195,178 +149,333 @@ export default function CustomerBookingDetailPage() {
     if (rating === 0) return;
     setSubmittingReview(true);
     try {
-      const res = await fetch(`/api/bookings/${id}/review`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rating, comment }),
-      });
+      const res = await fetch(`/api/bookings/${id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rating, comment }) });
       if (!res.ok) throw new Error();
-      const data = await res.json();
-      setReview(data);
-      toast.success("Review submitted");
-    } catch {
-      toast.error("Failed to submit review");
-    }
+      setReview(await res.json()); toast.success("Review submitted");
+    } catch { toast.error("Failed"); }
     setSubmittingReview(false);
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-      </div>
-    );
-  }
-
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50">
+      <div className="h-10 w-10 animate-spin rounded-full border-3 border-blue-200 border-t-blue-600" />
+    </div>
+  );
   if (!booking) return null;
 
   const currentStep = statusSteps.indexOf(booking.status);
   const canCancel = ["PENDING", "CONFIRMED"].includes(booking.status);
   const canExtend = !["CANCELLED", "DELIVERED"].includes(booking.status);
-  const payment = booking.payments?.[0];
+  const extraBags = Math.max(0, booking.numberOfBags - 3);
+  const extraBagFee = extraBags * 100;
+  const basePrice = booking.totalPrice - extraBagFee + booking.discount;
+  const additionalServices = booking.luggageDetails?.match(/\[Additional Services:.*?\]/g) || [];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-50 border-b bg-white shadow-sm">
-        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-4">
-          <Link href="/my-account" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
-            <ArrowLeft className="h-5 w-5" />
-            <span className="text-sm">Back</span>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/50">
+      <header className="sticky top-0 z-50 border-b border-gray-100/80 bg-white/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 max-w-3xl items-center px-4">
+          <Link href="/my-account" className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+            <span className="text-sm font-medium">Back</span>
           </Link>
-          <span className="text-sm font-medium">{booking.referenceNumber}</span>
+          <span className="mx-auto text-sm font-semibold">{booking.referenceNumber}</span>
+          <div className="w-14" />
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-8 space-y-6">
-        <Card>
-          <CardHeader>
+      <main className="mx-auto max-w-3xl px-4 py-6 space-y-5">
+        {/* Status Tracker */}
+        <Card className="overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4">
             <div className="flex items-center justify-between">
-              <CardTitle>Booking Status</CardTitle>
-              <Badge className={statusColors[booking.status] || ""}>
-                {booking.status.replace(/_/g, " ")}
+              <div>
+                <p className="text-xs text-blue-100">Booking Status</p>
+                <p className="text-lg font-bold text-white">{statusConfig[booking.status]?.label || booking.status}</p>
+              </div>
+              <Badge className={`${statusConfig[booking.status]?.color || ""} border`}>
+                {statusConfig[booking.status]?.label || booking.status}
               </Badge>
             </div>
-          </CardHeader>
-          <CardContent>
+          </div>
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
               {statusSteps.map((step, i) => (
-                <div key={step} className="flex flex-col items-center">
-                  <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${i <= currentStep ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-400"}`}>
-                    {i + 1}
-                  </div>
-                  <span className="mt-1 text-[10px] text-gray-500 text-center leading-tight">
+                <div key={step} className="flex flex-col items-center flex-1">
+                  <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold transition-all ${
+                    i <= currentStep ? "bg-blue-600 text-white shadow-md" : "bg-gray-100 text-gray-400"
+                  }`}>{i + 1}</div>
+                  <span className="mt-1.5 text-[9px] text-gray-400 text-center leading-tight max-w-[60px]">
                     {step.replace(/_/g, " ")}
                   </span>
+                  {i < statusSteps.length - 1 && (
+                    <div className={`absolute h-0.5 w-full ${i < currentStep ? "bg-blue-600" : "bg-gray-200"}`} />
+                  )}
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
 
+        {/* 1. Customer Information */}
+        {booking.customer && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100">
+                  <User className="h-4 w-4 text-blue-600" />
+                </div>
+                Customer Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="flex items-center gap-2.5 text-sm">
+                  <User className="h-4 w-4 text-gray-400" />
+                  <div><p className="text-[11px] text-gray-400">Name</p><p className="font-medium">{booking.customer.name}</p></div>
+                </div>
+                <div className="flex items-center gap-2.5 text-sm">
+                  <Mail className="h-4 w-4 text-gray-400" />
+                  <div><p className="text-[11px] text-gray-400">Email</p><p className="font-medium">{booking.customer.email}</p></div>
+                </div>
+                <div className="flex items-center gap-2.5 text-sm">
+                  <Phone className="h-4 w-4 text-gray-400" />
+                  <div><p className="text-[11px] text-gray-400">Phone</p><p className="font-medium">{booking.customer.phone}</p></div>
+                </div>
+                {booking.customer.countryOfOrigin && (
+                  <div className="flex items-center gap-2.5 text-sm">
+                    <Globe className="h-4 w-4 text-gray-400" />
+                    <div><p className="text-[11px] text-gray-400">Origin</p><p className="font-medium">{booking.customer.cityOfOrigin ? `${booking.customer.cityOfOrigin}, ` : ""}{booking.customer.countryOfOrigin}</p></div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 2. Booking Details */}
         <Card>
-          <CardHeader>
-            <CardTitle>Booking Details</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100">
+                <Package className="h-4 w-4 text-violet-600" />
+              </div>
+              Booking Details
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="flex items-start gap-3">
-              <MapPin className="mt-0.5 h-4 w-4 text-blue-600 shrink-0" />
-              <div>
-                <p className="font-medium">Pickup</p>
-                <p className="text-gray-500">{booking.pickupLocation}</p>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border bg-gray-50 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                  <p className="text-[11px] font-medium text-gray-400 uppercase">Pickup</p>
+                </div>
+                <p className="text-sm font-medium">{booking.pickupLocation}</p>
+              </div>
+              <div className="rounded-lg border bg-gray-50 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <MapPin className="h-3.5 w-3.5 text-red-500" />
+                  <p className="text-[11px] font-medium text-gray-400 uppercase">Drop-off</p>
+                </div>
+                <p className="text-sm font-medium">{booking.dropOffLocation}</p>
               </div>
             </div>
-            <div className="flex items-start gap-3">
-              <MapPin className="mt-0.5 h-4 w-4 text-red-600 shrink-0" />
-              <div>
-                <p className="font-medium">Drop-off</p>
-                <p className="text-gray-500">{booking.dropOffLocation}</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border bg-gray-50 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Calendar className="h-3.5 w-3.5 text-purple-500" />
+                  <p className="text-[11px] font-medium text-gray-400 uppercase">Check-in</p>
+                </div>
+                <p className="text-sm font-medium">{new Date(booking.checkIn).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}</p>
               </div>
+              {booking.checkOut && (
+                <div className="rounded-lg border bg-gray-50 p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Calendar className="h-3.5 w-3.5 text-indigo-500" />
+                    <p className="text-[11px] font-medium text-gray-400 uppercase">Check-out</p>
+                  </div>
+                  <p className="text-sm font-medium">{new Date(booking.checkOut).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}</p>
+                </div>
+              )}
+              {booking.location && (
+                <div className="rounded-lg border bg-gray-50 p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Building className="h-3.5 w-3.5 text-cyan-500" />
+                    <p className="text-[11px] font-medium text-gray-400 uppercase">Storage</p>
+                  </div>
+                  <p className="text-sm font-medium">{booking.location.name}</p>
+                </div>
+              )}
             </div>
-            <div className="flex items-start gap-3">
-              <Calendar className="mt-0.5 h-4 w-4 text-purple-600 shrink-0" />
-              <div>
-                <p className="font-medium">Schedule</p>
-                <p className="text-gray-500">{new Date(booking.checkIn).toLocaleString()}</p>
+            {booking.assignments && booking.assignments.length > 0 && (
+              <div className="text-xs text-muted-foreground">Assigned rider: <strong>{booking.assignments[0].user.name}</strong></div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 3. Bags & Charges */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100">
+                <Luggage className="h-4 w-4 text-amber-600" />
               </div>
+              Bags &amp; Charges
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between rounded-lg bg-gray-50 border p-3">
+              <span className="text-sm text-gray-600">Number of Bags</span>
+              <span className="text-lg font-bold">{booking.numberOfBags}</span>
             </div>
-            <div className="flex items-start gap-3">
-              <Package className="mt-0.5 h-4 w-4 text-green-600 shrink-0" />
-              <div>
-                <p className="font-medium">Bags</p>
-                <p className="text-gray-500">{booking.numberOfBags} luggage</p>
-              </div>
-            </div>
-            {booking.luggageDetails && (
-              <div className="flex items-start gap-3">
-                <Luggage className="mt-0.5 h-4 w-4 text-orange-600 shrink-0" />
+            {booking.numberOfBags > 3 && (
+              <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 p-3">
                 <div>
-                  <p className="font-medium">Details</p>
-                  <p className="text-gray-500">{booking.luggageDetails}</p>
+                  <p className="text-sm font-medium text-amber-800">Extra bag fee</p>
+                  <p className="text-xs text-amber-600">{extraBags} bag{extraBags > 1 ? "s" : ""} over 3-bag limit × ₱100</p>
+                </div>
+                <span className="text-sm font-bold text-amber-800">+₱{extraBagFee}</span>
+              </div>
+            )}
+            {booking.luggageItems && booking.luggageItems.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-400 uppercase mb-2">Baggage Tags</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {booking.luggageItems.map((item) => (
+                    <div key={item.id} className="flex items-center gap-2 rounded-lg border p-2.5">
+                      <Tag className="h-3.5 w-3.5 text-teal-500" />
+                      <div>
+                        <code className="text-xs font-mono font-bold">{item.tagNumber}</code>
+                        <p className="text-[10px] text-gray-400">{item.status.replace(/_/g, " ")}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
-            {booking.location && (
-              <div className="flex items-start gap-3">
-                <MapPin className="mt-0.5 h-4 w-4 text-indigo-600 shrink-0" />
-                <div><p className="font-medium">Storage Location</p><p className="text-gray-500">{booking.location.name} - {booking.location.city}</p></div>
+            {booking.luggageDetails && !booking.luggageDetails.startsWith("[") && (
+              <div>
+                <p className="text-xs font-medium text-gray-400 uppercase mb-1">Description</p>
+                <p className="text-sm text-gray-600">{booking.luggageDetails.split("\n").filter(l => !l.startsWith("[")).join(", ")}</p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {payment && (
-          <Card>
-            <CardHeader><CardTitle>Payment</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500">Amount</span><span className="font-medium">₱{payment.amount.toFixed(2)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Method</span><span>{payment.method}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Status</span><Badge variant={payment.status === "PAID" ? "default" : "secondary"}>{payment.status}</Badge></div>
-              {payment.paidAt && <div className="flex justify-between"><span className="text-gray-500">Paid at</span><span>{new Date(payment.paidAt).toLocaleString()}</span></div>}
-            </CardContent>
-          </Card>
-        )}
+        {/* 4. Payment */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100">
+                <CreditCard className="h-4 w-4 text-emerald-600" />
+              </div>
+              Payment
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 rounded-lg border p-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Base price ({Math.min(booking.numberOfBags, 3)} bag{Math.min(booking.numberOfBags, 3) > 1 ? "s" : ""})</span>
+                <span>₱{basePrice.toFixed(2)}</span>
+              </div>
+              {extraBags > 0 && (
+                <div className="flex justify-between text-sm text-amber-600">
+                  <span>Extra bags ({extraBags} × ₱100)</span>
+                  <span>+₱{extraBagFee.toFixed(2)}</span>
+                </div>
+              )}
+              {booking.discount > 0 && (
+                <div className="flex justify-between text-sm text-emerald-600">
+                  <span>Discount</span>
+                  <span>-₱{booking.discount.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-semibold border-t pt-2 mt-2">
+                <span>Total</span>
+                <span className="text-lg">₱{booking.totalPrice.toFixed(2)}</span>
+              </div>
+            </div>
+            {booking.payments && booking.payments.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {booking.payments.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between rounded-lg bg-gray-50 border p-3 text-sm">
+                    <div>
+                      <p className="font-medium">{p.method}</p>
+                      <p className="text-xs text-gray-400">{p.paidAt ? new Date(p.paidAt).toLocaleString() : "Pending"}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold">₱{p.amount.toFixed(2)}</p>
+                      <Badge variant={p.status === "PAID" ? "default" : "secondary"} className="text-[10px]">{p.status}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-        {booking.luggagePhotos.length > 0 && (
+        {/* 5. Additional Services */}
+        {additionalServices.length > 0 && (
           <Card>
-            <CardHeader><CardTitle>Luggage Photos</CardTitle></CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100">
+                  <ShoppingBag className="h-4 w-4 text-purple-600" />
+                </div>
+                Additional Services
+              </CardTitle>
+            </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-2">
-                {booking.luggagePhotos.map((photo, i) => (
-                  <img key={i} src={photo} alt={`Luggage ${i + 1}`} className="rounded-lg object-cover w-full h-24" />
+              <div className="space-y-2">
+                {additionalServices.map((svc, i) => (
+                  <div key={i} className="flex items-center justify-between rounded-lg border bg-purple-50/50 p-3 text-sm">
+                    <span className="text-purple-800">{svc.replace(/[\[\]]/g, "")}</span>
+                  </div>
                 ))}
               </div>
             </CardContent>
           </Card>
         )}
 
+        {/* Luggage Photos */}
+        {booking.luggagePhotos.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-base">Luggage Photos</CardTitle></CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-2">
+                {booking.luggagePhotos.map((photo, i) => (
+                  <img key={i} src={photo} alt={`Luggage ${i + 1}`} className="rounded-xl object-cover w-full h-24 border" />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Error */}
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{error}</span>
+          <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span>
           </div>
         )}
 
-        {canCancel && (
-          <Button variant="destructive" className="w-full" onClick={handleCancel} disabled={cancelling}>
-            {cancelling ? "Cancelling..." : "Cancel Booking"}
-          </Button>
-        )}
-
-        <div className="flex gap-2">
+        {/* Action Buttons */}
+        <div className="flex flex-wrap gap-2">
+          {canCancel && (
+            <Button variant="destructive" className="flex-1" onClick={handleCancel} disabled={cancelling}>
+              {cancelling ? "Cancelling..." : "Cancel Booking"}
+            </Button>
+          )}
           {canExtend && (
             <Button variant="outline" className="flex-1" onClick={() => setShowExtend(!showExtend)}>
-              <Clock className="mr-2 h-4 w-4" />
-              Extend
+              <Clock className="mr-2 h-4 w-4" /> Extend
             </Button>
           )}
           <Button variant="outline" className="flex-1" onClick={() => setShowChat(!showChat)}>
-            <MessageCircle className="mr-2 h-4 w-4" />
-            Chat
+            <MessageCircle className="mr-2 h-4 w-4" /> Chat
           </Button>
           {booking.status === "DELIVERED" && !review && (
             <Button variant="outline" className="flex-1" onClick={() => setShowReview(true)}>
-              <Star className="mr-2 h-4 w-4" />
-              Rate
+              <Star className="mr-2 h-4 w-4" /> Rate
             </Button>
           )}
           <Link href={`/track/${booking.referenceNumber}`} className="flex-1">
@@ -374,91 +483,68 @@ export default function CustomerBookingDetailPage() {
           </Link>
         </div>
 
+        {/* Extend Form */}
         {showExtend && (
           <Card>
-            <CardHeader><CardTitle>Request Extension</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Request Extension</CardTitle></CardHeader>
             <CardContent>
-              <form onSubmit={handleExtend} className="space-y-4">
+              <form onSubmit={handleExtend} className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="extendDate">New Check-out Date</Label>
+                  <Label htmlFor="extendDate" className="text-xs">New Check-out Date</Label>
                   <Input id="extendDate" type="date" value={extendDate} onChange={(e) => setExtendDate(e.target.value)} required />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="extendReason">Reason (optional)</Label>
+                  <Label htmlFor="extendReason" className="text-xs">Reason (optional)</Label>
                   <Input id="extendReason" value={extendReason} onChange={(e) => setExtendReason(e.target.value)} placeholder="Why do you need to extend?" />
                 </div>
-                <Button type="submit" disabled={submittingExtend || !extendDate}>
+                <Button type="submit" disabled={submittingExtend || !extendDate} className="w-full">
                   {submittingExtend ? "Submitting..." : "Submit Request"}
                 </Button>
               </form>
-              {extensions.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  <p className="text-sm font-medium">Previous Requests</p>
-                  {extensions.map((ext) => (
-                    <div key={ext.id} className="rounded-lg border p-3 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span>{formatDate(ext.requestedCheckOut)}</span>
-                        <Badge variant={ext.status === "APPROVED" ? "default" : ext.status === "REJECTED" ? "destructive" : "warning"}>{ext.status}</Badge>
-                      </div>
-                      {ext.reason && <p className="text-xs text-gray-500 mt-1">{ext.reason}</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
             </CardContent>
           </Card>
         )}
 
+        {/* Chat */}
         {showChat && (
           <Card>
-            <CardHeader><CardTitle>Chat with Staff</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Chat with Staff</CardTitle></CardHeader>
             <CardContent>
               <div className="max-h-64 space-y-3 overflow-y-auto mb-4">
-                {messages.length === 0 && <p className="text-sm text-gray-500 text-center py-4">No messages yet</p>}
+                {messages.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No messages yet</p>}
                 {messages.map((msg) => (
                   <div key={msg.id} className={`flex ${msg.isFromCustomer ? "justify-end" : ""}`}>
-                    <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${msg.isFromCustomer ? "bg-blue-600 text-white" : "bg-gray-100"}`}>
+                    <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${msg.isFromCustomer ? "bg-blue-600 text-white" : "bg-gray-100"}`}>
                       <p>{msg.message}</p>
-                      <p className={`mt-1 text-[10px] ${msg.isFromCustomer ? "text-blue-200" : "text-gray-500"}`}>{formatDate(msg.createdAt)}</p>
+                      <p className={`mt-1 text-[10px] ${msg.isFromCustomer ? "text-blue-200" : "text-gray-400"}`}>{formatDate(msg.createdAt)}</p>
                     </div>
                   </div>
                 ))}
                 <div ref={chatBottomRef} />
               </div>
               <div className="flex gap-2">
-                <Input value={chatText} onChange={(e) => setChatText(e.target.value)} placeholder="Type a message..." onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendChat(); }}} />
-                <Button size="icon" onClick={handleSendChat} disabled={!chatText.trim() || sendingChat}>
-                  <Send className="h-4 w-4" />
-                </Button>
+                <Input value={chatText} onChange={(e) => setChatText(e.target.value)} placeholder="Type a message..." onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendChat(); } }} />
+                <Button size="icon" onClick={handleSendChat} disabled={!chatText.trim() || sendingChat}><Send className="h-4 w-4" /></Button>
               </div>
             </CardContent>
           </Card>
         )}
 
+        {/* Review */}
         {(review || showReview) && (
           <Card>
-            <CardHeader><CardTitle>Your Review</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Your Review</CardTitle></CardHeader>
             <CardContent>
               {review ? (
                 <div className="space-y-2">
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <Star key={s} className={`h-5 w-5 ${s <= review.rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} />
-                    ))}
-                  </div>
+                  <div className="flex gap-1">{[1,2,3,4,5].map((s) => <Star key={s} className={`h-5 w-5 ${s <= review.rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} />)}</div>
                   {review.comment && <p className="text-sm text-gray-600">{review.comment}</p>}
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <button key={s} type="button" onMouseEnter={() => setHoverRating(s)} onMouseLeave={() => setHoverRating(0)} onClick={() => setRating(s)}>
-                        <Star className={`h-8 w-8 cursor-pointer transition-colors ${(hoverRating || rating) >= s ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} />
-                      </button>
-                    ))}
-                  </div>
+                  <div className="flex gap-1">{[1,2,3,4,5].map((s) => <button key={s} type="button" onMouseEnter={() => setHoverRating(s)} onMouseLeave={() => setHoverRating(0)} onClick={() => setRating(s)}><Star className={`h-8 w-8 cursor-pointer transition-colors ${(hoverRating || rating) >= s ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} /></button>)}</div>
                   <Input placeholder="Share your feedback (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />
-                  <Button onClick={handleSubmitReview} disabled={rating === 0 || submittingReview}>
+                  <Button onClick={handleSubmitReview} disabled={rating === 0 || submittingReview} className="w-full">
                     {submittingReview ? "Submitting..." : "Submit Review"}
                   </Button>
                 </div>
