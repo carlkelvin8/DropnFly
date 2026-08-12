@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import type { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { Camera, X, SwitchCamera, QrCode } from "lucide-react";
 
@@ -13,11 +14,14 @@ interface CameraQRScannerProps {
 
 export function CameraQRScanner({ onScan, onClose, title, description }: CameraQRScannerProps) {
   const onScanRef = useRef(onScan);
-  onScanRef.current = onScan;
-
-  const scannerRef = useRef<any>(null);
+  const handledRef = useRef(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   const mountedRef = useRef(true);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    onScanRef.current = onScan;
+  }, [onScan]);
 
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,61 +46,65 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
     if (mountedRef.current) setActive(false);
   }, []);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(() => {
     if (!mountedRef.current) return;
-    setError(null);
-    setScanned(false);
+    Promise.resolve()
+      .then(async () => {
+        setError(null);
+        setScanned(false);
+        handledRef.current = false;
 
-    // Wait for DOM element
-    await new Promise((r) => setTimeout(r, 100));
+        // Wait for DOM element
+        await new Promise((r) => setTimeout(r, 100));
 
-    if (!mountedRef.current) return;
-    const containerId = "qr-reader-container";
-    const el = document.getElementById(containerId);
-    if (!el) {
-      setError("Scanner container not found");
-      return;
-    }
+        if (!mountedRef.current) return;
+        const containerId = "qr-reader-container";
+        const el = document.getElementById(containerId);
+        if (!el) {
+          setError("Scanner container not found");
+          return;
+        }
 
-    // Clean up any existing scanner
-    await stopCamera();
+        // Clean up any existing scanner
+        await stopCamera();
 
-    try {
-      const { Html5Qrcode } = await import("html5-qrcode");
-      if (!mountedRef.current) return;
+        const { Html5Qrcode } = await import("html5-qrcode");
+        if (!mountedRef.current) return;
 
-      const scanner = new Html5Qrcode(containerId);
-      scannerRef.current = scanner;
+        const scanner = new Html5Qrcode(containerId);
+        scannerRef.current = scanner;
 
-      await scanner.start(
-        { facingMode },
-        { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 },
-        (decodedText) => {
-          if (!mountedRef.current) return;
-          setScanned(true);
-          onScanRef.current(decodedText);
-          if (navigator.vibrate) navigator.vibrate(200);
-          // Stop after successful scan
-          scanner.stop().catch(() => {});
-        },
-        () => { /* QR not found in frame — ignore */ }
-      );
+        await scanner.start(
+          { facingMode },
+          { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 },
+          (decodedText) => {
+            if (!mountedRef.current || handledRef.current) return;
+            handledRef.current = true;
+            setScanned(true);
+            onScanRef.current(decodedText);
+            if (navigator.vibrate) navigator.vibrate(200);
+            // Stop after successful scan
+            scanner.stop().catch(() => {});
+          },
+          () => { /* QR not found in frame — ignore */ }
+        );
 
-      if (mountedRef.current) setActive(true);
-    } catch (e) {
-      if (!mountedRef.current) return;
-      console.error("Camera error:", e);
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("NotAllowedError") || msg.includes("Permission")) {
-        setError("Camera permission denied. Please allow camera access in your browser settings.");
-      } else if (msg.includes("NotFoundError") || msg.includes("no camera")) {
-        setError("No camera found on this device.");
-      } else if (msg.includes("NotReadableError")) {
-        setError("Camera is in use by another app. Close other apps and try again.");
-      } else {
-        setError(msg || "Failed to start camera");
-      }
-    }
+        if (mountedRef.current) setActive(true);
+      })
+      .catch((e) => {
+        if (!mountedRef.current) return;
+        console.error("Camera error:", e);
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("NotAllowedError") || msg.includes("Permission")) {
+          setError("Camera permission denied. Please allow camera access in your browser settings.");
+        } else if (msg.includes("NotFoundError") || msg.includes("no camera")) {
+          setError("No camera found on this device.");
+        } else if (msg.includes("NotReadableError")) {
+          setError("Camera is in use by another app. Close other apps and try again.");
+        } else {
+          setError(msg || "Failed to start camera");
+        }
+      });
   }, [facingMode, stopCamera]);
 
   const switchCamera = useCallback(async () => {
@@ -159,6 +167,14 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
                 <QrCode className="h-8 w-8 text-white" />
               </div>
               <p className="text-lg font-semibold text-white">QR Code Scanned!</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-white border-white/30 hover:bg-white/10"
+                onClick={startCamera}
+              >
+                Scan Another
+              </Button>
             </div>
           </div>
         )}

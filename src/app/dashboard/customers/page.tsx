@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Search, User, Phone, Mail, Package, Loader2, Eye } from "lucide-react";
 import Link from "next/link";
 import { formatDate, formatCurrency } from "@/lib/utils";
@@ -117,7 +116,7 @@ export default function CustomersPage() {
             <Card>
               <CardContent className="p-8 text-center text-muted-foreground">
                 <User className="mx-auto h-8 w-8 mb-2 opacity-50" />
-                <p>No customers found matching "{query}"</p>
+                <p>No customers found matching &quot;{query}&quot;</p>
               </CardContent>
             </Card>
           ) : (

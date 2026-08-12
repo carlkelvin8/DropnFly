@@ -26,7 +26,6 @@ import {
   QrCode,
   ToggleLeft,
   Footprints,
-  Hash,
   Calendar,
   Wrench,
   Mail,
@@ -35,6 +34,7 @@ import {
   Trash2,
   Bike,
   Car,
+  FileText,
 } from "lucide-react";
 
 const SETTING_DEFAULTS: Record<string, string> = {
@@ -91,6 +91,8 @@ const SETTING_DEFAULTS: Record<string, string> = {
   auto_flag_hours_no_scan: "48",
   auto_flag_days_in_storage: "14",
   auto_flag_hours_overdue_return: "24",
+  terms_and_conditions: `1. Service Description\nDropnfly provides luggage storage and delivery services at NAIA Terminals 1-4. By using our service, you agree to these terms.\n\n2. Booking & Payment\nA minimum of 50% down payment is required to reserve a slot. The remaining balance is collectible upon pickup or delivery.\n\n3. Prohibited Items\nCustomers must not include illegal items, hazardous materials, perishables, firearms, or valuables (cash, jewelry, electronics) in stored luggage. Dropnfly is not liable for prohibited or valuable items.\n\n4. Storage Duration\nLuggage is stored from the scheduled pickup time until the scheduled delivery time. Extended storage may incur additional fees.\n\n5. Liability\nDropnfly's liability is limited to the declared value of the stored items. We recommend against storing irreplaceable or high-value items.\n\n6. Cancellation\nCancellation policies vary. Contact customer support for assistance with cancellations and refunds.\n\n7. Rider Assignment\nDropnfly assigns riders for pickup and delivery. Rider details (name, photo, vehicle, plate number) are shared with the customer.`,
+  privacy_policy: `1. Information We Collect\nWe collect personal information (name, email, phone, country/city of origin) and booking details (pickup/delivery locations, dates, times, luggage information) to provide our services.\n\n2. How We Use Your Information\nYour information is used to process bookings, assign riders, send confirmations, provide tracking, and improve our services.\n\n3. Data Sharing\nWe share necessary information with our riders (name, pickup location) for service delivery. We do not sell your personal data to third parties.\n\n4. Location Data\nWe may collect location data to facilitate rider pickup. This data is used only for service purposes and not stored longer than necessary.\n\n5. Data Security\nWe implement reasonable security measures to protect your personal information. However, no method of transmission over the Internet is 100% secure.\n\n6. Contact\nFor privacy-related inquiries, contact our support team.`,
 };
 
 const BAG_TYPES = [
@@ -121,6 +123,7 @@ const TABS = [
   { id: "qr", label: "QR & Codes", icon: QrCode, color: "text-teal-500" },
   { id: "fleet", label: "Fleet", icon: Truck, color: "text-yellow-600" },
   { id: "email", label: "Email Sender", icon: Mail, color: "text-sky-500" },
+  { id: "terms", label: "Terms & Privacy", icon: FileText, color: "text-blue-500" },
   { id: "maintenance", label: "Maintenance", icon: Wrench, color: "text-red-500" },
 ];
 
@@ -770,6 +773,39 @@ export default function SettingsPage() {
                   placeholder="Dropnfly Logistics Inc." />
                 <p className="text-[10px] text-muted-foreground">Used in email signatures and footers</p>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "terms" && (
+        <Card className="border-t-2 border-t-blue-500 shadow-md">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FileText className="h-4 w-4 text-blue-500" /> Terms &amp; Privacy Policy
+            </CardTitle>
+            <CardDescription>Edit the legal text shown to customers during booking. These appear in the Terms &amp; Conditions and Privacy Policy modals.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="space-y-1.5">
+              <Label htmlFor="terms_and_conditions">Terms &amp; Conditions</Label>
+              <p className="text-[10px] text-muted-foreground">Plain text; blank line between sections. Line breaks are preserved.</p>
+              <textarea
+                id="terms_and_conditions"
+                value={settings.terms_and_conditions || ""}
+                onChange={(e) => handleChange("terms_and_conditions", e.target.value)}
+                className="min-h-[260px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="privacy_policy">Privacy Policy</Label>
+              <p className="text-[10px] text-muted-foreground">Plain text; blank line between sections. Line breaks are preserved.</p>
+              <textarea
+                id="privacy_policy"
+                value={settings.privacy_policy || ""}
+                onChange={(e) => handleChange("privacy_policy", e.target.value)}
+                className="min-h-[220px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
             </div>
           </CardContent>
         </Card>

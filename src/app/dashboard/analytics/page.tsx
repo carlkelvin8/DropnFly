@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import {
   TrendingUp,
@@ -22,9 +23,11 @@ import {
   FileText,
   RefreshCw,
   AlertCircle,
-  Lightbulb,
+  CreditCard,
+  Download,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface Overview {
   totalBookings: number;
@@ -85,6 +88,19 @@ interface Analytics {
   };
 }
 
+interface Payment {
+  id: string;
+  amount: number;
+  method: string;
+  status: string;
+  paidAt: string | null;
+  createdAt: string;
+  booking: { referenceNumber: string };
+  customer: { name: string; email: string };
+}
+
+type Tab = "overview" | "financial" | "reports";
+
 const statusDot: Record<string, string> = {
   PENDING: "bg-yellow-500",
   CONFIRMED: "bg-blue-500",
@@ -95,8 +111,17 @@ const statusDot: Record<string, string> = {
   CANCELLED: "bg-red-500",
 };
 
+const tabs: { id: Tab; label: string; icon: typeof DollarSign }[] = [
+  { id: "overview", label: "Graphical Data", icon: BarChart3 },
+  { id: "financial", label: "Financial Oversight", icon: DollarSign },
+  { id: "reports", label: "Reports", icon: FileText },
+];
+
 export default function AnalyticsPage() {
+  const [tab, setTab] = useState<Tab>("overview");
   const [data, setData] = useState<Analytics | null>(null);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [period, setPeriod] = useState("month");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -116,24 +141,26 @@ export default function AnalyticsPage() {
     return () => abort.abort();
   }, [period, dateFrom, dateTo]);
 
-  if (!data) {
-    return (
-      <div className="flex h-64 items-center justify-center text-muted-foreground">
-        Loading analytics...
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (tab !== "financial") return;
+    fetch("/api/payments")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((p) => setPayments(Array.isArray(p) ? p : []))
+      .catch(() => toast.error("Failed to load payments"))
+      .finally(() => setPaymentsLoading(false));
+  }, [tab]);
 
-  const { overview, bookingsByDay, hourlyDistribution, employeePerformance, customerTrends } = data;
-  const maxDailyCount = Math.max(...bookingsByDay.map((d) => d.count), 1);
-  const maxHourlyCount = Math.max(...hourlyDistribution.map((h) => h.count), 1);
-  const maxEmployee = Math.max(...employeePerformance.map((e) => e.totalAssigned), 1);
+  const totalRevenue = payments.filter((p) => p.status === "PAID").reduce((sum, p) => sum + p.amount, 0);
+  const pendingPayments = payments.filter((p) => p.status === "PENDING");
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between rounded-xl border bg-card p-4 shadow-sm">
-        <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
-        <div className="flex gap-2">
+        <div>
+          <h1 className="text-2xl font-bold">Analytics</h1>
+          <p className="text-sm text-muted-foreground">Operational, financial, and export reports in one place</p>
+        </div>
+        <div className="flex items-center gap-2">
           <div className="flex items-center gap-2">
             <div className="flex gap-1 rounded-lg bg-muted p-1">
               {["week", "month", "year", "custom"].map((p) => (
@@ -175,6 +202,66 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
+      {/* Tab Navigation */}
+      <div className="flex gap-2 border-b pb-px">
+        {tabs.map((t) => {
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              onClick={() => { setTab(t.id); if (t.id === "financial") setPaymentsLoading(true); }}
+              className={`flex items-center gap-2 rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+                tab === t.id
+                  ? "border-b-2 border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "overview" && (
+        <>
+          {!data ? (
+            <div className="flex h-64 items-center justify-center text-muted-foreground">
+              Loading analytics...
+            </div>
+          ) : (
+            <OverviewTab data={data} period={period} />
+          )}
+        </>
+      )}
+
+      {tab === "financial" && (
+        <FinancialTab
+          payments={payments}
+          loading={paymentsLoading}
+          overview={data?.overview || null}
+          totalRevenue={totalRevenue}
+          pendingCount={pendingPayments.length}
+          pendingPayments={pendingPayments}
+          period={period}
+        />
+      )}
+
+      {tab === "reports" && <ReportsTab />}
+    </div>
+  );
+}
+
+function OverviewTab({ data, period }: { data: Analytics; period: string }) {
+  const { overview, bookingsByDay, hourlyDistribution, employeePerformance, customerTrends, storageLocations, revenueByStatus } = data;
+  const maxDailyCount = Math.max(...bookingsByDay.map((d) => d.count), 1);
+  const maxDailyRevenue = Math.max(...bookingsByDay.map((d) => d.revenue), 1);
+  const maxHourlyCount = Math.max(...hourlyDistribution.map((h) => h.count), 1);
+  const maxEmployee = Math.max(...employeePerformance.map((e) => e.totalAssigned), 1);
+  const maxStatusRevenue = Math.max(...revenueByStatus.map((x) => x.revenue), 1);
+
+  return (
+    <div className="space-y-6">
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-t-2 border-t-blue-500">
@@ -274,6 +361,33 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
+        {/* Revenue Over Time */}
+        <Card className="border-t-2 border-t-green-500">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Revenue Over Time</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end gap-[3px] rounded-lg bg-muted/20 p-2" style={{ height: 160 }}>
+              {bookingsByDay.slice(-30).map((day, i) => (
+                <div
+                  key={i}
+                  className="flex-1 rounded-t bg-gradient-to-t from-emerald-600 to-emerald-400 transition-all hover:from-emerald-700 hover:to-emerald-500"
+                  style={{
+                    height: `${(day.revenue / maxDailyRevenue) * 100}%`,
+                    minHeight: day.revenue > 0 ? 4 : 0,
+                  }}
+                  title={`${day.date}: ${formatCurrency(day.revenue)}`}
+                />
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Daily revenue for last {bookingsByDay.length} days
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
         {/* Hourly Distribution */}
         <Card className="border-t-2 border-t-emerald-500">
           <CardHeader>
@@ -297,6 +411,31 @@ export default function AnalyticsPage() {
               <span>00:00</span>
               <span>12:00</span>
               <span>23:00</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Revenue by Status */}
+        <Card className="border-t-2 border-t-indigo-500">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Revenue by Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end gap-3 rounded-lg bg-muted/20 p-2" style={{ height: 160 }}>
+              {revenueByStatus.map((s) => (
+                <div
+                  key={s.status}
+                  className="flex h-full flex-1 flex-col items-center justify-end gap-1"
+                >
+                  <span className="text-[10px] font-semibold text-muted-foreground">{formatCurrency(s.revenue)}</span>
+                  <div
+                    className="w-full max-w-[40px] rounded-t bg-gradient-to-t from-indigo-600 to-indigo-400 transition-all hover:from-indigo-700 hover:to-indigo-500"
+                    style={{ height: `${Math.max((s.revenue / maxStatusRevenue) * 100, 4)}%` }}
+                    title={`${s.status}: ${formatCurrency(s.revenue)}`}
+                  />
+                  <span className="max-w-[70px] truncate text-[9px] text-muted-foreground">{s.status.replace(/_/g, " ")}</span>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -407,8 +546,256 @@ export default function AnalyticsPage() {
         </CardContent>
       </Card>
 
-      {/* AI Reports */}
+      {/* Storage Locations Utilization */}
+      <Card className="border-t-2 border-t-cyan-500">
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Storage Locations Utilization</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {storageLocations.length === 0 && (
+            <div className="py-8 text-center text-muted-foreground">
+              <BarChart3 className="mx-auto mb-2 h-8 w-8 text-gray-300" />
+              <p className="text-sm">No storage data yet</p>
+            </div>
+          )}
+          {storageLocations.map((loc) => (
+            <div key={loc.name}>
+              <div className="mb-1.5 flex justify-between text-sm">
+                <span className="font-medium">{loc.name}</span>
+                <span className="text-muted-foreground">
+                  {loc.used}/{loc.capacity} slots &middot; {loc.utilization.toFixed(0)}%
+                </span>
+              </div>
+              <div className="h-2.5 w-full rounded-full bg-muted">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    loc.utilization > 85
+                      ? "bg-gradient-to-r from-red-500 to-rose-500"
+                      : loc.utilization > 60
+                        ? "bg-gradient-to-r from-amber-400 to-orange-500"
+                        : "bg-gradient-to-r from-cyan-400 to-blue-500"
+                  }`}
+                  style={{ width: `${Math.min(loc.utilization, 100)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function FinancialTab({
+  payments,
+  loading,
+  overview,
+  totalRevenue,
+  pendingCount,
+  pendingPayments,
+}: {
+  payments: Payment[];
+  loading: boolean;
+  overview: Overview | null;
+  totalRevenue: number;
+  pendingCount: number;
+  pendingPayments: Payment[];
+  period: string;
+}) {
+  const paidPayments = payments.filter((p) => p.status === "PAID");
+  const methodTotals = Array.from(
+    payments.reduce((map, p) => {
+      const key = p.method || "OTHER";
+      map.set(key, (map.get(key) || 0) + p.amount);
+      return map;
+    }, new Map<string, number>())
+  ).sort((a, b) => b[1] - a[1]);
+  const maxMethodTotal = Math.max(...methodTotals.map(([, amt]) => amt), 1);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <Card className="border-t-2 border-t-green-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
+            <div className="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
+              <DollarSign className="h-4 w-4 text-green-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(totalRevenue)}</div>
+            <p className="text-xs text-muted-foreground">{paidPayments.length} paid transactions</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-t-2 border-t-blue-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Transactions</CardTitle>
+            <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
+              <CreditCard className="h-4 w-4 text-blue-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{payments.length}</div>
+            <p className="text-xs text-muted-foreground">{pendingCount} pending</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-t-2 border-t-violet-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
+            <div className="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
+              <Package className="h-4 w-4 text-violet-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{overview?.totalBookings || 0}</div>
+            <p className="text-xs text-muted-foreground">{overview?.activeBookings || 0} active</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-t-2 border-t-cyan-500">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Avg. per Booking</CardTitle>
+            <div className="rounded-lg bg-cyan-100 p-2 dark:bg-cyan-900/30">
+              <TrendingUp className="h-4 w-4 text-cyan-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(overview?.averagePrice || 0)}</div>
+            <p className="text-xs text-muted-foreground">Storage utilization: {overview?.storageUtilization?.toFixed(1) || 0}%</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Payment Methods */}
+        <Card className="border-t-2 border-t-blue-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <CreditCard className="h-4 w-4" />
+              Payment Methods
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {methodTotals.length === 0 ? (
+              <div className="py-6 text-center text-muted-foreground">
+                <DollarSign className="mx-auto mb-2 h-8 w-8 text-gray-300" />
+                <p className="text-sm">No payments recorded</p>
+              </div>
+            ) : (
+              methodTotals.map(([method, amt]) => (
+                <div key={method}>
+                  <div className="mb-1.5 flex justify-between text-sm">
+                    <span className="font-medium">{method}</span>
+                    <span className="font-semibold text-muted-foreground">
+                      {formatCurrency(amt)} &middot; {((amt / maxMethodTotal) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="h-2.5 w-full rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400"
+                      style={{ width: `${(amt / maxMethodTotal) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Collection Status */}
+        <Card className="border-t-2 border-t-emerald-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <DollarSign className="h-4 w-4" />
+              Collection Summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+              <span className="text-muted-foreground">Collected (PAID)</span>
+              <span className="font-bold text-emerald-600">{formatCurrency(totalRevenue)}</span>
+            </div>
+            <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+              <span className="text-muted-foreground">Outstanding (PENDING)</span>
+              <span className="font-bold text-amber-600">
+                {formatCurrency(pendingPayments.reduce((sum, p) => sum + p.amount, 0))}
+              </span>
+            </div>
+            <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+              <span className="text-muted-foreground">Collection rate</span>
+              <span className="font-bold">
+                {payments.length === 0
+                  ? "0%"
+                  : `${((totalRevenue / payments.reduce((sum, p) => sum + p.amount, 0)) * 100).toFixed(1)}%`}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Payments Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm font-medium">
+            <CreditCard className="h-4 w-4" />
+            Recent Payments
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="py-12 text-center text-muted-foreground">Loading payments...</div>
+          ) : payments.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
+              <DollarSign className="mx-auto h-12 w-12 mb-3 text-gray-300" />
+              <p>No payments yet</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b bg-muted/50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium">Reference</th>
+                    <th className="px-4 py-3 text-left font-medium">Customer</th>
+                    <th className="px-4 py-3 text-left font-medium">Amount</th>
+                    <th className="px-4 py-3 text-left font-medium">Method</th>
+                    <th className="px-4 py-3 text-left font-medium">Status</th>
+                    <th className="px-4 py-3 text-left font-medium">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {payments.slice(0, 10).map((p) => (
+                    <tr key={p.id} className="hover:bg-muted/30">
+                      <td className="px-4 py-3 font-medium">{p.booking.referenceNumber}</td>
+                      <td className="px-4 py-3">{p.customer.name}</td>
+                      <td className="px-4 py-3 font-semibold">{formatCurrency(p.amount)}</td>
+                      <td className="px-4 py-3">{p.method}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant={p.status === "PAID" ? "default" : "secondary"}>
+                          {p.status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {new Date(p.createdAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ReportsTab() {
+  return (
+    <div className="space-y-8">
       <AiReportsSection />
+      <CsvReportsSection />
     </div>
   );
 }
@@ -532,6 +919,81 @@ function AiReportsSection() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+function CsvReportsSection() {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  const reports = [
+    { id: "bookings", label: "Bookings Report", description: "All bookings with customer and payment details", icon: Package, endpoint: "/api/reports/bookings", filename: "bookings" },
+    { id: "revenue", label: "Revenue Report", description: "Paid payments with customer and method details", icon: DollarSign, endpoint: "/api/reports/revenue", filename: "revenue" },
+    { id: "analytics", label: "Analytics Summary", description: "Key metrics including bookings, revenue, and ratings", icon: BarChart3, endpoint: "/api/reports/analytics", filename: "analytics" },
+  ];
+
+  async function downloadReport(report: typeof reports[0]) {
+    setDownloading(report.id);
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    try {
+      const res = await fetch(`${report.endpoint}?${params}`);
+      if (!res.ok) throw new Error("Failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${report.filename}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`${report.label} downloaded`);
+    } catch {
+      toast.error(`Failed to download ${report.label}`);
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold">CSV Export</h2>
+      <div className="flex flex-wrap gap-4 items-end">
+        <div className="space-y-1.5">
+          <Label htmlFor="from">From</Label>
+          <Input id="from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="to">To</Label>
+          <Input id="to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        {reports.map((report) => {
+          const Icon = report.icon;
+          return (
+            <Card key={report.id} className="transition-shadow hover:shadow-md">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-lg bg-primary/10 p-2">
+                    <Icon className="h-5 w-5 text-primary" />
+                  </div>
+                  <CardTitle className="text-base">{report.label}</CardTitle>
+                </div>
+                <CardDescription>{report.description}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={() => downloadReport(report)} disabled={downloading === report.id} className="w-full">
+                  {downloading === report.id ? "Downloading..." : <><Download className="mr-2 h-4 w-4" /> Download CSV</>}
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }

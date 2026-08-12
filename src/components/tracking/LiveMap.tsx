@@ -42,7 +42,6 @@ export function LiveMap({
   dropoffLng,
   pickupAddress,
   dropoffAddress,
-  customerName,
   riderView = false,
 }: LiveMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -51,8 +50,24 @@ export function LiveMap({
   const routeSourceId = useRef("route");
   const [loading, setLoading] = useState(true);
   const [noToken] = useState(!MAPBOX_TOKEN);
-  const [distance, setDistance] = useState<number | null>(null);
-  const [eta, setEta] = useState<string | null>(null);
+
+  function drawPoints() {
+    if (!map.current) return;
+    const mk = map.current;
+
+    if (pickupLat && pickupLng) {
+      new mapboxgl.Marker({ color: "#22c55e" })
+        .setLngLat([pickupLng, pickupLat])
+        .setPopup(new mapboxgl.Popup().setText(pickupAddress || "Pickup Location"))
+        .addTo(mk);
+    }
+    if (dropoffLat && dropoffLng) {
+      new mapboxgl.Marker({ color: "#ef4444" })
+        .setLngLat([dropoffLng, dropoffLat])
+        .setPopup(new mapboxgl.Popup().setText(dropoffAddress || "Drop-off Location"))
+        .addTo(mk);
+    }
+  }
 
   useEffect(() => {
     if (!MAPBOX_TOKEN) return;
@@ -82,25 +97,8 @@ export function LiveMap({
       map.current?.remove();
       map.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- map is initialized once on mount
   }, []);
-
-  function drawPoints() {
-    if (!map.current) return;
-    const mk = map.current;
-
-    if (pickupLat && pickupLng) {
-      new mapboxgl.Marker({ color: "#22c55e" })
-        .setLngLat([pickupLng, pickupLat])
-        .setPopup(new mapboxgl.Popup().setText(pickupAddress || "Pickup Location"))
-        .addTo(mk);
-    }
-    if (dropoffLat && dropoffLng) {
-      new mapboxgl.Marker({ color: "#ef4444" })
-        .setLngLat([dropoffLng, dropoffLat])
-        .setPopup(new mapboxgl.Popup().setText(dropoffAddress || "Drop-off Location"))
-        .addTo(mk);
-    }
-  }
 
   useEffect(() => {
     if (!map.current || !employeeLat || !employeeLng) return;
@@ -109,7 +107,7 @@ export function LiveMap({
 
     const el = document.createElement("div");
     el.className =
-      "flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white text-xs font-bold shadow-lg border-2 border-white animate-bounce";
+      "flex h-8 w-8 items-center justify-center rounded-full bg-orange-500 text-white text-xs font-bold shadow-lg border-2 border-white animate-bounce";
     el.innerHTML = riderView ? "Y" : "E";
 
     markerRef.current = new mapboxgl.Marker({ element: el })
@@ -118,16 +116,6 @@ export function LiveMap({
       .addTo(map.current);
 
     map.current.flyTo({ center: [employeeLng, employeeLat], zoom: 14 });
-
-    // Calculate distance and ETA to nearest destination
-    const destLat = dropoffLat || pickupLat;
-    const destLng = dropoffLng || pickupLng;
-    if (destLat && destLng) {
-      const d = haversine(employeeLat, employeeLng, destLat, destLng);
-      setDistance(d);
-      const etaMinutes = Math.round((d / 30) * 60); // avg 30 km/h
-      setEta(etaMinutes <= 1 ? "1 min" : `${etaMinutes} mins`);
-    }
 
     // Draw route line
     if (map.current.getSource(routeSourceId.current)) {
@@ -165,14 +153,26 @@ export function LiveMap({
         source: routeSourceId.current,
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#3b82f6",
+          "line-color": "#3b7ac7",
           "line-width": 3,
           "line-opacity": 0.8,
           "line-dasharray": [1, 1],
         },
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- route redraws on rider position updates only
   }, [employeeLat, employeeLng]);
+
+  const destLat = dropoffLat || pickupLat;
+  const destLng = dropoffLng || pickupLng;
+  let distance: number | null = null;
+  let eta: string | null = null;
+  if (destLat && destLng && employeeLat && employeeLng) {
+    const d = haversine(employeeLat, employeeLng, destLat, destLng);
+    distance = d;
+    const etaMinutes = Math.round((d / 30) * 60);
+    eta = etaMinutes <= 1 ? "1 min" : `${etaMinutes} mins`;
+  }
 
   if (noToken) {
     return (

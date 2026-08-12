@@ -67,7 +67,7 @@ export default function ReceiptPage() {
         <Card className="border-2">
           <CardHeader className="border-b bg-muted/30 text-center">
             <div className="mb-2 flex justify-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-violet-600">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-blue-500">
                 <Luggage className="h-6 w-6 text-white" />
               </div>
             </div>

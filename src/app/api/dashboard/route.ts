@@ -10,11 +10,11 @@ export async function GET() {
     }
 
     const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
     const [
-      totalLocations,
       totalBookings,
       deliveredBookings,
       monthlyBookings,
@@ -26,8 +26,12 @@ export async function GET() {
       luggageData,
       pendingDeliveries,
       outForDelivery,
+      bookingsThisWeek,
+      bookingsToday,
+      deliveredToday,
+      deliveredThisWeek,
+      pendingToday,
     ] = await Promise.all([
-      prisma.storageLocation.count({ where: { isActive: true } }),
       prisma.booking.count(),
       prisma.booking.count({ where: { status: "DELIVERED" } }),
       prisma.booking.count({
@@ -59,21 +63,34 @@ export async function GET() {
       prisma.booking.count({
         where: { status: "OUT_FOR_DELIVERY" },
       }),
+      prisma.booking.count({
+        where: { createdAt: { gte: startOfWeek } },
+      }),
+      prisma.booking.count({
+        where: { checkIn: { gte: startOfToday } },
+      }),
+      prisma.booking.count({
+        where: { status: "DELIVERED", checkOut: { gte: startOfToday } },
+      }),
+      prisma.booking.count({
+        where: { status: "DELIVERED", checkOut: { gte: startOfWeek } },
+      }),
+      prisma.booking.count({
+        where: {
+          status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] },
+          checkOut: { gte: startOfToday },
+        },
+      }),
     ]);
 
     const capacityTotal = capacityResult._sum.capacity ?? 0;
     const usagePercent = capacityTotal > 0 ? Math.round((bookingCapacity / capacityTotal) * 100) : 0;
-    const completionRate = totalBookings > 0 ? Math.round((deliveredBookings / totalBookings) * 100) : 0;
+    const completionRateWeekly = bookingsThisWeek > 0 ? Math.round((deliveredThisWeek / bookingsThisWeek) * 100) : 0;
 
     const durationBuckets: Record<string, number> = { "0-1": 0, "2-3": 0, "4-7": 0, "8-14": 0, "15+": 0 };
-    let totalDeliveryHours = 0;
-    let deliveryCount = 0;
     for (const b of bookingDurations) {
       if (b.checkIn && b.checkOut) {
         const days = Math.ceil((b.checkOut.getTime() - b.checkIn.getTime()) / (1000 * 60 * 60 * 24));
-        const hours = (b.checkOut.getTime() - b.checkIn.getTime()) / (1000 * 60 * 60);
-        totalDeliveryHours += hours;
-        deliveryCount++;
         if (days <= 1) durationBuckets["0-1"]++;
         else if (days <= 3) durationBuckets["2-3"]++;
         else if (days <= 7) durationBuckets["4-7"]++;
@@ -81,7 +98,6 @@ export async function GET() {
         else durationBuckets["15+"]++;
       }
     }
-    const avgDeliveryTimeHours = deliveryCount > 0 ? totalDeliveryHours / deliveryCount : 0;
 
     const bagDistribution: Record<string, number> = {};
     for (const b of luggageData) {
@@ -98,13 +114,17 @@ export async function GET() {
       capacityUsage: { used: bookingCapacity, total: capacityTotal, percent: usagePercent },
       bookingsThisMonth: monthlyBookings,
       claimedThisMonth: monthlyDelivered,
-      completionRate,
       totalUsers,
       totalBookings,
       deliveredBookings,
       pendingDeliveries,
       outForDelivery,
-      avgDeliveryTimeHours: Math.round(avgDeliveryTimeHours * 10) / 10,
+      bookingsThisWeek,
+      bookingsToday,
+      deliveredToday,
+      deliveredThisWeek,
+      completionRateWeekly,
+      pendingToday,
       durationBuckets,
       bagDistribution,
     });

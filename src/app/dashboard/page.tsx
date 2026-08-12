@@ -15,11 +15,9 @@ import {
   Warehouse,
   Inbox,
   CheckCircle2,
-  Users,
   CalendarDays,
   Clock,
   Truck,
-  Timer,
   MapPin,
   ChevronLeft,
   ChevronRight,
@@ -31,13 +29,17 @@ interface DashboardData {
   capacityUsage: { used: number; total: number; percent: number };
   bookingsThisMonth: number;
   claimedThisMonth: number;
-  completionRate: number;
   totalUsers: number;
   totalBookings: number;
   deliveredBookings: number;
   pendingDeliveries: number;
   outForDelivery: number;
-  avgDeliveryTimeHours: number;
+  bookingsThisWeek: number;
+  bookingsToday: number;
+  deliveredToday: number;
+  deliveredThisWeek: number;
+  completionRateWeekly: number;
+  pendingToday: number;
   durationBuckets: Record<string, number>;
   bagDistribution: Record<string, number>;
 }
@@ -48,12 +50,12 @@ interface DayActivity {
 }
 
 const BAG_COLORS: Record<string, string> = {
-  "Extra Small": "#10b981",
-  Small: "#3b82f6",
-  Standard: "#8b5cf6",
-  Large: "#f59e0b",
+  "Extra Small": "#d1d5db",
+  Small: "#3b7ac7",
+  Standard: "#ea7d3d",
+  Large: "#9ca3af",
 };
-const BAG_FALLBACK_COLORS = ["#6366f1", "#8b5cf6", "#a855f7", "#d946ef"];
+const BAG_FALLBACK_COLORS = ["#ea7d3d", "#3b7ac7", "#9ca3af", "#e3f0fb"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function getDaysInMonth(year: number, month: number) {
@@ -68,7 +70,7 @@ export default function DashboardPage() {
   const isAdmin = session?.user?.role === "ADMIN";
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState("");
   const [dayActivity, setDayActivity] = useState<DayActivity | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
 
@@ -85,18 +87,16 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const fetchDayActivity = useCallback(async (date: string) => {
+  const fetchDayActivity = useCallback((date: string) => {
     if (!date) return;
-    setActivityLoading(true);
-    try {
-      const res = await fetch(`/api/dashboard/calendar?date=${date}`);
-      if (!res.ok) throw new Error();
-      setDayActivity(await res.json());
-    } catch {
-      setDayActivity(null);
-    } finally {
-      setActivityLoading(false);
-    }
+    fetch(`/api/dashboard/calendar?date=${date}`)
+      .then((res) => {
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then((data) => setDayActivity(data))
+      .catch(() => setDayActivity(null))
+      .finally(() => setActivityLoading(false));
   }, []);
 
   useEffect(() => {
@@ -176,78 +176,61 @@ export default function DashboardPage() {
 
         <Card className="border-t-2 border-t-blue-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Bookings (This Month)</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Bookings (This Week)</CardTitle>
             <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
               <Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.bookingsThisMonth}</div>
-            <p className="text-xs text-muted-foreground">Total: {data.totalBookings}</p>
+            <div className="text-2xl font-bold">{data.bookingsThisWeek}</div>
+            <p className="text-xs text-muted-foreground">{data.bookingsToday} scheduled today</p>
           </CardContent>
         </Card>
 
         <Card className="border-t-2 border-t-emerald-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Completed</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Completed (Today)</CardTitle>
             <div className="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
               <Inbox className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.deliveredBookings}</div>
-            <p className="text-xs text-muted-foreground">{data.claimedThisMonth} this month</p>
+            <div className="text-2xl font-bold">{data.deliveredToday}</div>
+            <p className="text-xs text-muted-foreground">{data.deliveredThisWeek} this week</p>
           </CardContent>
         </Card>
 
         <Card className="border-t-2 border-t-amber-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Deliveries</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Deliveries (Today)</CardTitle>
             <div className="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
               <Truck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.pendingDeliveries + data.outForDelivery}</div>
+            <div className="text-2xl font-bold">{data.pendingToday}</div>
             <p className="text-xs text-muted-foreground">{data.outForDelivery} out for delivery</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Secondary KPIs - 3 columns */}
+      {/* Secondary KPIs - 2 columns */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
-        <Card className="border-t-2 border-t-violet-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Avg Delivery Time</CardTitle>
-            <div className="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
-              <Timer className="h-4 w-4 text-violet-600 dark:text-violet-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {data.avgDeliveryTimeHours >= 24
-                ? `${(data.avgDeliveryTimeHours / 24).toFixed(1)}d`
-                : `${data.avgDeliveryTimeHours.toFixed(1)}h`}
-            </div>
-            <p className="text-xs text-muted-foreground">Check-in to delivery</p>
-          </CardContent>
-        </Card>
-
         <Card className="border-t-2 border-t-indigo-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Completion Rate</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Completion Rate (This Week)</CardTitle>
             <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
               <CheckCircle2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.completionRate}%</div>
-            <p className="text-xs text-muted-foreground">{data.deliveredBookings} of {data.totalBookings}</p>
+            <div className="text-2xl font-bold">{data.completionRateWeekly}%</div>
+            <p className="text-xs text-muted-foreground">{data.deliveredThisWeek} of {data.bookingsThisWeek} delivered</p>
           </CardContent>
         </Card>
 
         {isAdmin && (
-          <Link href="/dashboard/tracking">
+          <Link href="/dashboard/logistics">
             <Card className="border-t-2 border-t-rose-500 cursor-pointer transition-shadow hover:shadow-md h-full">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Route Playback</CardTitle>
@@ -303,7 +286,7 @@ export default function DashboardPage() {
                     onClick={() => setSelectedDate(key)}
                     className={`relative flex h-9 w-full items-center justify-center rounded-lg text-xs font-medium transition-all ${
                       isSelected
-                        ? "bg-blue-600 text-white shadow-md"
+                        ? "bg-orange-500 text-white shadow-md"
                         : hasActivity
                           ? "bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold"
                           : "text-gray-600 hover:bg-muted"
@@ -391,9 +374,9 @@ export default function DashboardPage() {
                           `Duration: ${props?.payload ? durationLabelMap[props.payload.name] || props.payload.name : ""}`,
                         ]}
                         labelFormatter={(label) => `Storage: ${durationLabelMap[label as string] || label}`}
-                        contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "12px" }}
+                        contentStyle={{ borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "12px" }}
                       />
-                      <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="value" fill="#ea7d3d" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                   <p className="mt-2 text-[11px] text-muted-foreground text-center">
@@ -431,7 +414,7 @@ export default function DashboardPage() {
                           `${value} bag${Number(value) !== 1 ? "s" : ""}`,
                           `Type: ${props?.payload?.name || ""}`,
                         ]}
-                        contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "12px" }}
+                        contentStyle={{ borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "12px" }}
                       />
                       <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                         {bagData.map((entry, i) => (

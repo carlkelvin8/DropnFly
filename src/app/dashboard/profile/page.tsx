@@ -14,7 +14,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
-import { User, Mail, Shield, Calendar } from "lucide-react";
+import { User, Mail, Shield, Calendar, ShieldCheck, Smartphone, QrCode as QrCodeIcon } from "lucide-react";
 import Link from "next/link";
 
 interface Profile {
@@ -23,6 +23,7 @@ interface Profile {
   email: string;
   role: string;
   createdAt: string;
+  totpEnabled?: boolean;
 }
 
 export default function ProfilePage() {
@@ -36,16 +37,81 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
 
+  const [totpEnabled, setTotpEnabled] = useState(false);
+  const [totpLoading, setTotpLoading] = useState(false);
+  const [totpSetup, setTotpSetup] = useState<{ secret: string; qrDataUrl: string } | null>(null);
+  const [totpCode, setTotpCode] = useState("");
+
   useEffect(() => {
     fetch("/api/profile")
       .then((res) => res.json())
       .then((data) => {
         setProfile(data);
         setName(data.name || "");
+        setTotpEnabled(data.totpEnabled === true);
       })
       .catch(() => toast.error("Failed to load profile"))
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleTotpSetup() {
+    setTotpLoading(true);
+    try {
+      const res = await fetch("/api/auth/totp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setup" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start setup");
+      setTotpSetup(data);
+      setTotpCode("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to start setup");
+    } finally {
+      setTotpLoading(false);
+    }
+  }
+
+  async function handleTotpConfirm() {
+    if (!totpSetup || totpCode.length !== 6) {
+      toast.error("Enter the 6-digit code from your authenticator app");
+      return;
+    }
+    setTotpLoading(true);
+    try {
+      const res = await fetch("/api/auth/totp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "confirm", secret: totpSetup.secret, code: totpCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to verify code");
+      setTotpEnabled(true);
+      setTotpSetup(null);
+      setTotpCode("");
+      toast.success("Two-factor authentication enabled");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to verify code");
+    } finally {
+      setTotpLoading(false);
+    }
+  }
+
+  async function handleTotpDisable() {
+    setTotpLoading(true);
+    try {
+      const res = await fetch("/api/auth/totp", { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to disable");
+      setTotpEnabled(false);
+      toast.success("Two-factor authentication disabled");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to disable");
+    } finally {
+      setTotpLoading(false);
+    }
+  }
 
   async function handleUpdateName() {
     if (!name.trim()) {
@@ -205,6 +271,80 @@ export default function ProfilePage() {
           </Button>
         </CardContent>
       </Card>
+
+      {profile?.role === "ADMIN" && (
+        <Card className="border-t-2 border-t-blue-600">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-blue-600" />
+              Two-Factor Authentication
+            </CardTitle>
+            <CardDescription>
+              Add an extra layer of security to your admin login using Google Authenticator.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {totpEnabled ? (
+              <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-4">
+                <div className="flex items-center gap-3">
+                  <Smartphone className="h-5 w-5 text-green-600" />
+                  <div>
+                    <p className="text-sm font-medium text-green-800">Enabled</p>
+                    <p className="text-xs text-green-700">
+                      A verification code is required each time you sign in.
+                    </p>
+                  </div>
+                </div>
+                <Button variant="outline" onClick={handleTotpDisable} disabled={totpLoading}>
+                  Disable
+                </Button>
+              </div>
+            ) : totpSetup ? (
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-muted/30 p-4 text-center">
+                  <p className="mb-3 text-sm font-medium">Scan this QR code with Google Authenticator</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={totpSetup.qrDataUrl} alt="TOTP QR code" className="mx-auto h-48 w-48 rounded-lg border bg-white" />
+                  <p className="mt-3 text-xs text-muted-foreground break-all font-mono">{totpSetup.secret}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="totpCode">Verification Code</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="totpCode"
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                      placeholder="000000"
+                      maxLength={6}
+                      inputMode="numeric"
+                      className="font-mono tracking-[0.3em]"
+                    />
+                    <Button onClick={handleTotpConfirm} disabled={totpLoading} className="bg-orange-500 text-white hover:bg-orange-600">
+                      {totpLoading ? "Verifying..." : "Verify & Enable"}
+                    </Button>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setTotpSetup(null)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <QrCodeIcon className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Status</p>
+                    <p className="font-medium">Not enabled</p>
+                  </div>
+                </div>
+                <Button onClick={handleTotpSetup} disabled={totpLoading} className="bg-orange-500 text-white hover:bg-orange-600">
+                  {totpLoading ? "Preparing..." : "Set Up"}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="border-t-2 border-t-primary">
         <CardHeader>

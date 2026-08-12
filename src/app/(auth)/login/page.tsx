@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Luggage, Eye, EyeOff, LogIn } from "lucide-react";
+import { Luggage, Eye, EyeOff, LogIn, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -88,6 +88,10 @@ function LoginForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showTotp, setShowTotp] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -95,21 +99,38 @@ function LoginForm() {
     setError("");
     setSuccess("");
 
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-
     const result = await signIn("credentials", {
       email,
       password,
+      ...(showTotp ? { totpCode } : {}),
       redirect: false,
     });
 
     if (result?.error) {
+      if (!showTotp) {
+        try {
+          const res = await fetch("/api/auth/totp/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+          const data = await res.json();
+          if (data.valid && data.requiresTotp) {
+            setShowTotp(true);
+            setError("Two-factor authentication required. Enter the code from your authenticator app.");
+            setLoading(false);
+            return;
+          }
+        } catch {
+          // fall through to generic error
+        }
+      }
       setError("Invalid email or password");
       setLoading(false);
     } else {
-      router.push("/dashboard");
+      const session = await getSession();
+      const expired = session?.user?.passwordExpired;
+      router.push(expired ? "/dashboard/change-password" : "/dashboard");
       router.refresh();
     }
   }
@@ -118,10 +139,10 @@ function LoginForm() {
     <div className="relative flex min-h-screen overflow-hidden">
       {/* Animated Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950">
-        <FloatingOrb size={500} color="rgba(59, 130, 246, 0.15)" x="-10%" y="-20%" delay={0} duration={8} />
-        <FloatingOrb size={400} color="rgba(139, 92, 246, 0.12)" x="60%" y="-10%" delay={2} duration={10} />
-        <FloatingOrb size={350} color="rgba(6, 182, 212, 0.1)" x="30%" y="60%" delay={4} duration={9} />
-        <FloatingOrb size={300} color="rgba(59, 130, 246, 0.08)" x="80%" y="70%" delay={1} duration={7} />
+        <FloatingOrb size={500} color="rgba(234, 125, 61, 0.15)" x="-10%" y="-20%" delay={0} duration={8} />
+        <FloatingOrb size={400} color="rgba(59, 122, 199, 0.12)" x="60%" y="-10%" delay={2} duration={10} />
+        <FloatingOrb size={350} color="rgba(59, 122, 199, 0.1)" x="30%" y="60%" delay={4} duration={9} />
+        <FloatingOrb size={300} color="rgba(234, 125, 61, 0.08)" x="80%" y="70%" delay={1} duration={7} />
 
         {/* Grid overlay */}
         <svg className="absolute inset-0 h-full w-full opacity-[0.04]">
@@ -158,7 +179,7 @@ function LoginForm() {
               <motion.div
                 whileHover={{ rotate: [0, -10, 10, -5, 0], scale: 1.05 }}
                 transition={{ duration: 0.5 }}
-                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-600 shadow-lg shadow-blue-500/25"
+                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500 shadow-lg shadow-orange-500/25"
               >
                 <Luggage className="h-6 w-6 text-white" />
               </motion.div>
@@ -173,7 +194,7 @@ function LoginForm() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.5 }}
-            className="rounded-2xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl"
+            className="rounded-2xl border border-white/10 bg-slate-900 p-8 shadow-2xl"
           >
             <motion.div
               initial={{ opacity: 0 }}
@@ -196,13 +217,15 @@ function LoginForm() {
                   Email
                 </Label>
                 <div className="group relative">
-                  <div className="pointer-events-none absolute -inset-0.5 rounded-lg bg-gradient-to-r from-blue-500/0 via-blue-500/0 to-violet-500/0 opacity-0 transition-all duration-300 group-focus-within:from-blue-500/20 group-focus-within:via-blue-500/10 group-focus-within:to-violet-500/20 group-focus-within:opacity-100" />
+                  <div className="pointer-events-none absolute -inset-0.5 rounded-lg bg-gradient-to-r from-blue-500/0 via-blue-500/0 to-blue-500/0 opacity-0 transition-all duration-300 group-focus-within:from-blue-500/20 group-focus-within:via-blue-500/10 group-focus-within:to-orange-500/20 group-focus-within:opacity-100" />
                   <Input
                     id="email"
                     name="email"
                     type="email"
                     placeholder="you@example.com"
                     required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="relative border-white/10 bg-white/5 text-white placeholder:text-white/30 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20"
                   />
                 </div>
@@ -218,13 +241,15 @@ function LoginForm() {
                   Password
                 </Label>
                 <div className="group relative">
-                  <div className="pointer-events-none absolute -inset-0.5 rounded-lg bg-gradient-to-r from-blue-500/0 via-blue-500/0 to-violet-500/0 opacity-0 transition-all duration-300 group-focus-within:from-blue-500/20 group-focus-within:via-blue-500/10 group-focus-within:to-violet-500/20 group-focus-within:opacity-100" />
+                  <div className="pointer-events-none absolute -inset-0.5 rounded-lg bg-gradient-to-r from-blue-500/0 via-blue-500/0 to-blue-500/0 opacity-0 transition-all duration-300 group-focus-within:from-blue-500/20 group-focus-within:via-blue-500/10 group-focus-within:to-orange-500/20 group-focus-within:opacity-100" />
                   <Input
                     id="password"
                     name="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
                     required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     className="relative border-white/10 bg-white/5 pr-10 text-white placeholder:text-white/30 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20"
                   />
                   <button
@@ -247,6 +272,32 @@ function LoginForm() {
               </div>
 
               <AnimatePresence>
+                {showTotp && (
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 10 }}
+                    className="space-y-2"
+                  >
+                    <Label htmlFor="totpCode" className="flex items-center gap-1.5 text-sm text-white/80">
+                      <ShieldCheck className="h-4 w-4 text-blue-400" />
+                      Two-Factor Code
+                    </Label>
+                    <Input
+                      id="totpCode"
+                      name="totpCode"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="000000"
+                      maxLength={6}
+                      required={showTotp}
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                      className="relative border-white/10 bg-white/5 text-center font-mono text-lg tracking-[0.4em] text-white placeholder:text-white/30 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20"
+                    />
+                    <p className="text-xs text-white/50">Enter the 6-digit code from your Google Authenticator app.</p>
+                  </motion.div>
+                )}
                 {success && (
                   <motion.p
                     initial={{ opacity: 0, x: -10 }}
@@ -280,7 +331,7 @@ function LoginForm() {
                 >
                   <Button
                     type="submit"
-                    className="relative w-full overflow-hidden bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-lg shadow-blue-600/25 transition-all hover:shadow-xl hover:shadow-blue-600/30"
+                    className="relative w-full overflow-hidden bg-orange-500 text-white shadow-lg shadow-orange-500/25 transition-all hover:bg-orange-600 hover:shadow-xl"
                     disabled={loading}
                     size="lg"
                   >
@@ -316,13 +367,7 @@ function LoginForm() {
               transition={{ delay: 0.6, duration: 0.4 }}
               className="mt-6 text-center text-sm text-white/50"
             >
-              Don&apos;t have an account?{" "}
-              <Link
-                href="/register"
-                className="font-medium text-blue-400 transition-colors hover:text-blue-300"
-              >
-                Sign up
-              </Link>
+              Employee accounts are created by your administrator.
             </motion.p>
           </motion.div>
         </motion.div>

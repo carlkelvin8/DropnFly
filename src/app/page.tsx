@@ -196,7 +196,7 @@ export default function Home() {
       >
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-violet-600 shadow-lg">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-blue-500 shadow-lg">
               <Luggage className="h-5 w-5 text-white" />
             </div>
             <span className="text-lg font-bold">
@@ -217,7 +217,7 @@ export default function Home() {
             ))}
             <Link
               href="/book"
-              className="ml-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-5 text-sm font-medium text-white shadow-lg shadow-blue-600/25 transition-all hover:shadow-xl hover:shadow-blue-600/30 hover:brightness-110"
+              className="ml-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-blue-500 px-5 text-sm font-medium text-white shadow-lg shadow-orange-500/25 transition-all hover:shadow-xl hover:shadow-orange-500/30 hover:brightness-110"
             >
               Book Now
               <ArrowRight className="h-3.5 w-3.5" />
@@ -253,7 +253,7 @@ export default function Home() {
             ))}
             <Link
               href="/book"
-              className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-2.5 text-sm font-medium text-white"
+              className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-blue-500 px-5 py-2.5 text-sm font-medium text-white"
               onClick={() => setMobileOpen(false)}
             >
               Book Now
@@ -267,9 +267,9 @@ export default function Home() {
       <section className="relative min-h-[90vh] pt-24">
         {/* Background gradient */}
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full bg-blue-500/10 blur-[120px]" />
-          <div className="absolute -right-40 -top-20 h-[400px] w-[400px] rounded-full bg-violet-500/10 blur-[120px]" />
-          <div className="absolute -bottom-40 left-1/3 h-[350px] w-[350px] rounded-full bg-cyan-500/10 blur-[120px]" />
+          <div className="absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full bg-blue-500/[0.05] blur-[120px]" />
+          <div className="absolute -right-40 -top-20 h-[400px] w-[400px] rounded-full bg-violet-500/[0.05] blur-[120px]" />
+          <div className="absolute -bottom-40 left-1/3 h-[350px] w-[350px] rounded-full bg-cyan-500/[0.05] blur-[120px]" />
 
           {/* Grid pattern */}
           <svg className="absolute inset-0 h-full w-full opacity-[0.03]">
@@ -312,7 +312,7 @@ export default function Home() {
             className="max-w-4xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl md:text-6xl lg:text-7xl"
           >
             Travel Light.{" "}
-            <span className="bg-gradient-to-r from-blue-600 via-violet-500 to-cyan-500 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-orange-500 via-blue-500 to-blue-400 bg-clip-text text-transparent">
               We Carry the Load.
             </span>
           </motion.h1>
@@ -338,7 +338,7 @@ export default function Home() {
           >
             <Link
               href="/book"
-              className="group inline-flex h-12 items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-8 text-sm font-semibold text-white shadow-xl shadow-blue-600/30 transition-all hover:shadow-2xl hover:shadow-blue-600/40 hover:brightness-110"
+              className="group inline-flex h-12 items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-blue-500 px-8 text-sm font-semibold text-white shadow-xl shadow-orange-500/30 transition-all hover:shadow-2xl hover:shadow-orange-500/40 hover:brightness-110"
             >
               Book Now
               <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -357,7 +357,7 @@ export default function Home() {
             <motion.div
               animate={{ y: [-8, 8, -8] }}
               transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute left-[15%] top-[30%] h-16 w-16 rounded-2xl border bg-gradient-to-br from-blue-500/10 to-blue-500/5 shadow-lg backdrop-blur-sm"
+              className="absolute left-[15%] top-[30%] h-16 w-16 rounded-2xl border bg-gradient-to-br from-blue-500/10 to-blue-500/5 shadow-lg"
             />
             <motion.div
               animate={{ y: [6, -6, 6] }}
@@ -367,7 +367,7 @@ export default function Home() {
                 ease: "easeInOut",
                 delay: 1,
               }}
-              className="absolute right-[20%] top-[25%] h-12 w-12 rounded-xl border bg-gradient-to-br from-violet-500/10 to-violet-500/5 shadow-lg backdrop-blur-sm"
+              className="absolute right-[20%] top-[25%] h-12 w-12 rounded-xl border bg-gradient-to-br from-violet-500/10 to-violet-500/5 shadow-lg"
             />
             <motion.div
               animate={{ y: [-10, 10, -10] }}
@@ -377,7 +377,7 @@ export default function Home() {
                 ease: "easeInOut",
                 delay: 0.5,
               }}
-              className="absolute bottom-[30%] left-[25%] h-20 w-20 rounded-2xl border bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 shadow-lg backdrop-blur-sm"
+              className="absolute bottom-[30%] left-[25%] h-20 w-20 rounded-2xl border bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 shadow-lg"
             />
             <motion.div
               animate={{ rotate: [0, 360] }}
@@ -437,12 +437,12 @@ export default function Home() {
 
           <div className="relative mt-16 grid gap-8 md:grid-cols-3">
             {/* Connecting line */}
-            <div className="absolute left-[15%] right-[15%] top-12 hidden h-0.5 bg-gradient-to-r from-blue-500 via-violet-500 to-cyan-500 md:block" />
+            <div className="absolute left-[15%] right-[15%] top-12 hidden h-0.5 bg-gradient-to-r from-orange-500 via-blue-500 to-blue-400 md:block" />
 
             {steps.map((step, i) => (
               <FadeIn key={step.num} delay={i * 0.15}>
                 <div className="group relative flex flex-col items-center text-center">
-                  <div className="relative z-10 flex h-24 w-24 items-center justify-center rounded-2xl border bg-gradient-to-br from-blue-500 to-violet-500 shadow-xl shadow-blue-500/20 transition-all group-hover:shadow-2xl group-hover:shadow-blue-500/30 group-hover:scale-105">
+                  <div className="relative z-10 flex h-24 w-24 items-center justify-center rounded-2xl border bg-gradient-to-br from-orange-500 to-blue-500 shadow-xl shadow-orange-500/20 transition-all group-hover:shadow-2xl group-hover:shadow-orange-500/30 group-hover:scale-105">
                     <span className="text-2xl font-bold text-white">
                       {step.num}
                     </span>
@@ -485,7 +485,7 @@ export default function Home() {
                     whileHover={{ y: -4 }}
                     className="group rounded-xl border bg-card p-6 transition-all hover:border-blue-200 hover:shadow-lg hover:shadow-blue-500/5 dark:hover:border-blue-800"
                   >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500/10 to-violet-500/10 text-blue-600 transition-all group-hover:from-blue-500 group-hover:to-violet-500 group-hover:text-white">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-500/10 text-blue-600 transition-all group-hover:from-orange-500 group-hover:to-blue-500 group-hover:text-white">
                       <Icon className="h-6 w-6" />
                     </div>
                     <h3 className="mt-4 font-semibold">{feature.title}</h3>
@@ -529,7 +529,7 @@ export default function Home() {
                     &ldquo;{t.content}&rdquo;
                   </p>
                   <div className="mt-6 flex items-center gap-3 border-t pt-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500 text-xs font-bold text-white">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-blue-500 text-xs font-bold text-white">
                       {t.name
                         .split(" ")
                         .map((n) => n[0])
@@ -549,7 +549,7 @@ export default function Home() {
 
       {/* CTA Section */}
       <section className="relative overflow-hidden py-20 md:py-28">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-violet-600 to-cyan-600" />
+        <div className="absolute inset-0 bg-gradient-to-br from-orange-600 via-orange-500 to-blue-600" />
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE4YzEuNjU3IDAgMy0xLjM0MyAzLTNzLTEuMzQzLTMtMy0zLTMgMS4zNDMtMyAzIDEuMzQzIDMgMyAzek0yNyAyNWMxLjY1NyAwIDMtMS4zNDMgMy0zcy0xLjM0My0zLTMtMy0zIDEuMzQzLTMgMyAxLjM0MyAzIDMgM3oiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-30" />
 
         <div className="container relative mx-auto px-4 text-center">
@@ -608,7 +608,7 @@ export default function Home() {
             {/* Brand */}
             <div className="md:col-span-1">
               <Link href="/" className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-violet-600">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-blue-500">
                   <Luggage className="h-4 w-4 text-white" />
                 </div>
                 <span className="text-base font-bold">

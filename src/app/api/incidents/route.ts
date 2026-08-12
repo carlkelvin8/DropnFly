@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { notifyNoShowReported } from "@/lib/notifications";
+
+const REPORT_TYPES = ["no_show", "cancellation"];
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -13,8 +16,8 @@ export async function GET(req: Request) {
   const status = searchParams.get("status");
   const priority = searchParams.get("priority");
   const type = searchParams.get("type");
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "20");
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+  const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "20")));
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;
@@ -49,11 +52,16 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { bookingId, customerId, type, description, priority } = body;
+    const { bookingId, customerId, type, description, priority, photo, note } = body;
 
     if (!bookingId || !customerId || !type || !description) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+
+    const isStaffReport = REPORT_TYPES.includes(type) && session.user.role !== "ADMIN";
+    const internalNotes = isStaffReport
+      ? JSON.stringify({ report: type, photo: photo || null, note: note || null, reportedBy: session.user.id })
+      : undefined;
 
     const incident = await prisma.incidentReport.create({
       data: {
@@ -62,6 +70,7 @@ export async function POST(req: Request) {
         type,
         description,
         priority: priority || "MEDIUM",
+        ...(internalNotes !== undefined ? { internalNotes } : {}),
         timeline: {
           create: {
             action: "created",
@@ -84,6 +93,18 @@ export async function POST(req: Request) {
       entityId: incident.id,
       details: `Created incident report #${incident.id.slice(0, 8)} for booking ${incident.booking.referenceNumber}`,
     });
+
+    if (isStaffReport) {
+      const admins = await prisma.user.findMany({
+        where: { role: "ADMIN", isActive: true },
+        select: { id: true },
+      });
+      await notifyNoShowReported(
+        admins.map((a) => a.id),
+        incident.booking.referenceNumber,
+        session.user.name || "Staff member"
+      );
+    }
 
     return NextResponse.json(incident, { status: 201 });
   } catch {

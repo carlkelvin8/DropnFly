@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+function toLocalDayKey(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
@@ -33,11 +40,11 @@ export async function GET(req: NextRequest) {
     const dateMap: Record<string, number> = {};
     for (const b of bookings) {
       if (b.checkIn) {
-        const key = b.checkIn.toISOString().split("T")[0];
+        const key = toLocalDayKey(b.checkIn);
         dateMap[key] = (dateMap[key] || 0) + 1;
       }
       if (b.checkOut) {
-        const key = b.checkOut.toISOString().split("T")[0];
+        const key = toLocalDayKey(b.checkOut);
         dateMap[key] = (dateMap[key] || 0) + 1;
       }
     }

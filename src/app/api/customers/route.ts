@@ -49,6 +49,8 @@ export async function POST(req: Request) {
         name: body.name,
         email: body.email,
         phone: body.phone,
+        countryOfOrigin: body.countryOfOrigin || null,
+        cityOfOrigin: body.cityOfOrigin || null,
       },
     });
 

@@ -26,6 +26,8 @@ export const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email"),
   phone: z.string().min(1, "Phone is required"),
+  countryOfOrigin: z.string().optional(),
+  cityOfOrigin: z.string().optional(),
 });
 
 export const customerRegisterSchema = z.object({

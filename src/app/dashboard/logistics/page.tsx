@@ -6,11 +6,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Navigation, MapPin, Phone, User, Bike, Camera, CheckCircle,
-  Loader2, ArrowRight, Package, Clock, AlertTriangle, Play,
+  Loader2, ArrowRight, Package, Clock, Play,
+  History, Users, Activity,
 } from "lucide-react";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
+import { LocationPlayback } from "@/components/tracking/LocationPlayback";
+
+interface Employee {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  currentLat: number | null;
+  currentLng: number | null;
+  lastLocationUpdate: string | null;
+}
 
 interface Task {
   id: string;
@@ -55,7 +67,26 @@ export default function LogisticsPage() {
   const [actionNote, setActionNote] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [userRole, setUserRole] = useState<string>("");
-  const [userId, setUserId] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"tasks" | "playback">("tasks");
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [selectedEmpId, setSelectedEmpId] = useState<string>("");
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/employees")
+      .then((r) => r.json())
+      .then((data) => {
+        const emps = Array.isArray(data) ? data : data.employees || [];
+        setEmployees(emps);
+        if (emps.length > 0) setSelectedEmpId(emps[0].id);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -64,7 +95,6 @@ export default function LogisticsPage() {
     ]).then(([tasksData, sessionData]) => {
       setTasks(tasksData || []);
       setUserRole(sessionData?.user?.role || "");
-      setUserId(sessionData?.user?.id || "");
     }).catch(() => toast.error("Failed to load tasks"))
       .finally(() => setLoading(false));
   }, []);
@@ -103,17 +133,81 @@ export default function LogisticsPage() {
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Logistics</h1>
+          <h1 className="text-2xl font-bold">Logistics & Routes</h1>
           <p className="text-sm text-muted-foreground">
-            {isAdmin ? "All employees' tasking" : "My assigned tasks"}
+            {isAdmin ? "All employees' tasking and route playback" : "My assigned tasks"}
           </p>
         </div>
-        <Badge variant="outline" className="text-xs">
-          {filteredTasks.length} active task{filteredTasks.length !== 1 ? "s" : ""}
-        </Badge>
+        {activeTab === "tasks" && (
+          <Badge variant="outline" className="text-xs">
+            {filteredTasks.length} active task{filteredTasks.length !== 1 ? "s" : ""}
+          </Badge>
+        )}
       </div>
 
-      {loading ? (
+      {/* Tabs: Tasks | Route Playback */}
+      <div className="flex gap-1 rounded-xl border bg-muted/40 p-1">
+        <button
+          onClick={() => setActiveTab("tasks")}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+            activeTab === "tasks" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Activity className="h-4 w-4" /> Active Tasks
+        </button>
+        <button
+          onClick={() => setActiveTab("playback")}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+            activeTab === "playback" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <History className="h-4 w-4" /> Route Playback
+        </button>
+      </div>
+
+      {activeTab === "playback" ? (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Select Rider / Employee
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {employees.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No employees found</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {employees.map((emp) => (
+                    <button
+                      key={emp.id}
+                      onClick={() => setSelectedEmpId(emp.id)}
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all ${
+                        selectedEmpId === emp.id
+                          ? "border-cyan-500 bg-cyan-50 text-cyan-700 shadow-sm dark:bg-cyan-950/30 dark:text-cyan-400"
+                          : "border-muted hover:border-muted-foreground/30 hover:bg-muted/50"
+                      }`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${
+                        emp.lastLocationUpdate && (now - new Date(emp.lastLocationUpdate).getTime() < 300000)
+                          ? "bg-green-500"
+                          : "bg-gray-300"
+                      }`} />
+                      <span className="font-medium">{emp.name}</span>
+                      <span className="text-xs text-muted-foreground">{emp.role}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {selectedEmpId && (
+            <LocationPlayback userId={selectedEmpId} userName={employees.find((e) => e.id === selectedEmpId)?.name} />
+          )}
+        </div>
+      ) : loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <Card key={i}><CardContent className="p-6"><div className="animate-pulse space-y-3">

@@ -53,6 +53,21 @@ const ADDITIONAL_SERVICES = [
   { id: "deliver-to-customer", name: "Deliver to Customer", price: 180 },
 ] as const;
 
+const COUNTRY_FALLBACK = [
+  "Philippines", "United States", "Japan", "South Korea", "China",
+  "Singapore", "Australia", "United Kingdom", "UAE", "Germany",
+  "France", "Canada", "Thailand", "Vietnam", "Indonesia",
+];
+
+const COUNTRY_CITY_FALLBACK: Record<string, string[]> = {
+  "Philippines": ["Manila", "Cebu", "Davao", "Makati", "Pasay", "Quezon City"],
+  "United States": ["New York", "Los Angeles", "San Francisco", "Chicago"],
+  "Japan": ["Tokyo", "Osaka", "Nagoya"],
+  "South Korea": ["Seoul", "Busan"],
+  "United Kingdom": ["London", "Manchester"],
+  "Singapore": ["Singapore"],
+};
+
 export default function NewBookingPage() {
   const router = useRouter();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -65,10 +80,17 @@ export default function NewBookingPage() {
   const [custName, setCustName] = useState("");
   const [custEmail, setCustEmail] = useState("");
   const [custPhone, setCustPhone] = useState("");
+  const [custCountry, setCustCountry] = useState("");
+  const [custCity, setCustCity] = useState("");
+  const [countries, setCountries] = useState<string[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
+  const [countriesLoading, setCountriesLoading] = useState(true);
+  const [citiesLoading, setCitiesLoading] = useState(false);
 
   // Terminal/Airline
   const [terminal, setTerminal] = useState("");
   const [airline, setAirline] = useState("");
+  const [dropOffTerminal, setDropOffTerminal] = useState("Villamor, Pasay City");
 
   // Location
   const [locationId, setLocationId] = useState("");
@@ -81,14 +103,24 @@ export default function NewBookingPage() {
   const [luggageQty, setLuggageQty] = useState<Record<string, number>>({});
   const [selectedServices, setSelectedServices] = useState<Record<string, boolean>>({});
   const [paymentMethod, setPaymentMethod] = useState("CASH");
-  const [fullPayment, setFullPayment] = useState(true);
+  const [paymentPercent, setPaymentPercent] = useState(100);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoApplied, setPromoApplied] = useState("");
+  const [promoDiscount, setPromoDiscount] = useState(0);
+  const [promoError, setPromoError] = useState("");
 
   const totalBags = calcTotalBags(luggageQty);
   const subtotal = calcSubtotal(luggageQty);
   const extraFee = calcExtraFee(totalBags);
   const servicesCost = ADDITIONAL_SERVICES.filter((s) => selectedServices[s.id]).reduce((sum, s) => sum + s.price, 0);
-  const grandTotal = subtotal + extraFee + servicesCost;
-  const downPayment = fullPayment ? grandTotal : Math.ceil(grandTotal * 0.5);
+  const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
+  const downPayment = Math.ceil(grandTotal * (paymentPercent / 100));
+  const excessBags = Math.max(0, totalBags - EXTRA_BAG_THRESHOLD);
+
+  const storageDays =
+    checkIn && checkOut
+      ? Math.max(1, Math.ceil((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24)))
+      : 0;
 
   useEffect(() => {
     fetch("/api/customers")
@@ -102,7 +134,37 @@ export default function NewBookingPage() {
         if (locs.length > 0) setLocationId(locs[0].id);
       })
       .catch(() => {});
+    fetch("https://restcountries.com/v3.1/all?fields=name,cca2")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setCountries(data.map((c: { name: { common: string } }) => c.name.common).sort((a: string, b: string) => a.localeCompare(b)));
+        } else {
+          setCountries(COUNTRY_FALLBACK);
+        }
+      })
+      .catch(() => setCountries(COUNTRY_FALLBACK))
+      .finally(() => setCountriesLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!custCountry) return;
+    fetch("https://countriesnow.space/api/v0.1/countries/cities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ country: custCountry }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.data) && data.data.length > 0) {
+          setCities(data.data.sort());
+        } else {
+          setCities(COUNTRY_CITY_FALLBACK[custCountry] || []);
+        }
+      })
+      .catch(() => setCities(COUNTRY_CITY_FALLBACK[custCountry] || []))
+      .finally(() => setCitiesLoading(false));
+  }, [custCountry]);
 
   function handleCustomerSelect(e: React.ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value;
@@ -112,6 +174,8 @@ export default function NewBookingPage() {
       setCustName("");
       setCustEmail("");
       setCustPhone("");
+      setCustCountry("");
+      setCustCity("");
     } else {
       setIsNewCustomer(false);
       setSelectedCustomerId(val);
@@ -126,6 +190,10 @@ export default function NewBookingPage() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (step !== 3) {
+      toast.error("Please complete the booking details first");
+      return;
+    }
     setLoading(true);
 
     try {
@@ -136,7 +204,13 @@ export default function NewBookingPage() {
         const custRes = await fetch("/api/customers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: custName, email: custEmail, phone: custPhone }),
+          body: JSON.stringify({
+            name: custName,
+            email: custEmail,
+            phone: custPhone,
+            countryOfOrigin: custCountry || undefined,
+            cityOfOrigin: custCity || undefined,
+          }),
         });
         if (!custRes.ok) {
           const err = await custRes.json();
@@ -154,6 +228,25 @@ export default function NewBookingPage() {
         return;
       }
 
+      // If an existing customer was selected but their details were edited, keep them in sync
+      const selected = customers.find((c) => c.id === customerId);
+      if (selected && (custName !== selected.name || custEmail !== selected.email || custPhone !== selected.phone)) {
+        const updateRes = await fetch(`/api/customers/${customerId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: custName,
+            email: custEmail,
+            phone: custPhone,
+          }),
+        });
+        if (!updateRes.ok) {
+          toast.error("Failed to update customer details");
+          setLoading(false);
+          return;
+        }
+      }
+
       const luggageItems = JSON.parse(buildLuggageDetails(luggageQty));
       const selectedSvcList = ADDITIONAL_SERVICES.filter((s) => selectedServices[s.id]).map((s) => s.name);
       const luggageDetails = selectedSvcList.length > 0
@@ -169,7 +262,7 @@ export default function NewBookingPage() {
           customerId,
           locationId: locationId || undefined,
           pickupLocation,
-          dropOffLocation: pickupLocation || "Villamor, Pasay City",
+          dropOffLocation: dropOffTerminal || "Villamor, Pasay City",
           luggageDetails,
           checkIn: checkIn || new Date().toISOString(),
           checkOut: checkOut || undefined,
@@ -177,7 +270,8 @@ export default function NewBookingPage() {
           totalPrice: grandTotal,
           servicesCost,
           paymentMethod,
-          downPayment: fullPayment ? grandTotal : downPayment,
+          downPayment,
+          promoCode: promoApplied || undefined,
           status: "CONFIRMED",
         }),
       });
@@ -225,7 +319,7 @@ export default function NewBookingPage() {
               onClick={() => setStep(s.num)}
               className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 step === s.num
-                  ? "bg-blue-600 text-white shadow-md"
+                  ? "bg-orange-500 text-white shadow-md"
                   : step > s.num
                     ? "bg-blue-100 text-blue-700"
                     : "bg-muted text-muted-foreground"
@@ -259,31 +353,54 @@ export default function NewBookingPage() {
                   </select>
                 </div>
 
-                {(isNewCustomer || !selectedCustomerId) && (
-                  <div className="grid gap-4 md:grid-cols-2 rounded-lg border bg-muted/30 p-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="custName">Full Name <span className="text-red-500">*</span></Label>
-                      <Input id="custName" value={custName} onChange={(e) => setCustName(e.target.value)} placeholder="Juan Dela Cruz" required={isNewCustomer} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="custEmail">Email <span className="text-red-500">*</span></Label>
-                      <Input id="custEmail" type="email" value={custEmail} onChange={(e) => setCustEmail(e.target.value)} placeholder="juan@email.com" required={isNewCustomer} />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="custPhone">Phone <span className="text-red-500">*</span></Label>
-                      <Input id="custPhone" type="tel" value={custPhone} onChange={(e) => setCustPhone(e.target.value)} placeholder="+63 912 345 6789" required={isNewCustomer} />
-                    </div>
+                <div className="grid gap-4 md:grid-cols-2 rounded-lg border bg-muted/30 p-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="custName">Full Name <span className="text-red-500">*</span></Label>
+                    <Input id="custName" value={custName} onChange={(e) => setCustName(e.target.value)} placeholder="Juan Dela Cruz" required />
                   </div>
-                )}
+                  <div className="space-y-2">
+                    <Label htmlFor="custEmail">Email <span className="text-red-500">*</span></Label>
+                    <Input id="custEmail" type="email" value={custEmail} onChange={(e) => setCustEmail(e.target.value)} placeholder="juan@email.com" required />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="custPhone">Phone <span className="text-red-500">*</span></Label>
+                    <Input id="custPhone" type="tel" value={custPhone} onChange={(e) => setCustPhone(e.target.value)} placeholder="+63 912 345 6789" required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="custCountry">Country of Origin</Label>
+                    <select
+                      id="custCountry"
+                      value={custCountry}
+                      onChange={(e) => { setCustCountry(e.target.value); setCities([]); setCustCity(""); if (e.target.value) setCitiesLoading(true); }}
+                      className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
+                    >
+                      <option value="">Select country...</option>
+                      {countries.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="custCity">City of Origin</Label>
+                    <select
+                      id="custCity"
+                      value={custCity}
+                      onChange={(e) => setCustCity(e.target.value)}
+                      disabled={!custCountry || cities.length === 0}
+                      className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm disabled:opacity-50"
+                    >
+                      <option value="">{countriesLoading || citiesLoading ? "Loading..." : custCountry ? "Select city..." : "Select country first"}</option>
+                      {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                </div>
 
-                {selectedCustomerId && !isNewCustomer && custName && (
+                {selectedCustomerId && !isNewCustomer && (
                   <div className="rounded-lg border bg-green-50 p-3 text-sm text-green-700">
-                    <span className="font-medium">{custName}</span> selected ({custEmail})
+                    <span className="font-medium">{custName}</span> selected — you can update the details above if needed.
                   </div>
                 )}
 
                 <div className="flex justify-end">
-                  <Button type="button" onClick={() => setStep(2)} disabled={!selectedCustomerId && !isNewCustomer}>
+                  <Button type="button" onClick={() => setStep(2)} disabled={(!selectedCustomerId && !isNewCustomer) || !custName || !custEmail || !custPhone}>
                     Next: Details
                   </Button>
                 </div>
@@ -295,14 +412,14 @@ export default function NewBookingPage() {
               <div className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label className="flex items-center gap-1.5"><Building2 className="h-4 w-4 text-blue-500" /> Terminal <span className="text-red-500">*</span></Label>
+                    <Label className="flex items-center gap-1.5"><Building2 className="h-4 w-4 text-blue-500" /> Pickup Terminal <span className="text-red-500">*</span></Label>
                     <select value={terminal} onChange={(e) => setTerminal(e.target.value)} required className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm">
                       <option value="">Select terminal...</option>
                       {NAIA_TERMINALS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <Label className="flex items-center gap-1.5"><Plane className="h-4 w-4 text-blue-500" /> Airline <span className="text-red-500">*</span></Label>
+                    <Label className="flex items-center gap-1.5"><Plane className="h-4 w-4 text-blue-500" /> Pickup Airline <span className="text-red-500">*</span></Label>
                     <select value={airline} onChange={(e) => setAirline(e.target.value)} required className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm">
                       <option value="">Select airline...</option>
                       {AIRLINES.map((a) => <option key={a} value={a}>{a}</option>)}
@@ -312,14 +429,30 @@ export default function NewBookingPage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-blue-500" /> Check-in (Pickup) <span className="text-red-500">*</span></Label>
-                    <Input type="datetime-local" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} min={today} required />
+                    <Label className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-indigo-500" /> Drop-off Location</Label>
+                    <select value={dropOffTerminal} onChange={(e) => setDropOffTerminal(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm">
+                      <option value="Villamor, Pasay City">Dropnfly Counter (Villamor, Pasay City)</option>
+                      {NAIA_TERMINALS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
                   </div>
                   <div className="space-y-2">
                     <Label className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-indigo-500" /> Check-out (Delivery)</Label>
                     <Input type="datetime-local" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} min={checkIn || today} />
                   </div>
                 </div>
+
+                <div className="grid gap-4 md:grid-cols-1">
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-blue-500" /> Check-in (Pickup) <span className="text-red-500">*</span></Label>
+                    <Input type="datetime-local" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} min={today} required />
+                  </div>
+                </div>
+
+                {storageDays > 0 && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 text-sm text-blue-700">
+                    <strong>Storage duration:</strong> {storageDays} day{storageDays > 1 ? "s" : ""} (from {new Date(checkIn).toLocaleString()} to {new Date(checkOut).toLocaleString()})
+                  </div>
+                )}
 
                 <div>
                   <Label className="mb-3 flex items-center gap-1.5 text-base"><Package className="h-4 w-4 text-blue-500" /> Luggage Types</Label>
@@ -348,8 +481,8 @@ export default function NewBookingPage() {
                     <div className="mt-3 rounded-lg border bg-gray-50 p-3 text-sm space-y-1.5">
                       <div className="flex justify-between"><span className="text-gray-600">Total bags:</span><span className="font-bold">{totalBags}</span></div>
                       <div className="flex justify-between"><span className="text-gray-600">Subtotal:</span><span className="font-bold">₱{subtotal.toFixed(2)}</span></div>
-                      {totalBags > EXTRA_BAG_THRESHOLD && (
-                        <div className="flex justify-between text-amber-700"><span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Excess fee</span><span className="font-bold">+₱{EXTRA_BAG_FEE.toFixed(2)}</span></div>
+                      {excessBags > 0 && (
+                        <div className="flex justify-between text-amber-700"><span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Excess fee ({excessBags} × ₱{EXTRA_BAG_FEE.toFixed(2)})</span><span className="font-bold">+₱{extraFee.toFixed(2)}</span></div>
                       )}
                     </div>
                   )}
@@ -383,27 +516,79 @@ export default function NewBookingPage() {
                 <div className="rounded-lg border bg-gray-50/50 p-4 text-sm space-y-2">
                   <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Summary</p>
                   <div className="flex justify-between"><span className="text-gray-600">Customer</span><span className="font-medium">{custName || "Walk-in"}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-600">Terminal</span><span className="font-medium">{terminal} - {airline}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Pickup</span><span className="font-medium">{terminal} - {airline}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Drop-off</span><span className="font-medium">{dropOffTerminal}</span></div>
                   {checkIn && <div className="flex justify-between"><span className="text-gray-600">Check-in</span><span className="font-medium">{new Date(checkIn).toLocaleString()}</span></div>}
                   {checkOut && <div className="flex justify-between"><span className="text-gray-600">Check-out</span><span className="font-medium">{new Date(checkOut).toLocaleString()}</span></div>}
+                  {storageDays > 0 && <div className="flex justify-between text-blue-600"><span>Storage</span><span className="font-medium">{storageDays} day{storageDays > 1 ? "s" : ""}</span></div>}
                   <div className="border-t pt-2 mt-2 space-y-1">
                     <div className="flex justify-between"><span className="text-gray-600">Luggage ({totalBags} bags)</span><span className="font-medium">₱{subtotal.toFixed(2)}</span></div>
-                    {extraFee > 0 && <div className="flex justify-between text-amber-600"><span>Excess fee</span><span>+₱{extraFee.toFixed(2)}</span></div>}
+                    {excessBags > 0 && <div className="flex justify-between text-amber-600"><span>Excess fee ({excessBags} × ₱{EXTRA_BAG_FEE.toFixed(2)})</span><span>+₱{extraFee.toFixed(2)}</span></div>}
                     {servicesCost > 0 && <div className="flex justify-between text-violet-600"><span>Services</span><span>+₱{servicesCost.toFixed(2)}</span></div>}
+                    {promoApplied && <div className="flex justify-between text-green-600"><span>Promo ({promoApplied})</span><span>-₱{promoDiscount.toFixed(2)}</span></div>}
                     <div className="flex justify-between border-t pt-2 font-bold text-base"><span>Total</span><span>₱{grandTotal.toFixed(2)}</span></div>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <Label>Payment Option</Label>
+                <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4 text-sm">
+                  <Label className="mb-1 block">Payment Option</Label>
+                  <p className="mb-3 text-xs text-blue-700">Slide to choose how much to collect now. Minimum of <strong>50%</strong>.</p>
+                  <div className="mb-3 flex items-center gap-4">
+                    <input
+                      type="range"
+                      min={50}
+                      max={100}
+                      step={5}
+                      value={paymentPercent}
+                      onChange={(e) => setPaymentPercent(Number(e.target.value))}
+                      className="w-full accent-blue-600"
+                      aria-label="Down payment percentage"
+                    />
+                    <span className="shrink-0 rounded-lg border border-blue-200 bg-blue-100 px-3 py-1 text-sm font-bold text-blue-700 tabular-nums">
+                      {paymentPercent}%
+                    </span>
+                  </div>
+                  <div className="mb-1 flex justify-between text-[10px] font-medium text-blue-500">
+                    <span>50% (minimum)</span>
+                    <span>100%</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-blue-800"><span>Collect now</span><span className="font-bold">₱{downPayment.toFixed(2)}</span></div>
+                    {paymentPercent < 100 && <div className="flex justify-between text-blue-600"><span>Collect later (remaining)</span><span className="font-medium">₱{(grandTotal - downPayment).toFixed(2)}</span></div>}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Promo Code</Label>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => setFullPayment(true)} className={`flex-1 rounded-lg border-2 py-2.5 text-sm font-bold transition-all ${fullPayment ? "border-blue-600 bg-blue-600 text-white" : "border-gray-200 hover:border-blue-300"}`}>Full Payment</button>
-                    <button type="button" onClick={() => setFullPayment(false)} className={`flex-1 rounded-lg border-2 py-2.5 text-sm font-bold transition-all ${!fullPayment ? "border-blue-600 bg-blue-600 text-white" : "border-gray-200 hover:border-blue-300"}`}>50% Down</button>
+                    <Input
+                      type="text"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                      placeholder="Enter promo code"
+                    />
+                    <Button type="button" variant="outline" onClick={async () => {
+                      setPromoError(""); setPromoDiscount(0); setPromoApplied("");
+                      if (!promoCode) return;
+                      try {
+                        const res = await fetch("/api/promo-codes/validate", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ code: promoCode, amount: subtotal + extraFee + servicesCost }),
+                        });
+                        const data = await res.json();
+                        if (data.valid) { setPromoDiscount(data.discount); setPromoApplied(promoCode); setPromoCode(""); }
+                        else setPromoError(data.error || "Invalid promo code");
+                      } catch { setPromoError("Failed to validate"); }
+                    }}>Apply</Button>
                   </div>
-                  <div className="rounded-lg border bg-blue-50 p-3 text-sm space-y-1">
-                    <div className="flex justify-between text-blue-800"><span>Pay now</span><span className="font-bold">₱{downPayment.toFixed(2)}</span></div>
-                    {!fullPayment && <div className="flex justify-between text-blue-600"><span>Collect later</span><span className="font-medium">₱{(grandTotal - downPayment).toFixed(2)}</span></div>}
-                  </div>
+                  {promoApplied && (
+                    <div className="flex items-center gap-2 rounded-lg bg-green-50 p-2 text-sm text-green-700">
+                      <span>Promo &quot;{promoApplied}&quot; applied! Discount: &#x20B1;{promoDiscount.toFixed(2)}</span>
+                      <button type="button" onClick={() => { setPromoApplied(""); setPromoDiscount(0); }} className="ml-auto text-green-500 hover:text-green-700">Remove</button>
+                    </div>
+                  )}
+                  {promoError && <p className="text-sm text-red-500">{promoError}</p>}
                 </div>
 
                 <div className="space-y-2">

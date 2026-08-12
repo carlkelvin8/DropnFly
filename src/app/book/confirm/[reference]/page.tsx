@@ -14,12 +14,6 @@ import { CheckCircle, ExternalLink, Home } from "lucide-react";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 
-interface LuggageItem {
-  type: string;
-  qty: number;
-  price: number;
-}
-
 interface BookingData {
   referenceNumber: string;
   qrCode: string;
@@ -36,15 +30,49 @@ interface BookingData {
 export default function ConfirmPage() {
   const params = useParams();
   const [booking, setBooking] = useState<BookingData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const abort = new AbortController();
     fetch(`/api/public/bookings/${params.reference}`, { signal: abort.signal })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) {
+          if (r.status === 404) throw new Error("Booking not found");
+          throw new Error("Failed to load booking");
+        }
+        return r.json();
+      })
       .then((data) => { if (!abort.signal.aborted) setBooking(data); })
-      .catch(() => {});
+      .catch((e: unknown) => { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "Failed to load booking"); });
     return () => abort.abort();
   }, [params.reference]);
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-blue-50/50">
+        <PublicHeader showBackToHome />
+        <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-24 text-center">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+            <Home className="h-8 w-8 text-red-500" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900">Booking not found</h1>
+          <p className="mt-2 text-sm text-gray-500">
+            We couldn&apos;t find a booking with reference &quot;{String(params.reference)}&quot;.
+            Check the reference number in your confirmation email and try again.
+          </p>
+          <div className="mt-6 flex gap-3">
+            <Button asChild className="bg-orange-500 text-white">
+              <Link href="/book">Book Luggage</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/track">Track Booking</Link>
+            </Button>
+          </div>
+        </main>
+        <PublicFooter />
+      </div>
+    );
+  }
 
   if (!booking) {
     return (
@@ -119,17 +147,32 @@ export default function ConfirmPage() {
               <div className="rounded-lg border bg-gray-50/50 p-3">
                 <p className="text-gray-500">Luggage</p>
                 {(() => {
-                  let items: LuggageItem[] = [];
+                  let items: Array<{ type?: string; qty?: number; price?: number; services?: string[] }> = [];
                   try {
                     if (booking.luggageDetails) items = JSON.parse(booking.luggageDetails);
                   } catch {}
-                  return items.length > 0 ? (
+                  const luggageItems = items.filter(
+                    (i): i is { type: string; qty: number; price: number } =>
+                      !!i && typeof i.type === "string" && typeof i.qty === "number"
+                  );
+                  const services = items.flatMap((i) =>
+                    Array.isArray(i?.services) ? i.services : []
+                  );
+                  return luggageItems.length > 0 ? (
                     <div className="mt-1 space-y-0.5">
-                      {items.map((item, i) => (
+                      {luggageItems.map((item, i) => (
                         <p key={i} className="text-sm font-medium">
                           {item.type}: {item.qty}x (&#x20B1;{(item.price * item.qty).toFixed(2)})
                         </p>
                       ))}
+                      {services.length > 0 && (
+                        <div className="pt-1">
+                          <p className="text-xs font-medium text-purple-700">Additional Services</p>
+                          {services.map((svc, i) => (
+                            <p key={i} className="text-sm text-purple-700">• {svc}</p>
+                          ))}
+                        </div>
+                      )}
                       <p className="pt-1 text-xs text-gray-500">Total: {booking.numberOfBags} bag{booking.numberOfBags > 1 ? "s" : ""}</p>
                     </div>
                   ) : (
@@ -145,7 +188,7 @@ export default function ConfirmPage() {
                 <p className="mt-1 font-medium text-green-700">
                   Total: &#x20B1;{booking.totalPrice.toFixed(2)}
                 </p>
-                <p className="text-xs text-green-600">Down payment processed. Remaining balance collectible on pickup/delivery.</p>
+                <p className="text-xs text-green-600">Booking confirmed. Your down payment is recorded as pending — our team will confirm payment on pickup, or pay securely online from My Account.</p>
               </div>
             )}
 
@@ -161,7 +204,7 @@ export default function ConfirmPage() {
             </div>
 
             <div className="flex flex-wrap justify-center gap-3">
-              <Button asChild className="bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl">
+              <Button asChild className="bg-orange-500 text-white shadow-lg transition-all hover:bg-orange-600 hover:shadow-xl">
                 <Link href={`/track/${booking.referenceNumber}`}>
                   <ExternalLink className="mr-2 h-4 w-4" />
                   Track My Luggage

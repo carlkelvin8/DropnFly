@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +12,6 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
-import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
@@ -31,8 +31,10 @@ import {
   Plus,
   AlertTriangle,
   Info,
+  Wrench,
+  Search,
 } from "lucide-react";
-import { LUGGAGE_TYPES, EXTRA_BAG_FEE, EXTRA_BAG_THRESHOLD, calcSubtotal, calcTotalBags, calcExtraFee, buildLuggageDetails, type LuggageType } from "@/lib/luggage-types";
+import { LUGGAGE_TYPES, calcSubtotal, calcTotalBags, buildLuggageDetails, type LuggageType } from "@/lib/luggage-types";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 
@@ -49,6 +51,13 @@ const NAIA_TERMINALS = [
   { value: "NAIA Terminal 3", label: "NAIA Terminal 3" },
   { value: "NAIA Terminal 4", label: "NAIA Terminal 4 (Manila Domestic Airport)" },
 ];
+
+const NAIA_TERMINAL_COORDS: Record<string, { lat: number; lng: number }> = {
+  "NAIA Terminal 1": { lat: 14.5106, lng: 121.0197 },
+  "NAIA Terminal 2": { lat: 14.5118, lng: 121.0143 },
+  "NAIA Terminal 3": { lat: 14.5186, lng: 121.0188 },
+  "NAIA Terminal 4": { lat: 14.5081, lng: 121.0147 },
+};
 
 const AIRLINES = [
   "Philippine Airlines",
@@ -71,10 +80,37 @@ const AIRLINES = [
   "United Airlines",
 ];
 
-const ADDITIONAL_SERVICES = [
-  { id: "pick-up-from-customer", name: "Pick-up from Customer", description: "Rider picks up luggage from your location", price: 180 },
-  { id: "deliver-to-customer", name: "Deliver to Customer", description: "Rider delivers luggage to your location", price: 180 },
-] as const;
+const FALLBACK_COUNTRIES = [
+  "Philippines", "United States", "United Kingdom", "United Arab Emirates", "Qatar",
+  "Singapore", "Japan", "South Korea", "China", "Taiwan", "Hong Kong", "Thailand",
+  "Vietnam", "Indonesia", "Malaysia", "Australia", "New Zealand", "Canada", "France",
+  "Germany", "Italy", "Spain", "Netherlands", "Switzerland", "Saudi Arabia", "Kuwait",
+  "Bahrain", "Oman", "India", "Bangladesh", "Pakistan", "Sri Lanka", "Nepal",
+];
+
+const FALLBACK_CITIES: Record<string, string[]> = {
+  "Philippines": ["Manila", "Quezon City", "Makati", "Taguig", "Pasay", "Parañaque", "Cebu City", "Davao City", "Iloilo City", "Baguio City"],
+  "United States": ["New York", "Los Angeles", "Chicago", "Houston", "San Francisco", "Seattle", "Las Vegas", "Miami"],
+  "United Kingdom": ["London", "Manchester", "Birmingham", "Edinburgh", "Glasgow"],
+  "United Arab Emirates": ["Dubai", "Abu Dhabi", "Sharjah"],
+  "Qatar": ["Doha"],
+  "Singapore": ["Singapore"],
+  "Japan": ["Tokyo", "Osaka", "Nagoya", "Fukuoka"],
+  "South Korea": ["Seoul", "Busan", "Incheon"],
+  "China": ["Beijing", "Shanghai", "Guangzhou", "Xiamen"],
+  "Taiwan": ["Taipei", "Kaohsiung"],
+  "Hong Kong": ["Hong Kong"],
+  "Thailand": ["Bangkok", "Phuket", "Chiang Mai"],
+  "Vietnam": ["Hanoi", "Ho Chi Minh City"],
+  "Indonesia": ["Jakarta", "Bali"],
+  "Malaysia": ["Kuala Lumpur", "Penang"],
+  "Australia": ["Sydney", "Melbourne", "Brisbane", "Perth"],
+  "Canada": ["Toronto", "Vancouver", "Montreal"],
+  "France": ["Paris", "Nice"],
+  "Germany": ["Berlin", "Frankfurt", "Munich"],
+  "Saudi Arabia": ["Riyadh", "Jeddah", "Dammam"],
+};
+
 
 const steps = [
   { num: 1, label: "Contact", icon: User },
@@ -134,31 +170,38 @@ export default function BookPage() {
   const [deliverySlots, setDeliverySlots] = useState<TimeSlot[]>([]);
   const [deliverySlotsLoading, setDeliverySlotsLoading] = useState(false);
   const [deliveryTerminal, setDeliveryTerminal] = useState("");
-  const [deliveryLat, setDeliveryLat] = useState<number | null>(null);
-  const [deliveryLng, setDeliveryLng] = useState<number | null>(null);
   const [luggageQty, setLuggageQty] = useState<Record<string, number>>({});
   const [selectedServices, setSelectedServices] = useState<Record<string, boolean>>({});
   const [paymentPercent, setPaymentPercent] = useState(50);
+  const [paymentHover, setPaymentHover] = useState<number | null>(null);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTermsPopup, setShowTermsPopup] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [fees, setFees] = useState({ pickupFee: 180, deliveryFee: 180, excessBagFee: 100, excessBagThreshold: 3 });
+  const [minDpPercent, setMinDpPercent] = useState(50);
+  const [maintenance, setMaintenance] = useState<{ enabled: boolean; message: string } | null>(null);
 
   const [countries, setCountries] = useState<{ name: string; code: string }[]>([]);
   const [cities, setCities] = useState<string[]>([]);
   const [selectedCountry, setSelectedCountry] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
-  const [countriesLoading, setCountriesLoading] = useState(false);
+  const [countriesLoading, setCountriesLoading] = useState(true);
   const [citiesLoading, setCitiesLoading] = useState(false);
 
   const totalBags = calcTotalBags(luggageQty);
   const subtotal = calcSubtotal(luggageQty);
-  const extraFee = calcExtraFee(totalBags);
-  const servicesCost = ADDITIONAL_SERVICES.filter((s) => selectedServices[s.id]).reduce((sum, s) => sum + s.price, 0);
+  const extraFee = totalBags > fees.excessBagThreshold ? (totalBags - fees.excessBagThreshold) * fees.excessBagFee : 0;
+  const servicesList = [
+    { id: "pick-up-from-customer", name: "Pick-up from Customer", description: "Rider picks up luggage from your location", price: fees.pickupFee },
+    { id: "deliver-to-customer", name: "Deliver to Customer", description: "Rider delivers luggage to your location", price: fees.deliveryFee },
+  ];
+  const servicesCost = servicesList.filter((s) => selectedServices[s.id]).reduce((sum, s) => sum + s.price, 0);
   const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
   const downPayment = Math.ceil(grandTotal * (paymentPercent / 100));
   const remainingBalance = grandTotal - downPayment;
   const storageDays = calcStorageDays(pickupDate, pickupSlot, deliveryDate, deliverySlot);
+  const dpMin = Math.max(50, Math.min(100, minDpPercent || 50));
 
   const totalSteps = steps.length;
   const progress = ((step - 1) / (totalSteps - 1)) * 100;
@@ -167,23 +210,24 @@ export default function BookPage() {
   function prevStep() { setStep((s) => Math.max(s - 1, 1)); }
 
   useEffect(() => {
-    setCountriesLoading(true);
     fetch("https://restcountries.com/v3.1/all?fields=name,cca2")
       .then((res) => res.json())
       .then((data) => {
-        const list = data
-          .map((c: { name: { common: string }; cca2: string }) => ({ name: c.name.common, code: c.cca2 }))
-          .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
-        setCountries(list);
+        if (Array.isArray(data) && data.length > 0) {
+          const list = data
+            .map((c: { name: { common: string }; cca2: string }) => ({ name: c.name.common, code: c.cca2 }))
+            .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+          setCountries(list);
+        } else {
+          setCountries(FALLBACK_COUNTRIES.map((name) => ({ name, code: name })));
+        }
       })
-      .catch(() => {})
+      .catch(() => setCountries(FALLBACK_COUNTRIES.map((name) => ({ name, code: name }))))
       .finally(() => setCountriesLoading(false));
   }, []);
 
   useEffect(() => {
-    if (!selectedCountry) { setCities([]); setSelectedCity(""); return; }
-    setCitiesLoading(true);
-    setSelectedCity("");
+    if (!selectedCountry) return;
     fetch("https://countriesnow.space/api/v0.1/countries/cities", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -191,11 +235,36 @@ export default function BookPage() {
     })
       .then((res) => res.json())
       .then((data) => {
-        if (data.data) setCities(data.data.sort());
+        if (data && Array.isArray(data.data) && data.data.length > 0) {
+          setCities(data.data.sort());
+        } else {
+          setCities(FALLBACK_CITIES[selectedCountry] || []);
+        }
       })
-      .catch(() => {})
+      .catch(() => setCities(FALLBACK_CITIES[selectedCountry] || []))
       .finally(() => setCitiesLoading(false));
   }, [selectedCountry]);
+
+  useEffect(() => {
+    fetch("/api/public/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        setMaintenance(data.maintenance || { enabled: false, message: "" });
+        if (data.pricing) {
+          setFees({
+            pickupFee: data.pricing.pickup_fee || 180,
+            deliveryFee: data.pricing.delivery_fee || 180,
+            excessBagFee: data.pricing.excess_bag_fee || 100,
+            excessBagThreshold: data.pricing.excess_bag_threshold || 3,
+          });
+        }
+        if (data.booking_limits && data.booking_limits.min_dp_percentage > 0) {
+          setMinDpPercent(Math.min(100, data.booking_limits.min_dp_percentage));
+          setPaymentPercent(Math.max(50, Math.min(100, data.booking_limits.min_dp_percentage)));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -210,36 +279,6 @@ export default function BookPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!pickupTerminal) return;
-    const terminalCoords: Record<string, { lat: number; lng: number }> = {
-      "NAIA Terminal 1": { lat: 14.5106, lng: 121.0197 },
-      "NAIA Terminal 2": { lat: 14.5118, lng: 121.0143 },
-      "NAIA Terminal 3": { lat: 14.5186, lng: 121.0188 },
-      "NAIA Terminal 4": { lat: 14.5081, lng: 121.0147 },
-    };
-    const coords = terminalCoords[pickupTerminal];
-    if (coords) {
-      setPickupLat(coords.lat);
-      setPickupLng(coords.lng);
-    }
-  }, [pickupTerminal]);
-
-  useEffect(() => {
-    if (!deliveryTerminal) return;
-    const terminalCoords: Record<string, { lat: number; lng: number }> = {
-      "NAIA Terminal 1": { lat: 14.5106, lng: 121.0197 },
-      "NAIA Terminal 2": { lat: 14.5118, lng: 121.0143 },
-      "NAIA Terminal 3": { lat: 14.5186, lng: 121.0188 },
-      "NAIA Terminal 4": { lat: 14.5081, lng: 121.0147 },
-    };
-    const coords = terminalCoords[deliveryTerminal];
-    if (coords) {
-      setDeliveryLat(coords.lat);
-      setDeliveryLng(coords.lng);
-    }
-  }, [deliveryTerminal]);
-
   const fetchSlots = useCallback(async (date: string, type: "pickup" | "delivery"): Promise<TimeSlot[]> => {
     if (!date) return [];
     try {
@@ -253,9 +292,7 @@ export default function BookPage() {
   }, []);
 
   useEffect(() => {
-    if (!pickupDate) { setPickupSlots([]); setPickupSlot(""); return; }
-    setPickupSlotsLoading(true);
-    setPickupSlot("");
+    if (!pickupDate) return;
     fetchSlots(pickupDate, "pickup").then((slots) => {
       setPickupSlots(slots);
       setPickupSlotsLoading(false);
@@ -263,9 +300,7 @@ export default function BookPage() {
   }, [pickupDate, fetchSlots]);
 
   useEffect(() => {
-    if (!deliveryDate) { setDeliverySlots([]); setDeliverySlot(""); return; }
-    setDeliverySlotsLoading(true);
-    setDeliverySlot("");
+    if (!deliveryDate) return;
     fetchSlots(deliveryDate, "delivery").then((slots) => {
       setDeliverySlots(slots);
       setDeliverySlotsLoading(false);
@@ -282,14 +317,6 @@ export default function BookPage() {
     return deliveryTerminal || "";
   }
 
-  function getValidationErrors(): string[] {
-    const errors: string[] = [];
-    if (!document.getElementById("name") || !(document.getElementById("name") as HTMLInputElement).value.trim()) errors.push("Full Name is required");
-    if (!document.getElementById("email") || !(document.getElementById("email") as HTMLInputElement).value.trim()) errors.push("Email Address is required");
-    if (!document.getElementById("phone") || !(document.getElementById("phone") as HTMLInputElement).value.trim()) errors.push("Phone Number is required");
-    return errors;
-  }
-
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!acceptedTerms) {
@@ -304,7 +331,7 @@ export default function BookPage() {
     const deliveryDateTime = deliveryDate && deliverySlot ? `${deliveryDate}T${deliverySlot}:00` : "";
 
     const luggageItems = JSON.parse(buildLuggageDetails(luggageQty));
-    const selectedSvcList = ADDITIONAL_SERVICES.filter((s) => selectedServices[s.id]).map((s) => s.name);
+    const selectedSvcList = servicesList.filter((s) => selectedServices[s.id]).map((s) => s.name);
     const luggageDetailsPayload = selectedSvcList.length > 0
       ? JSON.stringify([...luggageItems, { services: selectedSvcList }])
       : buildLuggageDetails(luggageQty);
@@ -354,12 +381,6 @@ export default function BookPage() {
     router.push(`/book/confirm/${result.referenceNumber}`);
   }
 
-  function canGoNext(s: number) {
-    if (s === 2) return pickupDate && pickupSlot && pickupTerminal;
-    if (s === 3) return totalBags > 0;
-    return true;
-  }
-
   function handleNextStep() {
     const errors: string[] = [];
     if (step === 1) {
@@ -369,6 +390,18 @@ export default function BookPage() {
       if (!nameEl?.value.trim()) errors.push("Please enter your Full Name");
       if (!emailEl?.value.trim()) errors.push("Please enter your Email Address");
       if (!phoneEl?.value.trim()) errors.push("Please enter your Phone Number");
+      if (!selectedCountry) errors.push("Please select your Country of Origin");
+      if (!selectedCity) errors.push("Please select your City of Origin");
+    } else if (step === 2) {
+      if (!pickupDate) errors.push("Please select your Pickup Date");
+      if (!pickupSlot) errors.push("Please select your Pickup Time Slot");
+      if (!pickupTerminal) errors.push("Please select your Pickup Terminal");
+      if (!pickupAirline) errors.push("Please select your Airline Carrier");
+      if (!deliveryTerminal) errors.push("Please select your Drop-off Terminal");
+      if (!deliveryDate) errors.push("Please select your Delivery Date");
+      if (!deliverySlot) errors.push("Please select your Delivery Time Slot");
+    } else if (step === 3) {
+      if (totalBags === 0) errors.push("Please select at least one bag (Luggage Types)");
     }
     if (errors.length > 0) {
       setError(errors.join(". "));
@@ -378,9 +411,28 @@ export default function BookPage() {
     nextStep();
   }
 
+  if (maintenance?.enabled) {
+    return (
+      <div className="min-h-screen bg-blue-50/50">
+        <PublicHeader showBackToHome />
+        <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-24 text-center">
+          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 shadow-lg shadow-amber-200">
+            <Wrench className="h-10 w-10 text-amber-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800">Under Maintenance</h1>
+          <p className="mt-3 text-gray-600">{maintenance.message || "We are currently undergoing scheduled maintenance. Please check back shortly."}</p>
+          <Link href="/track" className="mt-8 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-md transition-all hover:bg-blue-700">
+            <Search className="h-4 w-4" /> Track Existing Booking
+          </Link>
+        </main>
+        <PublicFooter />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-blue-50/50">
-      <PublicHeader />
+      <PublicHeader showBackToHome />
 
       <main className="mx-auto max-w-3xl px-4 py-12">
         <div className="mb-8 text-center">
@@ -391,7 +443,7 @@ export default function BookPage() {
         <div className="mb-8">
           <div className="relative">
             <div className="h-2 w-full rounded-full bg-gray-200">
-              <motion.div className="h-2 rounded-full bg-blue-600" initial={false} animate={{ width: `${progress}%` }} transition={{ duration: 0.4, ease: "easeInOut" }} />
+              <motion.div className="h-2 rounded-full bg-orange-500" initial={false} animate={{ width: `${progress}%` }} transition={{ duration: 0.4, ease: "easeInOut" }} />
             </div>
             <div className="mt-2 flex justify-between">
               {steps.map((s) => {
@@ -400,7 +452,7 @@ export default function BookPage() {
                 const isCurrent = step === s.num;
                 return (
                   <div key={s.num} className="flex flex-col items-center">
-                    <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-all ${isActive ? "bg-blue-600 text-white shadow-md" : "bg-gray-200 text-gray-400"} ${isCurrent ? "ring-4 ring-blue-200" : ""}`}>
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-all ${isActive ? "bg-orange-500 text-white shadow-md" : "bg-gray-200 text-gray-400"} ${isCurrent ? "ring-4 ring-blue-200" : ""}`}>
                       {isActive && step > s.num ? <Check className="h-4 w-4" /> : Icon ? <Icon className="h-4 w-4" /> : s.num}
                     </div>
                     <span className={`mt-1.5 text-[11px] font-medium ${isCurrent ? "text-blue-700" : isActive ? "text-blue-500" : "text-gray-400"}`}>{s.label}</span>
@@ -435,12 +487,18 @@ export default function BookPage() {
                         <Input id="phone" name="phone" type="tel" placeholder="+63 912 345 6789" required />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="countryOfOrigin">Country of Origin</Label>
+                        <Label htmlFor="countryOfOrigin">Country of Origin <span className="text-red-500">*</span></Label>
                         <select
                           id="countryOfOrigin"
                           value={selectedCountry}
-                          onChange={(e) => setSelectedCountry(e.target.value)}
+                          onChange={(e) => {
+                            setSelectedCountry(e.target.value);
+                            setCities([]);
+                            setSelectedCity("");
+                            setCitiesLoading(!!e.target.value);
+                          }}
                           disabled={countriesLoading}
+                          required
                           className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         >
                           <option value="">{countriesLoading ? "Loading countries..." : "Select country..."}</option>
@@ -450,12 +508,13 @@ export default function BookPage() {
                         </select>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="cityOfOrigin">City of Origin</Label>
+                        <Label htmlFor="cityOfOrigin">City of Origin <span className="text-red-500">*</span></Label>
                         <select
                           id="cityOfOrigin"
                           value={selectedCity}
                           onChange={(e) => setSelectedCity(e.target.value)}
                           disabled={!selectedCountry || citiesLoading}
+                          required
                           className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         >
                           <option value="">{!selectedCountry ? "Select a country first" : citiesLoading ? "Loading cities..." : "Select city..."}</option>
@@ -472,7 +531,7 @@ export default function BookPage() {
                       </div>
                     )}
                     <div className="mt-8 flex justify-end">
-                      <Button type="button" onClick={handleNextStep} className="bg-blue-600 text-white shadow-lg hover:bg-blue-700">
+                      <Button type="button" onClick={handleNextStep} className="bg-orange-500 text-white shadow-lg hover:bg-orange-600">
                         Next Step <ArrowRight className="ml-2 h-4 w-4" />
                       </Button>
                     </div>
@@ -493,7 +552,15 @@ export default function BookPage() {
                       </Label>
                       <select
                         value={pickupTerminal}
-                        onChange={(e) => { setPickupTerminal(e.target.value); setPickupAirline(""); }}
+                        onChange={(e) => {
+                          setPickupTerminal(e.target.value);
+                          setPickupAirline("");
+                          const coords = NAIA_TERMINAL_COORDS[e.target.value];
+                          if (coords) {
+                            setPickupLat(coords.lat);
+                            setPickupLng(coords.lng);
+                          }
+                        }}
                         className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         required
                       >
@@ -534,7 +601,7 @@ export default function BookPage() {
                     <div className="mt-6 grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label htmlFor="pickupDate">Pickup Date <span className="text-red-500">*</span></Label>
-                        <Input id="pickupDate" type="date" min={today()} value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} required />
+                        <Input id="pickupDate" type="date" min={today()} value={pickupDate} onChange={(e) => { setPickupDate(e.target.value); setPickupSlots([]); setPickupSlot(""); setPickupSlotsLoading(!!e.target.value); }} required />
                       </div>
                     </div>
 
@@ -558,7 +625,7 @@ export default function BookPage() {
                                 onClick={() => setPickupSlot(slot.start)}
                                 className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${
                                   pickupSlot === slot.start
-                                    ? "border-blue-600 bg-blue-600 text-white shadow-md"
+                                    ? "border-blue-600 bg-orange-500 text-white shadow-md"
                                     : slot.available
                                       ? "border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50"
                                       : "cursor-not-allowed border-gray-100 bg-gray-100 text-gray-300"
@@ -574,21 +641,7 @@ export default function BookPage() {
                       </div>
                     )}
 
-                    <div className="mt-8 flex items-center justify-between">
-                      <Button type="button" variant="outline" onClick={prevStep}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
-                      <Button type="button" onClick={nextStep} disabled={!canGoNext(2)} className="bg-blue-600 text-white shadow-lg hover:bg-blue-700 disabled:opacity-50">
-                        Next Step <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </div>
-                  </motion.div>
-                )}
-
-                {step === 3 && (
-                  <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
-                    <div className="mb-4 flex items-center gap-2">
-                      <Luggage className="h-5 w-5 text-blue-600" />
-                      <h3 className="text-lg font-semibold">Delivery & Luggage Details</h3>
-                    </div>
+                    <div className="my-6 border-t border-gray-200" />
 
                     <div className="space-y-2">
                       <Label className="flex items-center gap-1.5">
@@ -597,8 +650,7 @@ export default function BookPage() {
                       </Label>
                       <select
                         value={deliveryTerminal}
-                        onChange={(e) => setDeliveryTerminal(e.target.value)}
-                        className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        onChange={(e) => setDeliveryTerminal(e.target.value)}                        className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         required
                       >
                         <option value="">Select NAIA Terminal...</option>
@@ -611,17 +663,16 @@ export default function BookPage() {
                     <div className="mt-4">
                       <Label className="flex items-center gap-1.5">
                         <Clock className="h-4 w-4 text-indigo-500" />
-                        Delivery Date (optional)
+                        Delivery Date <span className="text-red-500">*</span>
                       </Label>
-                      <p className="text-xs text-muted-foreground">Leave blank if not yet decided</p>
-                      <Input type="date" min={pickupDate || today()} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className="mt-2" />
+                      <Input type="date" min={pickupDate || today()} value={deliveryDate} onChange={(e) => { setDeliveryDate(e.target.value); setDeliverySlots([]); setDeliverySlot(""); setDeliverySlotsLoading(!!e.target.value); }} className="mt-2" required />
                     </div>
 
                     {deliveryDate && (
                       <div className="mt-4">
                         <Label className="flex items-center gap-1.5">
                           <Clock className="h-4 w-4 text-indigo-500" />
-                          Delivery Time Slot
+                          Delivery Time Slot <span className="text-red-500">*</span>
                         </Label>
                         {deliverySlotsLoading ? (
                           <p className="mt-2 text-sm text-muted-foreground">Loading available slots...</p>
@@ -649,11 +700,37 @@ export default function BookPage() {
                             ))}
                           </div>
                         )}
+                        {deliverySlot && <p className="mt-2 text-xs text-green-600">Selected: {deliverySlot}</p>}
                       </div>
                     )}
 
                     {storageDays > 0 && (
                       <div className="mt-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                        <Package className="h-4 w-4 shrink-0" />
+                        <span>
+                          Storage Duration: <strong>{storageDays} day{storageDays > 1 ? "s" : ""}</strong> (from pickup to delivery)
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="mt-8 flex items-center justify-between">
+                      <Button type="button" variant="outline" onClick={prevStep}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
+                      <Button type="button" onClick={handleNextStep} className="bg-orange-500 text-white shadow-lg hover:bg-orange-600 disabled:opacity-50">
+                        Next Step <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+
+                {step === 3 && (
+                  <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+                    <div className="mb-4 flex items-center gap-2">
+                      <Luggage className="h-5 w-5 text-blue-600" />
+                      <h3 className="text-lg font-semibold">Luggage Details</h3>
+                    </div>
+
+                    {storageDays > 0 && (
+                      <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                         <Package className="h-4 w-4 shrink-0" />
                         <span>
                           Storage Duration: <strong>{storageDays} day{storageDays > 1 ? "s" : ""}</strong> (from pickup to delivery)
@@ -729,16 +806,16 @@ export default function BookPage() {
                               <span className="text-gray-600">Subtotal:</span>
                               <span className="font-bold">&#x20B1;{subtotal.toFixed(2)}</span>
                             </div>
-                            {totalBags > EXTRA_BAG_THRESHOLD && (
+                            {totalBags > fees.excessBagThreshold && (
                               <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-sm">
                                 <span className="flex items-center gap-1.5 text-amber-700">
                                   <AlertTriangle className="h-3.5 w-3.5" />
-                                  Excess baggage fee (over {EXTRA_BAG_THRESHOLD} bags)
+                                  Excess fee: {totalBags - fees.excessBagThreshold} × &#x20B1;{fees.excessBagFee.toFixed(2)}/bag (over {fees.excessBagThreshold} bags)
                                 </span>
-                                <span className="font-bold text-amber-700">+&#x20B1;{EXTRA_BAG_FEE.toFixed(2)}</span>
+                                <span className="font-bold text-amber-700">+&#x20B1;{extraFee.toFixed(2)}</span>
                               </div>
                             )}
-                            {totalBags > EXTRA_BAG_THRESHOLD && (
+                            {totalBags > fees.excessBagThreshold && (
                               <div className="flex items-center justify-between border-t border-gray-200 pt-2 text-sm font-bold">
                                 <span>Estimated total:</span>
                                 <span className="text-lg">&#x20B1;{(subtotal + extraFee).toFixed(2)}</span>
@@ -758,7 +835,7 @@ export default function BookPage() {
                         </Label>
                         <p className="mb-4 text-xs text-muted-foreground">Default process: customer drops off and picks up luggage at the terminal. Add services below for convenience.</p>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          {ADDITIONAL_SERVICES.map((svc) => (
+                          {servicesList.map((svc) => (
                             <label
                               key={svc.id}
                               className={`flex items-center justify-between rounded-xl border-2 p-4 transition-all cursor-pointer ${
@@ -788,7 +865,7 @@ export default function BookPage() {
 
                     <div className="mt-8 flex items-center justify-between">
                       <Button type="button" variant="outline" onClick={prevStep}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
-                      <Button type="button" onClick={nextStep} className="bg-blue-600 text-white shadow-lg hover:bg-blue-700">
+                      <Button type="button" onClick={handleNextStep} className="bg-orange-500 text-white shadow-lg hover:bg-orange-600">
                         Next Step <ArrowRight className="ml-2 h-4 w-4" />
                       </Button>
                     </div>
@@ -848,11 +925,11 @@ export default function BookPage() {
                         </div>
                       </div>
 
-                      {ADDITIONAL_SERVICES.filter((s) => selectedServices[s.id]).length > 0 && (
+                      {servicesList.filter((s) => selectedServices[s.id]).length > 0 && (
                         <div className="mt-3 border-t border-gray-200 pt-3">
                           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Additional Services</p>
                           <div className="space-y-1.5">
-                            {ADDITIONAL_SERVICES.filter((s) => selectedServices[s.id]).map((svc) => (
+                            {servicesList.filter((s) => selectedServices[s.id]).map((svc) => (
                               <div key={svc.id} className="flex justify-between text-gray-600">
                                 <span>{svc.name}</span>
                                 <span className="font-medium">+&#x20B1;{svc.price.toFixed(2)}</span>
@@ -869,7 +946,7 @@ export default function BookPage() {
                         </div>
                         {extraFee > 0 && (
                           <div className="flex justify-between text-amber-600">
-                            <span>Excess baggage fee (over {EXTRA_BAG_THRESHOLD} bags)</span>
+                            <span>Excess fee ({totalBags - fees.excessBagThreshold} × &#x20B1;{fees.excessBagFee.toFixed(2)})</span>
                             <span>+&#x20B1;{extraFee.toFixed(2)}</span>
                           </div>
                         )}
@@ -899,22 +976,43 @@ export default function BookPage() {
                         </svg>
                         <h3 className="text-base font-semibold">Payment Option</h3>
                       </div>
-                      <p className="mb-3 text-xs text-blue-700">Pay at least <strong>50%</strong> to reserve your slot. Pay the remaining balance later.</p>
-                      <div className="mb-3 flex gap-2">
-                        {[50, 75, 100].map((pct) => (
-                          <button
-                            key={pct}
-                            type="button"
-                            onClick={() => setPaymentPercent(pct)}
-                            className={`flex-1 rounded-lg border-2 py-2.5 text-center text-sm font-bold transition-all ${
-                              paymentPercent === pct
-                                ? "border-blue-600 bg-blue-600 text-white shadow-md"
-                                : "border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:bg-blue-50"
-                            }`}
-                          >
-                            {pct}%
-                          </button>
-                        ))}
+                      <p className="mb-3 text-xs text-blue-700">Slide to choose how much to pay now. Minimum of <strong>50%</strong> is required to reserve your slot.</p>
+                      <div className="mb-3 flex items-center gap-4">
+                        <div
+                          className="relative w-full"
+                          onPointerMove={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                            setPaymentHover(Math.round((dpMin + ratio * (100 - dpMin)) / 5) * 5);
+                          }}
+                          onPointerLeave={() => setPaymentHover(null)}
+                        >
+                          <input
+                            type="range"
+                            min={dpMin}
+                            max={100}
+                            step={5}
+                            value={paymentPercent}
+                            onChange={(e) => setPaymentPercent(Number(e.target.value))}
+                            className="w-full accent-blue-600"
+                            aria-label="Down payment percentage"
+                          />
+                          {paymentHover !== null && (
+                            <div
+                              className="pointer-events-none absolute -top-9 -translate-x-1/2 rounded-md bg-blue-700 px-2 py-1 text-[11px] font-bold text-white shadow-lg whitespace-nowrap"
+                              style={{ left: `${((paymentHover - dpMin) / (100 - dpMin)) * 100}%` }}
+                            >
+                              ₱{Math.ceil(grandTotal * (paymentHover / 100)).toLocaleString()} ({paymentHover}%)
+                            </div>
+                          )}
+                        </div>
+                        <span className="shrink-0 rounded-lg border border-blue-200 bg-blue-100 px-3 py-1 text-sm font-bold text-blue-700 tabular-nums">
+                          {paymentPercent}%
+                        </span>
+                      </div>
+                      <div className="mb-1 flex justify-between text-[10px] font-medium text-blue-500">
+                        <span>{dpMin}% (minimum)</span>
+                        <span>100%</span>
                       </div>
                       <div className="space-y-1.5">
                         <div className="flex justify-between text-blue-800">
@@ -987,7 +1085,7 @@ export default function BookPage() {
 
                     <div className="mt-6 flex items-center justify-between">
                       <Button type="button" variant="outline" onClick={prevStep}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
-                      <Button type="submit" className="bg-blue-600 text-white shadow-lg hover:bg-blue-700 hover:shadow-xl" size="lg" disabled={loading}>
+                      <Button type="submit" className="bg-orange-500 text-white shadow-lg hover:bg-orange-600 hover:shadow-xl" size="lg" disabled={loading}>
                         {loading ? (
                           <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Processing...</span>
                         ) : (
@@ -1022,6 +1120,18 @@ export default function BookPage() {
 }
 
 function TermsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [content, setContent] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let mounted = true;
+    fetch("/api/public/settings")
+      .then((res) => res.json())
+      .then((data) => { if (mounted) setContent(data.terms_and_conditions || ""); })
+      .catch(() => { if (mounted) setContent(""); });
+    return () => { mounted = false; };
+  }, [open]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1031,22 +1141,32 @@ function TermsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
           <h2 className="text-lg font-bold">Terms &amp; Conditions</h2>
           <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">&times;</button>
         </div>
-        <div className="space-y-3 text-sm text-gray-600">
-          <p><strong>1. Service Description</strong><br />Dropnfly provides luggage storage and delivery services at NAIA Terminals 1-4. By using our service, you agree to these terms.</p>
-          <p><strong>2. Booking &amp; Payment</strong><br />A minimum of 50% down payment is required to reserve a slot. The remaining balance is collectible upon pickup or delivery.</p>
-          <p><strong>3. Prohibited Items</strong><br />Customers must not include illegal items, hazardous materials, perishables, firearms, or valuables (cash, jewelry, electronics) in stored luggage. Dropnfly is not liable for prohibited or valuable items.</p>
-          <p><strong>4. Storage Duration</strong><br />Luggage is stored from the scheduled pickup time until the scheduled delivery time. Extended storage may incur additional fees.</p>
-          <p><strong>5. Liability</strong><br />Dropnfly&apos;s liability is limited to the declared value of the stored items. We recommend against storing irreplaceable or high-value items.</p>
-          <p><strong>6. Cancellation</strong><br />Cancellation policies vary. Contact customer support for assistance with cancellations and refunds.</p>
-          <p><strong>7. Rider Assignment</strong><br />Dropnfly assigns riders for pickup and delivery. Rider details (name, photo, vehicle, plate number) are shared with the customer.</p>
-        </div>
-        <button onClick={onClose} className="mt-6 w-full rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700">Close</button>
+        {content === null ? (
+          <p className="text-sm text-gray-500">Loading...</p>
+        ) : content ? (
+          <div className="space-y-3 text-sm whitespace-pre-wrap leading-relaxed text-gray-600">{content}</div>
+        ) : (
+          <p className="text-sm text-gray-500">Terms &amp; Conditions are currently unavailable. Please try again later.</p>
+        )}
+        <button onClick={onClose} className="mt-6 w-full rounded-lg bg-orange-500 py-2 text-sm font-medium text-white hover:bg-orange-600">Close</button>
       </div>
     </div>
   );
 }
 
 function PrivacyModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [content, setContent] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let mounted = true;
+    fetch("/api/public/settings")
+      .then((res) => res.json())
+      .then((data) => { if (mounted) setContent(data.privacy_policy || ""); })
+      .catch(() => { if (mounted) setContent(""); });
+    return () => { mounted = false; };
+  }, [open]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1056,15 +1176,14 @@ function PrivacyModal({ open, onClose }: { open: boolean; onClose: () => void })
           <h2 className="text-lg font-bold">Privacy Policy</h2>
           <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">&times;</button>
         </div>
-        <div className="space-y-3 text-sm text-gray-600">
-          <p><strong>1. Information We Collect</strong><br />We collect personal information (name, email, phone, country/city of origin) and booking details (pickup/delivery locations, dates, times, luggage information) to provide our services.</p>
-          <p><strong>2. How We Use Your Information</strong><br />Your information is used to process bookings, assign riders, send confirmations, provide tracking, and improve our services.</p>
-          <p><strong>3. Data Sharing</strong><br />We share necessary information with our riders (name, pickup location) for service delivery. We do not sell your personal data to third parties.</p>
-          <p><strong>4. Location Data</strong><br />We may collect location data to facilitate rider pickup. This data is used only for service purposes and not stored longer than necessary.</p>
-          <p><strong>5. Data Security</strong><br />We implement reasonable security measures to protect your personal information. However, no method of transmission over the Internet is 100% secure.</p>
-          <p><strong>6. Contact</strong><br />For privacy-related inquiries, contact our support team.</p>
-        </div>
-        <button onClick={onClose} className="mt-6 w-full rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700">Close</button>
+        {content === null ? (
+          <p className="text-sm text-gray-500">Loading...</p>
+        ) : content ? (
+          <div className="space-y-3 text-sm whitespace-pre-wrap leading-relaxed text-gray-600">{content}</div>
+        ) : (
+          <p className="text-sm text-gray-500">Privacy Policy is currently unavailable. Please try again later.</p>
+        )}
+        <button onClick={onClose} className="mt-6 w-full rounded-lg bg-orange-500 py-2 text-sm font-medium text-white hover:bg-orange-600">Close</button>
       </div>
     </div>
   );

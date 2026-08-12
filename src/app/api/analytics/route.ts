@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+function toLocalDayKey(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user) {
@@ -21,48 +28,54 @@ export async function GET(req: Request) {
   since.setHours(0, 0, 0, 0);
 
   if (fromDate) {
-    since = new Date(fromDate);
+    since = new Date(fromDate + "T00:00:00");
     since.setHours(0, 0, 0, 0);
   }
   let until: Date | undefined;
   if (toDate) {
-    until = new Date(toDate);
+    until = new Date(toDate + "T00:00:00");
     until.setHours(23, 59, 59, 999);
   }
 
   const actualDays = period === "custom" && fromDate
-    ? Math.ceil(((until || new Date()).getTime() - since.getTime()) / (1000 * 60 * 60 * 24)) || 1
+    ? Math.ceil((((until || new Date()).getTime() - since.getTime()) / (1000 * 60 * 60 * 24))) || 1
     : days;
 
+  const periodFilter = { createdAt: { gte: since, ...(until ? { lte: until } : {}) } };
+
   const [
-    totalBookings,
+    periodBookings,
     bookingsByStatus,
     bookingsByDay,
-    revenueAgg,
-    revenueByDay,
+    periodBookingStats,
+    paidPayments,
     employeeStats,
     storageLocations,
     bookingsByHour,
     repeatCustomers,
   ] = await Promise.all([
-    prisma.booking.count(),
+    prisma.booking.count({ where: periodFilter }),
     prisma.booking.groupBy({
       by: ["status"],
+      where: periodFilter,
       _count: true,
     }),
     prisma.booking.findMany({
-      where: { createdAt: { gte: since, ...(until ? { lte: until } : {}) } },
-      select: { createdAt: true, totalPrice: true, status: true },
+      where: periodFilter,
+      select: { createdAt: true },
       orderBy: { createdAt: "asc" },
     }),
     prisma.booking.aggregate({
-      _sum: { totalPrice: true },
-      _avg: { totalPrice: true, numberOfBags: true },
+      where: periodFilter,
+      _avg: { numberOfBags: true },
     }),
-    prisma.booking.groupBy({
-      by: ["status"],
-      where: { createdAt: { gte: since, ...(until ? { lte: until } : {}) } },
-      _sum: { totalPrice: true },
+    prisma.payment.findMany({
+      where: { status: "PAID", paidAt: { gte: since, ...(until ? { lte: until } : {}) } },
+      select: {
+        amount: true,
+        paidAt: true,
+        booking: { select: { status: true } },
+      },
     }),
     prisma.bookingAssignment.groupBy({
       by: ["userId"],
@@ -73,7 +86,7 @@ export async function GET(req: Request) {
       select: { id: true, name: true, capacity: true },
     }),
     prisma.booking.findMany({
-      where: { createdAt: { gte: since, ...(until ? { lte: until } : {}) } },
+      where: periodFilter,
       select: { checkIn: true },
     }),
     prisma.$queryRaw<Array<{ email: string; booking_count: bigint }>>`
@@ -84,6 +97,8 @@ export async function GET(req: Request) {
       HAVING COUNT(b.id) > 1
     `,
   ]);
+
+  const totalRevenue = paidPayments.reduce((sum, p) => sum + p.amount, 0);
 
   const totalCapacity = storageLocations.reduce(
     (acc, loc) => acc + loc.capacity,
@@ -105,9 +120,19 @@ export async function GET(req: Request) {
   const bookingsPerDay: Record<string, number> = {};
   const revenuePerDay: Record<string, number> = {};
   for (const b of bookingsByDay) {
-    const day = b.createdAt.toISOString().slice(0, 10);
+    const day = toLocalDayKey(b.createdAt);
     bookingsPerDay[day] = (bookingsPerDay[day] || 0) + 1;
-    revenuePerDay[day] = (revenuePerDay[day] || 0) + b.totalPrice;
+  }
+  for (const p of paidPayments) {
+    if (!p.paidAt) continue;
+    const day = toLocalDayKey(p.paidAt);
+    revenuePerDay[day] = (revenuePerDay[day] || 0) + p.amount;
+  }
+
+  const revenueByStatusMap: Record<string, number> = {};
+  for (const p of paidPayments) {
+    const status = p.booking.status;
+    revenueByStatusMap[status] = (revenueByStatusMap[status] || 0) + p.amount;
   }
 
   const hourlyDistribution: Record<number, number> = {};
@@ -139,11 +164,11 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     overview: {
-      totalBookings,
+      totalBookings: periodBookings,
       activeBookings,
-      totalRevenue: revenueAgg._sum.totalPrice || 0,
-      averagePrice: revenueAgg._avg.totalPrice || 0,
-      averageBags: revenueAgg._avg.numberOfBags || 0,
+      totalRevenue,
+      averagePrice: paidPayments.length > 0 ? totalRevenue / paidPayments.length : 0,
+      averageBags: periodBookingStats._avg.numberOfBags || 0,
       totalCustomers,
       newCustomers,
       storageUtilization: totalCapacity > 0 ? (activeBookings / totalCapacity) * 100 : 0,
@@ -157,9 +182,9 @@ export async function GET(req: Request) {
       count,
       revenue: revenuePerDay[date] || 0,
     })),
-    revenueByStatus: revenueByDay.map((r) => ({
-      status: r.status,
-      revenue: r._sum.totalPrice || 0,
+    revenueByStatus: Object.entries(revenueByStatusMap).map(([status, revenue]) => ({
+      status,
+      revenue,
     })),
     hourlyDistribution: Object.entries(hourlyDistribution).map(
       ([hour, count]) => ({
@@ -180,7 +205,7 @@ export async function GET(req: Request) {
       };
     }),
     bookingFrequency: {
-      daily: bookingsByDay.length > 0 ? bookingsByDay.length / actualDays : 0,
+      daily: actualDays > 0 ? periodBookings / actualDays : 0,
       period,
       ...(fromDate ? { fromDate } : {}),
       ...(toDate ? { toDate } : {}),

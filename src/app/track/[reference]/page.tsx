@@ -16,7 +16,6 @@ import {
   MapPin,
   Calendar,
   Luggage,
-  ChevronLeft,
   Home,
   Navigation,
   User,
@@ -26,6 +25,9 @@ import {
   Bike,
   Car,
   Truck,
+  Camera,
+  CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PublicHeader } from "@/components/layout/PublicHeader";
@@ -97,18 +99,32 @@ export default function TrackResultPage() {
   const [rider, setRider] = useState<RiderData | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [showRiderInfo, setShowRiderInfo] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("chat") === "1"
+  );
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [scanEvents, setScanEvents] = useState<{ status: string; photo: string | null; note: string | null; scannedAt: string; user: { name: string } | null }[]>([]);
   const [showPhotoModal, setShowPhotoModal] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const verifyFileRef = useRef<HTMLInputElement>(null);
+  const [verifyPhoto, setVerifyPhoto] = useState<string | null>(null);
+  const [verifySubmitting, setVerifySubmitting] = useState(false);
+  const [verifyDone, setVerifyDone] = useState(false);
+  const [verifyError, setVerifyError] = useState("");
+  const [scanReload, setScanReload] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   const THIRTY_MIN = 30 * 60 * 1000;
   const hasRecentLocation =
     rider?.lastLocationUpdate &&
-    Date.now() - new Date(rider.lastLocationUpdate).getTime() < THIRTY_MIN;
+    now - new Date(rider.lastLocationUpdate).getTime() < THIRTY_MIN;
 
   useEffect(() => {
     const abort = new AbortController();
@@ -138,7 +154,7 @@ export default function TrackResultPage() {
       .then((data) => { if (!abort.signal.aborted && Array.isArray(data)) setScanEvents(data); })
       .catch(() => {});
     return () => abort.abort();
-  }, [params.reference]);
+  }, [params.reference, scanReload]);
 
   useEffect(() => {
     if (!chatOpen || !params.reference) return;
@@ -175,6 +191,47 @@ export default function TrackResultPage() {
     setChatLoading(false);
   }
 
+  function handleVerifyPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => setVerifyPhoto(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleVerifySubmit() {
+    if (!verifyPhoto) return;
+    setVerifySubmitting(true);
+    setVerifyError("");
+    try {
+      const body: Record<string, unknown> = { photo: verifyPhoto, note: "Passenger drop-off verification" };
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((res, rej) =>
+            navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 })
+          );
+          body.latitude = pos.coords.latitude;
+          body.longitude = pos.coords.longitude;
+        } catch { /* location optional */ }
+      }
+      const res = await fetch(`/api/public/bookings/${params.reference}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Verification failed");
+      setBooking((prev) => (prev ? { ...prev, status: "IN_STORAGE" } : prev));
+      setVerifyDone(true);
+      setVerifyPhoto(null);
+      setScanReload((n) => n + 1);
+    } catch (e) {
+      setVerifyError(e instanceof Error ? e.message : "Verification failed");
+    } finally {
+      setVerifySubmitting(false);
+    }
+  }
+
   if (notFound) {
     return (
       <div className="min-h-screen bg-blue-50/50">
@@ -188,7 +245,7 @@ export default function TrackResultPage() {
             <Button asChild variant="outline">
               <Link href="/track">Try Again</Link>
             </Button>
-            <Button asChild className="bg-blue-600 text-white hover:bg-blue-700">
+            <Button asChild className="bg-orange-500 text-white hover:bg-orange-600">
               <Link href="/"><Home className="mr-2 h-4 w-4" /> Back to Home</Link>
             </Button>
           </div>
@@ -368,7 +425,7 @@ export default function TrackResultPage() {
                         <div
                           className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm leading-relaxed ${
                             msg.isFromCustomer
-                              ? "rounded-tr-none bg-blue-600 text-white"
+                              ? "rounded-tr-none bg-orange-500 text-white"
                               : "rounded-tl-none bg-muted"
                           }`}
                         >
@@ -395,7 +452,7 @@ export default function TrackResultPage() {
                     <button
                       onClick={sendChat}
                       disabled={!chatInput.trim() || chatLoading}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition-all hover:bg-blue-700 disabled:opacity-40"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white transition-all hover:bg-orange-600 disabled:opacity-40"
                     >
                       <Send className="h-4 w-4" />
                     </button>
@@ -405,6 +462,73 @@ export default function TrackResultPage() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {booking.status === "RECEIVED" && !verifyDone && (
+          <Card className="mb-6 border-t-4 border-purple-500 shadow-lg">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Camera className="h-4 w-4 text-purple-600" />
+                Verify Your Drop-off
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Your luggage has been received by our staff. Confirm the handover by taking a photo to move
+                your booking to <strong className="text-purple-700">In Storage</strong>.
+              </p>
+              {verifyPhoto ? (
+                <div className="relative overflow-hidden rounded-xl border">
+                  <img src={verifyPhoto} alt="Drop-off verification" className="h-40 w-full object-cover" />
+                  <button
+                    onClick={() => setVerifyPhoto(null)}
+                    className="absolute top-2 right-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => verifyFileRef.current?.click()}
+                  className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/30 p-6 transition-colors hover:border-purple-500/50 hover:bg-purple-50/50"
+                >
+                  <Camera className="h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Take a photo of your handed-over luggage</p>
+                </button>
+              )}
+              <input
+                ref={verifyFileRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleVerifyPhoto}
+                className="hidden"
+              />
+              {verifyError && <p className="text-xs text-red-600">{verifyError}</p>}
+              <Button
+                className="w-full bg-orange-500 text-white shadow-lg hover:bg-orange-600"
+                onClick={handleVerifySubmit}
+                disabled={!verifyPhoto || verifySubmitting}
+              >
+                {verifySubmitting ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</>
+                ) : (
+                  <><CheckCircle2 className="mr-2 h-4 w-4" /> Confirm Drop-off</>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {verifyDone && (
+          <Card className="mb-6 border-emerald-200 bg-emerald-50">
+            <CardContent className="flex items-center gap-3 p-4">
+              <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+              <p className="text-sm font-medium text-emerald-800">
+                Drop-off verified — your luggage is now <strong>In Storage</strong>.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="mb-6 border-t-4 border-blue-500 shadow-lg">
           <CardHeader>
@@ -434,7 +558,7 @@ export default function TrackResultPage() {
                           <div
                             className={`flex h-12 w-12 items-center justify-center rounded-full border-2 shadow-sm transition-all ${
                               isActive
-                                ? "border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-200"
+                                ? "border-blue-600 bg-orange-500 text-white shadow-md shadow-blue-200"
                                 : "border-gray-300 bg-white text-gray-400"
                             } ${isCurrent ? "ring-4 ring-blue-200" : ""}`}
                           >
@@ -543,17 +667,24 @@ export default function TrackResultPage() {
             </div>
 
             {(() => {
-              let items: { type: string; qty: number; price: number }[] = [];
+              let items: Array<{ type?: string; qty?: number; price?: number; services?: string[] }> = [];
               try {
                 if (booking.luggageDetails) items = JSON.parse(booking.luggageDetails);
               } catch {}
               if (items.length === 0 && !booking.luggageDetails) return null;
+              const luggageItems = items.filter(
+                (i): i is { type: string; qty: number; price: number } =>
+                  !!i && typeof i.type === "string" && typeof i.qty === "number"
+              );
+              const services = items.flatMap((i) =>
+                Array.isArray(i?.services) ? i.services : []
+              );
               return (
                 <div className="mt-4 border-t pt-4">
                   <p className="text-sm text-gray-500">Luggage Details</p>
-                  {items.length > 0 ? (
+                  {luggageItems.length > 0 ? (
                     <div className="mt-1 space-y-1">
-                      {items.map((item, i) => (
+                      {luggageItems.map((item, i) => (
                         <p key={i} className="text-sm">
                           {item.type}: <strong>{item.qty}x</strong> (&#x20B1;{(item.price * item.qty).toFixed(2)})
                         </p>
@@ -562,13 +693,21 @@ export default function TrackResultPage() {
                   ) : (
                     <p className="mt-1 text-sm">{booking.luggageDetails}</p>
                   )}
+                  {services.length > 0 && (
+                    <div className="mt-2 space-y-0.5">
+                      <p className="text-xs font-medium text-purple-700">Additional Services</p>
+                      {services.map((svc, i) => (
+                        <p key={i} className="text-sm text-purple-700">• {svc}</p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })()}
 
             <div className="mt-6 flex flex-wrap justify-center gap-3 border-t pt-4">
               {hasRecentLocation && (
-                <Button asChild className="bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl">
+                <Button asChild className="bg-orange-500 text-white shadow-lg transition-all hover:bg-orange-600 hover:shadow-xl">
                   <Link href={`/track/map/${params.reference}`}>
                     <Navigation className="mr-2 h-4 w-4" />
                     Live Map

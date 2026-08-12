@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
-  MapPin,
   Package,
   Users,
   Luggage,
@@ -13,22 +12,19 @@ import {
   UserCog,
   Settings,
   ClipboardList,
-  Navigation,
   Bell,
   Sun,
   Moon,
   User,
-  DollarSign,
   MessageCircle,
-  FileDown,
   QrCode,
   Truck,
   AlertTriangle,
-  Ticket,
+  BarChart3,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "@/components/ThemeProvider";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const ADMIN_ONLY_ITEMS = new Set([
   "/dashboard/settings",
@@ -37,7 +33,6 @@ const ADMIN_ONLY_ITEMS = new Set([
 ]);
 
 const STAFF_AND_ABOVE_ITEMS = new Set([
-  "/dashboard/financial",
   "/dashboard/logistics",
   "/dashboard/customers",
   "/dashboard/incidents",
@@ -45,19 +40,16 @@ const STAFF_AND_ABOVE_ITEMS = new Set([
 
 const allNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/my", label: "My Dashboard", icon: Navigation },
   { href: "/dashboard/bookings", label: "Bookings", icon: Package },
-  { href: "/dashboard/promo-codes", label: "Promo Codes", icon: Ticket },
   { href: "/dashboard/scanner", label: "Scanner", icon: QrCode },
   { href: "/dashboard/logistics", label: "Logistics & Routes", icon: Truck },
+  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/customers", label: "Customers", icon: Users },
-  { href: "/dashboard/financial", label: "Financial Oversight", icon: DollarSign },
   { href: "/dashboard/chat", label: "Chat", icon: MessageCircle },
   { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/dashboard/employees", label: "Employees", icon: UserCog },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
   { href: "/dashboard/activity-logs", label: "Activity Logs", icon: ClipboardList },
-  { href: "/dashboard/reports", label: "Reports", icon: FileDown },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
 ];
 
@@ -72,14 +64,15 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const role = session?.user?.role;
   const isAdmin = role === "ADMIN";
   const isStaff = role === "STAFF";
-  const [lastSync, setLastSync] = useState<string>("");
-
-  useEffect(() => {
-    setLastSync(new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }));
-  }, []);
+  const [lastSync] = useState(() =>
+    new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })
+  );
 
   const visibleItems = allNavItems.filter((item) => {
-    if (isAdmin) return true;
+    if (isAdmin) {
+      if (item.href === "/dashboard/notifications") return false;
+      return true;
+    }
     if (isStaff) return !ADMIN_ONLY_ITEMS.has(item.href);
     return !ADMIN_ONLY_ITEMS.has(item.href) && !STAFF_AND_ABOVE_ITEMS.has(item.href);
   });

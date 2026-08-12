@@ -138,7 +138,7 @@ export function NotificationDropdown() {
                       </p>
                     </div>
                     {!n.isRead && (
-                      <div className="mt-1.5 h-2 w-2 rounded-full bg-blue-600" />
+                      <div className="mt-1.5 h-2 w-2 rounded-full bg-orange-500" />
                     )}
                   </div>
                 </div>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { normalizeReference } from "@/lib/utils";
 
 /**
  * ETA Engine for DropnFly
@@ -76,7 +77,7 @@ export async function GET(req: Request) {
 
   if (reference && !riderLat && !riderLng) {
     const booking = await prisma.booking.findUnique({
-      where: { referenceNumber: reference },
+      where: { referenceNumber: normalizeReference(reference) },
       select: { id: true },
     });
 
@@ -85,7 +86,7 @@ export async function GET(req: Request) {
     }
 
     const assignment = await prisma.bookingAssignment.findFirst({
-      where: { bookingId: booking.id },
+      where: { bookingId: booking.id, phase: { not: "DROPOFF" } },
       orderBy: { createdAt: "desc" },
       include: {
         user: { select: { currentLat: true, currentLng: true, lastLocationUpdate: true } },

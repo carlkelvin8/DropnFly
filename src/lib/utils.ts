@@ -54,3 +54,7 @@ export function calculateTotalPrice(
   const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
   return Math.max(1, diffDays) * pricePerDay;
 }
+
+export function normalizeReference(reference: string): string {
+  return reference.trim().toUpperCase();
+}

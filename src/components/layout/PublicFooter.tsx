@@ -21,7 +21,7 @@ export function PublicFooter() {
             <p className="mb-2 font-semibold text-gray-700">Support</p>
             <div className="space-y-1">
               <p className="text-gray-500">NAIA Terminals 1–4, Pasay City</p>
-              <p className="text-gray-500">support@dropnfly.com</p>
+              <p className="text-gray-500">hello@dropnfly.ph</p>
             </div>
           </div>
         </div>

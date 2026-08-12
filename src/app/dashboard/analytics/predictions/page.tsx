@@ -194,7 +194,7 @@ export default function PredictionsPage() {
                     key={i}
                     className="flex items-start gap-3 rounded-lg border bg-card p-4 shadow-sm transition-colors hover:bg-muted/30"
                   >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500 text-xs font-bold text-white shadow-sm">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-blue-500 text-xs font-bold text-white shadow-sm">
                       {i + 1}
                     </div>
                     <p className="text-sm leading-relaxed">{insight}</p>

@@ -37,6 +37,7 @@ export async function POST(
       data: {
         bookingId: id,
         userId: body.userId,
+        phase: body.phase === "DROPOFF" ? "DROPOFF" : "PICKUP",
       },
       include: {
         user: {

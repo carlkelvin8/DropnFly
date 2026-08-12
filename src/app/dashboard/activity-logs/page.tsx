@@ -5,9 +5,7 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -34,7 +32,7 @@ import {
   Truck,
   Tag,
 } from "lucide-react";
-import { formatDate, formatRelativeTime } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/utils";
 
 interface Log {
   id: string;
@@ -111,7 +109,6 @@ export default function ActivityLogsPage() {
   const [loading, setLoading] = useState(true);
 
   function fetchLogs() {
-    setLoading(true);
     const params = new URLSearchParams();
     if (entityFilter) params.set("entity", entityFilter);
     if (actionFilter) params.set("action", actionFilter);
@@ -126,11 +123,8 @@ export default function ActivityLogsPage() {
   }
 
   useEffect(() => {
-    setPage(1);
-  }, [entityFilter, actionFilter, search]);
-
-  useEffect(() => {
     fetchLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityFilter, actionFilter, page]);
 
   function handleSearch() {
@@ -167,7 +161,7 @@ export default function ActivityLogsPage() {
             </div>
             <Select
               value={entityFilter}
-              onChange={(e) => setEntityFilter(e.target.value)}
+              onChange={(e) => { setEntityFilter(e.target.value); setPage(1); }}
               options={[
                 { value: "", label: "All Entities" },
                 { value: "Booking", label: "Booking" },
@@ -185,7 +179,7 @@ export default function ActivityLogsPage() {
             />
             <Select
               value={actionFilter}
-              onChange={(e) => setActionFilter(e.target.value)}
+              onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
               options={[
                 { value: "", label: "All Actions" },
                 { value: "CREATE", label: "Created" },

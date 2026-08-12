@@ -15,6 +15,7 @@ export async function GET(req: Request) {
   const statusParam = searchParams.get("status");
   const paymentFilter = searchParams.get("payment");
   const riderId = searchParams.get("riderId");
+  const dateParam = searchParams.get("date");
 
   const statusGroups: Record<string, string[]> = {
     upcoming: ["PENDING"],
@@ -39,6 +40,14 @@ export async function GET(req: Request) {
   if (statusFilter) {
     where.status = { in: statusFilter };
   }
+  if (dateParam) {
+    const day = new Date(`${dateParam}T00:00:00.000Z`);
+    if (!Number.isNaN(day.getTime())) {
+      const next = new Date(day);
+      next.setUTCDate(next.getUTCDate() + 1);
+      where.checkIn = { gte: day, lt: next };
+    }
+  }
 
   const bookings = await prisma.booking.findMany({
     where,
@@ -50,9 +59,9 @@ export async function GET(req: Request) {
       assignments: {
         include: { user: { select: { id: true, name: true, email: true, profilePic: true, vehicleType: true, plateNumber: true } } },
         orderBy: { createdAt: "desc" },
-        take: 1,
       },
       payments: { select: { amount: true, status: true, method: true, paidAt: true } },
+      luggageItems: { select: { id: true, tagNumber: true, status: true } },
       ...(include === "chat" ? {
         _count: { select: { chatMessages: true } },
       } : {}),
@@ -69,7 +78,9 @@ export async function GET(req: Request) {
     else if (totalPaid > 0) paymentStatus = "dp";
 
     const qrScanned = ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"].includes(b.status);
-    const rider = b.assignments[0]?.user || null;
+    const pickupRider = b.assignments.find((a) => a.phase !== "DROPOFF")?.user || null;
+    const dropoffRider = b.assignments.find((a) => a.phase === "DROPOFF")?.user || null;
+    const rider = pickupRider || dropoffRider;
 
     return {
       id: b.id,
@@ -81,17 +92,23 @@ export async function GET(req: Request) {
       totalPrice: b.totalPrice,
       status: b.status,
       createdAt: b.createdAt,
+      checkIn: b.checkIn,
+      checkOut: b.checkOut,
+      location: b.location,
+      luggageItems: b.luggageItems,
       qrScanned,
       paymentStatus,
       totalPaid,
       rider,
+      pickupRider,
+      dropoffRider,
     };
   });
 
   let filtered = mapped;
   if (paymentFilter === "full") filtered = filtered.filter((b) => b.paymentStatus === "full");
   else if (paymentFilter === "dp") filtered = filtered.filter((b) => b.paymentStatus === "dp");
-  if (riderId) filtered = filtered.filter((b) => b.rider?.id === riderId);
+  if (riderId) filtered = filtered.filter((b) => b.pickupRider?.id === riderId || b.dropoffRider?.id === riderId);
 
   return NextResponse.json(filtered);
 }
@@ -104,10 +121,29 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { customerId, locationId, numberOfBags, checkIn, checkOut, status, totalPrice: clientTotalPrice, paymentMethod, downPayment } = body;
+    const {
+      customerId,
+      locationId,
+      numberOfBags,
+      checkIn,
+      checkOut,
+      status,
+      totalPrice: clientTotalPrice,
+      paymentMethod,
+      downPayment,
+      luggageDetails,
+      promoCode,
+    } = body;
 
     if (!customerId || !numberOfBags || !checkIn) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      const missing: string[] = [];
+      if (!customerId) missing.push("Customer");
+      if (!numberOfBags) missing.push("Luggage");
+      if (!checkIn) missing.push("Check-in date");
+      return NextResponse.json(
+        { error: `Missing required fields: ${missing.join(", ")}` },
+        { status: 400 }
+      );
     }
 
     const VALID_STATUSES: BookingStatus[] = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW"];
@@ -139,6 +175,29 @@ export async function POST(req: Request) {
       totalPrice = 0;
     }
 
+    let discount = 0;
+    let promoCodeId: string | null = null;
+
+    if (promoCode) {
+      const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.toUpperCase() } });
+      if (promo && promo.isActive && promo.usedCount < promo.maxUsage && (!promo.expiresAt || new Date() <= promo.expiresAt)) {
+        const orderAmount = clientTotalPrice ? parseFloat(clientTotalPrice) : 0;
+        if (orderAmount >= promo.minAmount) {
+          if (promo.type === "PERCENTAGE") {
+            discount = orderAmount * (promo.value / 100);
+            if (promo.maxDiscount) discount = Math.min(discount, promo.maxDiscount);
+          } else {
+            discount = promo.value;
+          }
+          promoCodeId = promo.id;
+          await prisma.promoCode.update({
+            where: { id: promo.id },
+            data: { usedCount: { increment: 1 } },
+          });
+        }
+      }
+    }
+
     const referenceNumber = generateReferenceNumber();
 
     const QRCode = (await import("qrcode")).default;
@@ -154,10 +213,13 @@ export async function POST(req: Request) {
         locationId: locationId || null,
         pickupLocation: body.pickupLocation || "",
         dropOffLocation: body.dropOffLocation || "",
+        luggageDetails: luggageDetails || null,
         checkIn: checkInDate,
         checkOut: body.checkOut ? new Date(body.checkOut) : null,
         numberOfBags,
         totalPrice,
+        discount,
+        promoCodeId,
         status: bookingStatus,
         payments: downPayment > 0
           ? { create: { amount: parseFloat(downPayment), method: paymentMethod || "CASH", status: "PAID", paidAt: new Date(), customerId } }

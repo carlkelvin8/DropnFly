@@ -149,7 +149,7 @@ export function LocationPlayback({ userId, userName }: LocationPlaybackProps) {
         type: "line",
         source: "playback-route",
         paint: {
-          "line-color": "#6366f1",
+          "line-color": "#3b7ac7",
           "line-width": 3,
           "line-opacity": 0.4,
         },
@@ -175,7 +175,7 @@ export function LocationPlayback({ userId, userName }: LocationPlaybackProps) {
         type: "line",
         source: "playback-progress",
         paint: {
-          "line-color": "#22d3ee",
+          "line-color": "#ea7d3d",
           "line-width": 4,
           "line-opacity": 0.9,
         },

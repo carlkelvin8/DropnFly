@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Select } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Plus, Eye, Search, Trash2, X, Download, QrCode, Bike } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
@@ -50,6 +49,8 @@ interface Booking {
   paymentStatus: "full" | "dp" | "unpaid";
   totalPaid: number;
   rider: Rider | null;
+  pickupRider: Rider | null;
+  dropoffRider: Rider | null;
 }
 
 interface RiderOption {
@@ -98,41 +99,36 @@ export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
   const [riderFilter, setRiderFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState(() => new Date().toISOString().split("T")[0]);
   const [page, setPage] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showExport, setShowExport] = useState(false);
 
-  function buildUrl() {
+  const fetchBookings = useCallback(() => {
     const params = new URLSearchParams();
     if (statusFilter) params.set("status", statusFilter);
     if (paymentFilter) params.set("payment", paymentFilter);
     if (riderFilter) params.set("riderId", riderFilter);
+    if (dateFilter) params.set("date", dateFilter);
     const qs = params.toString();
-    return `/api/bookings${qs ? `?${qs}` : ""}`;
-  }
-
-  function fetchBookings() {
-    setLoading(true);
-    fetch(buildUrl())
+    fetch(`/api/bookings${qs ? `?${qs}` : ""}`)
       .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
       .then(setBookings)
       .catch(() => toast.error("Failed to load bookings"))
       .finally(() => setLoading(false));
-  }
+  }, [statusFilter, paymentFilter, riderFilter, dateFilter]);
 
   useEffect(() => {
     fetchBookings();
-      fetch("/api/riders")
+  }, [fetchBookings]);
+
+  useEffect(() => {
+    fetch("/api/riders")
       .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
       .then((data) => setRiders(data.map((u: { id: string; name: string }) => ({ id: u.id, name: u.name }))))
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    setPage(1);
-    fetchBookings();
-  }, [statusFilter, paymentFilter, riderFilter]);
 
   const filtered = bookings.filter((b) => {
     if (!search) return true;
@@ -182,6 +178,7 @@ export default function BookingsPage() {
     setStatusFilter("");
     setPaymentFilter("");
     setRiderFilter("");
+    setDateFilter(new Date().toISOString().split("T")[0]);
     setPage(1);
   }
 
@@ -228,6 +225,14 @@ export default function BookingsPage() {
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
           </select>
+        </div>
+        <div className="w-44">
+          <Input
+            type="date"
+            value={dateFilter}
+            onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
+            aria-label="Filter by date"
+          />
         </div>
         {hasActiveFilters && (
           <Button variant="ghost" size="icon" onClick={clearFilters} title="Clear all filters">
@@ -286,7 +291,8 @@ export default function BookingsPage() {
                         checked={selectedIds.has(booking.id)}
                         onCheckedChange={(checked) => {
                           const next = new Set(selectedIds);
-                          checked ? next.add(booking.id) : next.delete(booking.id);
+                          if (checked) next.add(booking.id);
+                          else next.delete(booking.id);
                           setSelectedIds(next);
                         }}
                       />
@@ -314,11 +320,25 @@ export default function BookingsPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-sm">
-                      {booking.rider ? (
-                        <span className="flex items-center gap-1.5">
-                          <Bike className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="text-xs">{booking.rider.name}</span>
-                        </span>
+                      {(booking.pickupRider || booking.dropoffRider) ? (
+                        <div className="flex flex-col gap-1">
+                          {booking.pickupRider && (
+                            <span className="flex items-center gap-1.5">
+                              <Bike className="h-3.5 w-3.5 text-blue-600" />
+                              <span className="text-xs">
+                                <span className="font-bold text-blue-600">P:</span> {booking.pickupRider.name}
+                              </span>
+                            </span>
+                          )}
+                          {booking.dropoffRider && (
+                            <span className="flex items-center gap-1.5">
+                              <Bike className="h-3.5 w-3.5 text-amber-600" />
+                              <span className="text-xs">
+                                <span className="font-bold text-amber-600">D:</span> {booking.dropoffRider.name}
+                              </span>
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}

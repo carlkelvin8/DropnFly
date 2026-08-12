@@ -12,19 +12,36 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import Link from "next/link";
 import { Search, Camera, Luggage } from "lucide-react";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { PublicFooter } from "@/components/layout/PublicFooter";
+import { CameraQRScanner } from "@/components/scanner/CameraQRScanner";
+
+function cleanScanInput(ref: string): string {
+  const withoutQuery = ref.split("?")[0].split("#")[0];
+  const clean = withoutQuery.includes("/")
+    ? withoutQuery.split("/").pop() || ""
+    : withoutQuery;
+  return clean.trim().toUpperCase();
+}
 
 export default function TrackPage() {
   const router = useRouter();
   const [reference, setReference] = useState("");
+  const [scanning, setScanning] = useState(false);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (reference.trim()) {
-      router.push(`/track/${reference.trim()}`);
+      router.push(`/track/${reference.trim().toUpperCase()}`);
+    }
+  }
+
+  function handleScan(raw: string) {
+    const cleanRef = cleanScanInput(raw);
+    setScanning(false);
+    if (cleanRef) {
+      router.push(`/track/${cleanRef}`);
     }
   }
 
@@ -65,7 +82,7 @@ export default function TrackPage() {
                     className="font-mono uppercase"
                     required
                   />
-                  <Button type="submit" className="bg-blue-600 text-white shadow-md hover:bg-blue-700">
+                  <Button type="submit" className="bg-orange-500 text-white shadow-md hover:bg-orange-600">
                     <Search className="mr-2 h-4 w-4" />
                     Track
                   </Button>
@@ -73,17 +90,30 @@ export default function TrackPage() {
               </div>
             </form>
 
-            <div className="mt-6 border-t pt-6">
-              <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 p-6 text-center">
-                <Camera className="mx-auto mb-2 h-8 w-8 text-gray-400" />
-                <p className="text-sm text-gray-500">
+            {scanning ? (
+              <div className="mt-6 border-t pt-6">
+                <CameraQRScanner
+                  onScan={handleScan}
+                  onClose={() => setScanning(false)}
+                  title="Scan Booking QR"
+                  description="Point at the QR code from your confirmation email"
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setScanning(true)}
+                className="w-full rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 p-6 text-center transition-all hover:border-blue-400 hover:bg-blue-50"
+              >
+                <Camera className="mx-auto mb-2 h-8 w-8 text-blue-500" />
+                <p className="text-sm font-medium text-gray-700">
                   Scan QR Code from your confirmation email
                 </p>
                 <p className="mt-1 text-xs text-gray-400">
-                  QR scanning coming soon
+                  Use your camera to scan — we&apos;ll look up the booking instantly
                 </p>
-              </div>
-            </div>
+              </button>
+            )}
           </CardContent>
         </Card>
       </main>

@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 // API-level role enforcement is handled in the API routes (e.g., /api/employees, /api/settings).
 // Page-level role checks are done client-side via useSession in the dashboard layout.
 const protectedRoutes = ["/dashboard"];
-const publicRoutes = ["/", "/login", "/register", "/book", "/track", "/api/public", "/api/auth"];
+const publicRoutes = ["/", "/login", "/book", "/track", "/api/public", "/api/auth"];
 
 export default function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;

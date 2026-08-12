@@ -62,6 +62,7 @@ export async function POST(req: Request) {
         password: hashedPassword,
         role: role || "EMPLOYEE",
         isApproved: false,
+        passwordChangedAt: new Date(),
       },
       select: {
         id: true,

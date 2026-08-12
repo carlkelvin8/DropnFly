@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   Card,
@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,14 +23,14 @@ import {
   Clock,
   User,
   Flag,
-  MessageCircle,
   CheckCircle,
-  Search,
   Save,
-  Plus,
   Luggage,
   MapPin,
   Calendar,
+  Check,
+  X,
+  Loader2,
 } from "lucide-react";
 
 interface IncidentDetail {
@@ -83,6 +82,8 @@ const typeLabels: Record<string, string> = {
   lost_baggage: "Lost Baggage",
   damaged_baggage: "Damaged Baggage",
   service_complaint: "Service Complaint",
+  no_show: "No-Show Report",
+  cancellation: "Cancellation Report",
   other: "Other",
 };
 
@@ -90,6 +91,8 @@ const typeIcons: Record<string, string> = {
   lost_baggage: "🔍",
   damaged_baggage: "💔",
   service_complaint: "💬",
+  no_show: "🚫",
+  cancellation: "❌",
   other: "📋",
 };
 
@@ -103,16 +106,16 @@ const actionIcons: Record<string, string> = {
 
 export default function IncidentDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const [incident, setIncident] = useState<IncidentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [newNote, setNewNote] = useState("");
 
   const [editStatus, setEditStatus] = useState("");
   const [editPriority, setEditPriority] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editResolution, setEditResolution] = useState("");
+  const [editEscalatedTo, setEditEscalatedTo] = useState("");
+  const [decisionSaving, setDecisionSaving] = useState<"accept" | "dismiss" | null>(null);
 
   useEffect(() => {
     fetch(`/api/incidents/${params.id}`)
@@ -123,10 +126,39 @@ export default function IncidentDetailPage() {
         setEditPriority(d.priority);
         setEditNotes(d.internalNotes || "");
         setEditResolution(d.resolution || "");
+        setEditEscalatedTo(d.escalatedTo || "");
       })
       .catch(() => toast.error("Failed to load incident"))
       .finally(() => setLoading(false));
   }, [params.id]);
+
+  async function handleDecision(action: "accept" | "dismiss") {
+    if (!incident) return;
+    setDecisionSaving(action);
+    try {
+      const res = await fetch(`/api/incidents/${incident.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to update report");
+      }
+      const updated = await res.json();
+      setIncident(updated);
+      setEditStatus(updated.status);
+      setEditPriority(updated.priority);
+      setEditNotes(updated.internalNotes || "");
+      setEditResolution(updated.resolution || "");
+      setEditEscalatedTo(updated.escalatedTo || "");
+      toast.success(action === "accept" ? "Report accepted — booking status updated" : "Report dismissed — booking unchanged");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update report");
+    } finally {
+      setDecisionSaving(null);
+    }
+  }
 
   async function handleSave() {
     if (!incident) return;
@@ -140,11 +172,13 @@ export default function IncidentDetailPage() {
           priority: editPriority,
           internalNotes: editNotes,
           resolution: editResolution,
+          escalatedTo: editEscalatedTo || null,
         }),
       });
       if (!res.ok) throw new Error();
       const updated = await res.json();
       setIncident(updated);
+      setEditEscalatedTo(updated.escalatedTo || "");
       toast.success("Incident updated");
     } catch {
       toast.error("Failed to save changes");
@@ -153,23 +187,17 @@ export default function IncidentDetailPage() {
     }
   }
 
-  async function handleAddNote() {
-    if (!incident || !newNote.trim()) return;
+  const reportPhoto = (() => {
+    if (!incident?.internalNotes) return null;
     try {
-      const res = await fetch(`/api/incidents/${incident.id}/timeline`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "note_added", description: newNote }),
-      });
-      if (!res.ok) throw new Error();
-      const entry = await res.json();
-      setIncident((prev) => prev ? { ...prev, timeline: [entry, ...prev.timeline] } : prev);
-      setNewNote("");
-      toast.success("Note added");
+      const parsed = JSON.parse(incident.internalNotes);
+      return parsed && typeof parsed === "object" && "photo" in parsed && parsed.photo
+        ? String(parsed.photo)
+        : null;
     } catch {
-      toast.error("Failed to add note");
+      return null;
     }
-  }
+  })();
 
   if (loading) {
     return (
@@ -222,6 +250,16 @@ export default function IncidentDetailPage() {
               <div className="rounded-lg border bg-muted/20 p-4">
                 <p className="text-sm leading-relaxed">{incident.description}</p>
               </div>
+              {reportPhoto && (
+                <div>
+                  <p className="mb-1 text-xs text-muted-foreground">Evidence photo</p>
+                  <img
+                    src={reportPhoto}
+                    alt="Report evidence"
+                    className="max-h-60 w-full rounded-lg border object-cover"
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-xs text-muted-foreground">Type</span>
@@ -298,6 +336,41 @@ export default function IncidentDetailPage() {
               <CardDescription className="text-xs">Changes are emailed to the customer automatically</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {(incident.type === "no_show" || incident.type === "cancellation") && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold text-amber-800">
+                    {incident.status === "PENDING"
+                      ? "Decision required"
+                      : incident.status === "RESOLVED" ? "Report accepted — booking status updated" : "Report closed"}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-amber-700">
+                    {incident.type === "no_show"
+                      ? "Accepting marks the booking as No Show and notifies the customer."
+                      : "Accepting cancels the booking and notifies the customer."}
+                    {" "}Dismissing leaves the booking unchanged.
+                  </p>
+                  {incident.status === "PENDING" && (
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        size="sm" variant="destructive" className="flex-1"
+                        onClick={() => handleDecision("accept")}
+                        disabled={decisionSaving !== null}
+                      >
+                        {decisionSaving === "accept" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Check className="mr-1 h-3.5 w-3.5" />}
+                        Accept
+                      </Button>
+                      <Button
+                        size="sm" variant="outline" className="flex-1"
+                        onClick={() => handleDecision("dismiss")}
+                        disabled={decisionSaving !== null}
+                      >
+                        {decisionSaving === "dismiss" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <X className="mr-1 h-3.5 w-3.5" />}
+                        Dismiss
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs">Status</Label>
                 <Select
@@ -319,8 +392,8 @@ export default function IncidentDetailPage() {
               <div className="space-y-1.5">
                 <Label className="text-xs">Escalate To</Label>
                 <select
-                  value={incident?.escalatedTo || ""}
-                  onChange={(e) => {}}
+                  value={editEscalatedTo}
+                  onChange={(e) => setEditEscalatedTo(e.target.value)}
                   className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm"
                 >
                   <option value="">Not escalated</option>

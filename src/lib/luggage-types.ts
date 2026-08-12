@@ -59,7 +59,8 @@ export function calcTotalBags(quantities: Record<string, number>): number {
 }
 
 export function calcExtraFee(totalBags: number): number {
-  return totalBags > EXTRA_BAG_THRESHOLD ? EXTRA_BAG_FEE : 0;
+  if (totalBags <= EXTRA_BAG_THRESHOLD) return 0;
+  return (totalBags - EXTRA_BAG_THRESHOLD) * EXTRA_BAG_FEE;
 }
 
 export function buildLuggageDetails(quantities: Record<string, number>): string {

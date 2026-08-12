@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, QrCode, Camera, CheckCircle, Loader2, Package,
-  Truck, Warehouse, ShieldCheck, MapPin, Clock, ChevronRight,
+  Truck, Warehouse, ShieldCheck, MapPin, Clock,
+  Tag, Briefcase, Search,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -23,37 +24,91 @@ const STATUS_FLOW = [
 
 type VerificationType = "pickup" | "dropoff" | "status";
 
-export default function QrScannerPage() {
-  const [scanResult, setScanResult] = useState<{
+interface LuggageItemSummary {
+  id: string;
+  tagNumber: string;
+  status: string;
+}
+
+interface ScanResult {
+  referenceNumber: string;
+  currentStatus: string;
+  customerName: string;
+  numberOfBags?: number;
+  totalPrice?: number;
+  pickupLocation?: string;
+  dropOffLocation?: string;
+  checkIn?: string;
+  checkOut?: string | null;
+  location?: { name?: string; city?: string } | null;
+  luggageItems?: LuggageItemSummary[];
+}
+
+interface IntakeResult {
+  luggage: {
+    id: string;
+    tagNumber: string;
+    status: string;
+    description: string | null;
+    location: string | null;
+    checkInAt: string;
+    checkOutAt: string | null;
+    flag: string | null;
+    bookingId: string;
+  };
+  booking: {
+    id: string;
     referenceNumber: string;
-    currentStatus: string;
-    customerName: string;
-    numberOfBags?: number;
-    totalPrice?: number;
-  } | null>(null);
+    status: string;
+    numberOfBags: number;
+    pickupLocation: string;
+    dropOffLocation: string;
+    checkIn: string;
+    checkOut: string | null;
+    customer: { name: string; email: string; phone: string };
+  };
+  remaining: number;
+  storageEligible: boolean;
+}
+
+function cleanScanInput(ref: string): string {
+  const withoutQuery = ref.split("?")[0].split("#")[0];
+  const clean = withoutQuery.includes("/")
+    ? withoutQuery.split("/").pop() || ""
+    : withoutQuery;
+  return clean.trim().toUpperCase();
+}
+
+export default function QrScannerPage() {
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [selectedStatus, setSelectedStatus] = useState("");
   const [photo, setPhoto] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [tagNumbers, setTagNumbers] = useState<string[]>([]);
   const [scanning, setScanning] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [manualRef, setManualRef] = useState("");
   const [mode, setMode] = useState<"camera" | "manual" | "idle">("idle");
   const [verificationType, setVerificationType] = useState<VerificationType>("status");
+  const [customerVerified, setCustomerVerified] = useState(false);
+  const [customerScanMode, setCustomerScanMode] = useState(false);
+  const [customerManualRef, setCustomerManualRef] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [flow, setFlow] = useState<"booking" | "luggage">("booking");
+  const [intakeCamera, setIntakeCamera] = useState(false);
+  const [intakeTag, setIntakeTag] = useState("");
+  const [intakeRef, setIntakeRef] = useState("");
+  const [intakeLoading, setIntakeLoading] = useState(false);
+  const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
+  const [intakeProcessing, setIntakeProcessing] = useState(false);
+
   const handleScan = useCallback(async (ref: string) => {
-    // Clean up reference - might be a URL or just the code
-    let cleanRef = ref;
-    if (ref.includes("/")) {
-      // Extract reference from URL like /track/DROPFLY-XXX
-      const parts = ref.split("/");
-      cleanRef = parts[parts.length - 1];
-    }
-    cleanRef = cleanRef.trim().toUpperCase();
+    const cleanRef = cleanScanInput(ref);
 
     setScanning(true);
     try {
-      const res = await fetch(`/api/bookings?include=basic&ref=${cleanRef}`);
+      const res = await fetch(`/api/bookings?include=basic&ref=${encodeURIComponent(cleanRef)}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
       const booking = Array.isArray(data)
@@ -64,13 +119,26 @@ export default function QrScannerPage() {
         setScanning(false);
         return;
       }
+      const existingCount = booking.luggageItems?.length || 0;
+      const slots = Math.max(0, (booking.numberOfBags || 0) - existingCount);
       setScanResult({
         referenceNumber: cleanRef,
         currentStatus: booking.status,
         customerName: booking.customer?.name || "Unknown",
         numberOfBags: booking.numberOfBags,
         totalPrice: booking.totalPrice,
+        pickupLocation: booking.pickupLocation,
+        dropOffLocation: booking.dropOffLocation,
+        checkIn: booking.checkIn,
+        checkOut: booking.checkOut,
+        location: booking.location,
+        luggageItems: booking.luggageItems || [],
       });
+      setTagNumbers(
+        Array.from({ length: slots }, (_, i) => `TAG-${cleanRef}-${existingCount + i + 1}`)
+      );
+      setCustomerVerified(false);
+      setCustomerScanMode(false);
       // Auto-select next status
       const currentIdx = STATUS_FLOW.findIndex((s) => s.value === booking.status);
       if (currentIdx < STATUS_FLOW.length - 1) {
@@ -98,6 +166,10 @@ export default function QrScannerPage() {
         note: note || `${verificationType} verification`,
       };
       if (photo) body.photo = photo;
+      if (customerVerified) body.customerVerified = true;
+      if (verificationType === "pickup" && tagNumbers.length > 0) {
+        body.tagNumbers = tagNumbers;
+      }
 
       // Attach geolocation
       if (navigator.geolocation) {
@@ -124,7 +196,7 @@ export default function QrScannerPage() {
       const statusLabel = STATUS_FLOW.find((s) => s.value === selectedStatus)?.label;
       toast.success(
         verificationType === "pickup"
-          ? `✅ Pickup verified — ${scanResult.referenceNumber}`
+          ? `✅ Luggage collected — ${scanResult.referenceNumber}`
           : verificationType === "dropoff"
           ? `✅ Delivery confirmed — ${scanResult.referenceNumber}`
           : `Updated to ${statusLabel}`
@@ -134,7 +206,11 @@ export default function QrScannerPage() {
       setNote("");
       setSelectedStatus("");
       setManualRef("");
+      setTagNumbers([]);
       setVerificationType("status");
+      setCustomerVerified(false);
+      setCustomerScanMode(false);
+      setCustomerManualRef("");
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Failed to process scan";
       toast.error(message);
@@ -150,6 +226,73 @@ export default function QrScannerPage() {
     reader.readAsDataURL(file);
   }
 
+  function handleTagChange(index: number, value: string) {
+    setTagNumbers((prev) => prev.map((v, i) => (i === index ? value.toUpperCase() : v)));
+  }
+
+  function handleCustomerScan(ref: string) {
+    if (!scanResult) return;
+    const cleanRef = cleanScanInput(ref);
+    if (cleanRef === scanResult.referenceNumber) {
+      setCustomerVerified(true);
+      setCustomerScanMode(false);
+      setCustomerManualRef("");
+      toast.success("Customer ownership verified");
+    } else {
+      toast.error("QR does not match this booking");
+    }
+  }
+
+  async function handleIntakeLookup() {
+    if (!intakeTag.trim() || !intakeRef.trim()) {
+      toast.error("Enter both the baggage tag number and booking reference");
+      return;
+    }
+    setIntakeLoading(true);
+    setIntakeResult(null);
+    try {
+      const params = new URLSearchParams({
+        tagNumber: intakeTag.trim().toUpperCase(),
+        referenceNumber: intakeRef.trim().toUpperCase(),
+      });
+      const res = await fetch(`/api/luggage/by-tag?${params}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Lookup failed");
+      setIntakeResult(json);
+      toast.success("Luggage found — verify and confirm intake");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Lookup failed");
+    } finally {
+      setIntakeLoading(false);
+    }
+  }
+
+  async function handleIntakeConfirm() {
+    if (!intakeResult) return;
+    setIntakeProcessing(true);
+    try {
+      const res = await fetch("/api/qr/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          luggageScan: true,
+          tagNumber: intakeResult.luggage.tagNumber,
+          referenceNumber: intakeResult.booking.referenceNumber,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Intake failed");
+      toast.success(`✅ Luggage ${intakeResult.luggage.tagNumber} stored`);
+      setIntakeResult(null);
+      setIntakeTag("");
+      setIntakeRef("");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Intake failed");
+    } finally {
+      setIntakeProcessing(false);
+    }
+  }
+
   // === NO SCAN RESULT: Show scanner ===
   if (!scanResult) {
     return (
@@ -160,18 +303,40 @@ export default function QrScannerPage() {
           </Button>
           <div>
             <h1 className="text-xl font-bold">QR Scanner</h1>
-            <p className="text-xs text-muted-foreground">Scan to verify pickup or delivery</p>
+            <p className="text-xs text-muted-foreground">
+              {flow === "booking" ? "Scan to collect or verify bookings" : "Storage intake for collected luggage"}
+            </p>
           </div>
         </div>
 
-        {/* Action buttons - Shopee/Lazada style */}
-        {mode === "idle" && (
+        {/* Flow toggle */}
+        <div className="grid grid-cols-2 gap-2 rounded-xl border bg-muted/40 p-1">
+          <button
+            onClick={() => { setFlow("booking"); setIntakeResult(null); setIntakeCamera(false); }}
+            className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              flow === "booking" ? "bg-white shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Package className="h-4 w-4" /> Booking Scan
+          </button>
+          <button
+            onClick={() => { setFlow("luggage"); setMode("idle"); }}
+            className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              flow === "luggage" ? "bg-white shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Warehouse className="h-4 w-4" /> Luggage Intake
+          </button>
+        </div>
+
+        {/* Booking flow: action buttons */}
+        {flow === "booking" && mode === "idle" && (
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => setMode("camera")}
               className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 p-6 transition-all hover:border-blue-400 hover:bg-blue-50 hover:shadow-md"
             >
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-blue-500 shadow-lg">
                 <Camera className="h-7 w-7 text-white" />
               </div>
               <div className="text-center">
@@ -181,21 +346,21 @@ export default function QrScannerPage() {
             </button>
             <button
               onClick={() => setMode("manual")}
-              className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50/50 p-6 transition-all hover:border-violet-400 hover:bg-violet-50 hover:shadow-md"
+              className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 p-6 transition-all hover:border-blue-400 hover:bg-blue-50 hover:shadow-md"
             >
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-blue-500 shadow-lg">
                 <QrCode className="h-7 w-7 text-white" />
               </div>
               <div className="text-center">
-                <p className="font-semibold text-violet-900">Enter Code</p>
-                <p className="text-[11px] text-violet-600/70">Type reference number</p>
+                <p className="font-semibold text-blue-900">Enter Transaction Code</p>
+                <p className="text-[11px] text-blue-600/70">Type reference number</p>
               </div>
             </button>
           </div>
         )}
 
-        {/* Camera Scanner */}
-        {mode === "camera" && (
+        {/* Booking flow: camera */}
+        {flow === "booking" && mode === "camera" && (
           <CameraQRScanner
             onScan={handleScan}
             onClose={() => setMode("idle")}
@@ -204,12 +369,12 @@ export default function QrScannerPage() {
           />
         )}
 
-        {/* Manual Entry */}
-        {mode === "manual" && (
+        {/* Booking flow: manual entry */}
+        {flow === "booking" && mode === "manual" && (
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Enter Reference</CardTitle>
+                <CardTitle className="text-base">Enter Transaction Code</CardTitle>
                 <Button variant="ghost" size="sm" onClick={() => setMode("idle")}>
                   <ArrowLeft className="h-4 w-4 mr-1" /> Back
                 </Button>
@@ -236,14 +401,144 @@ export default function QrScannerPage() {
           </Card>
         )}
 
+        {/* Luggage intake flow */}
+        {flow === "luggage" && (
+          <>
+            {intakeCamera ? (
+              <CameraQRScanner
+                onScan={(ref) => { setIntakeTag(cleanScanInput(ref)); setIntakeCamera(false); }}
+                onClose={() => setIntakeCamera(false)}
+                title="Scan Baggage Tag"
+                description="Point at the physical tag on the luggage"
+              />
+            ) : intakeResult ? (
+              <Card className="border-t-4 border-indigo-500">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Tag className="h-4 w-4 text-indigo-500" /> Luggage Intake
+                    </CardTitle>
+                    <Button variant="ghost" size="sm" onClick={() => setIntakeResult(null)}>
+                      <ArrowLeft className="h-4 w-4 mr-1" /> New Scan
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Baggage Tag Number</p>
+                      <p className="font-mono font-bold text-indigo-700">{intakeResult.luggage.tagNumber}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-muted-foreground">Status</p>
+                      <Badge variant="outline" className="mt-0.5">
+                        {intakeResult.luggage.status.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Booking</p>
+                        <p className="font-mono font-semibold">{intakeResult.booking.referenceNumber}</p>
+                      </div>
+                      <Badge variant="secondary">{intakeResult.booking.numberOfBags} bag{intakeResult.booking.numberOfBags > 1 ? "s" : ""}</Badge>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">{intakeResult.booking.customer.name}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                      <p className="flex items-start gap-1 text-muted-foreground">
+                        <MapPin className="mt-0.5 h-3 w-3 shrink-0" /> {intakeResult.booking.pickupLocation}
+                      </p>
+                      <p className="flex items-start gap-1 text-muted-foreground">
+                        <Warehouse className="mt-0.5 h-3 w-3 shrink-0" /> {intakeResult.booking.dropOffLocation}
+                      </p>
+                    </div>
+                    <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" /> Booking status: {intakeResult.booking.status.replace(/_/g, " ")}
+                    </p>
+                  </div>
+
+                  {!intakeResult.storageEligible ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      ⚠️ This booking is not ready for storage. Complete luggage collection first.
+                    </div>
+                  ) : intakeResult.luggage.status === "IN_STORAGE" ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                      ✓ This luggage is already in storage.
+                    </div>
+                  ) : (
+                    <Button
+                      className="w-full h-11 rounded-xl"
+                      size="lg"
+                      onClick={handleIntakeConfirm}
+                      disabled={intakeProcessing}
+                    >
+                      {intakeProcessing ? (
+                        <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...</>
+                      ) : (
+                        <><Warehouse className="mr-2 h-5 w-5" /> Confirm Storage Intake</>
+                      )}
+                    </Button>
+                  )}
+                  {intakeResult.remaining > 0 && (
+                    <p className="text-center text-[10px] text-muted-foreground">
+                      {intakeResult.remaining} more luggage item{intakeResult.remaining > 1 ? "s" : ""} pending for this booking
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-indigo-500" /> Storage Intake
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Button
+                    variant="outline" className="w-full justify-start"
+                    onClick={() => setIntakeCamera(true)}
+                  >
+                    <QrCode className="mr-2 h-4 w-4" /> Scan Baggage Tag QR
+                  </Button>
+                  <div className="space-y-2">
+                    <input
+                      value={intakeTag}
+                      onChange={(e) => setIntakeTag(e.target.value.toUpperCase())}
+                      placeholder="Baggage tag number (e.g. TAG-DROPFLY-SEED-001-1)"
+                      className="flex h-11 w-full rounded-xl border border-input bg-background px-4 text-sm font-mono shadow-sm"
+                    />
+                    <input
+                      value={intakeRef}
+                      onChange={(e) => setIntakeRef(e.target.value.toUpperCase())}
+                      placeholder="Booking / transaction code"
+                      className="flex h-11 w-full rounded-xl border border-input bg-background px-4 text-sm font-mono shadow-sm"
+                      onKeyDown={(e) => { if (e.key === "Enter") handleIntakeLookup(); }}
+                    />
+                    <Button
+                      className="w-full rounded-xl"
+                      onClick={handleIntakeLookup}
+                      disabled={intakeLoading || !intakeTag.trim() || !intakeRef.trim()}
+                    >
+                      {intakeLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                      Look Up Luggage
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </>
+        )}
+
         {/* Recent scans tip */}
-        {mode === "idle" && (
+        {flow === "booking" && mode === "idle" && (
           <div className="rounded-xl border bg-muted/30 p-4">
             <p className="text-xs font-medium text-muted-foreground mb-2">Quick Tips</p>
             <div className="space-y-1.5 text-xs text-muted-foreground">
-              <p>📦 <strong>Pickup:</strong> Scan when receiving luggage from customer</p>
+              <p>📦 <strong>Collect:</strong> Scan booking, photograph luggage, assign physical tag numbers</p>
+              <p>🏬 <strong>Intake:</strong> At the storage desk, scan each tag to move luggage to In Storage</p>
               <p>🚚 <strong>Delivery:</strong> Scan to confirm successful handover</p>
-              <p>📷 <strong>Photo proof:</strong> Take a photo for verification records</p>
             </div>
           </div>
         )}
@@ -254,21 +549,26 @@ export default function QrScannerPage() {
   // === SCAN RESULT: Shopee/Lazada verification workflow ===
   const currentIdx = STATUS_FLOW.findIndex((s) => s.value === scanResult.currentStatus);
   const nextStatuses = STATUS_FLOW.filter((_, i) => i > currentIdx);
-  const currentStatus = STATUS_FLOW[currentIdx];
+  const isCollection = verificationType === "pickup";
+  const existingTags = scanResult.luggageItems || [];
+  const tagSlots = tagNumbers.length;
+  const allTagsFilled = tagSlots === 0 || tagNumbers.every((t) => t.trim());
 
   return (
     <div className="mx-auto max-w-lg space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => { setScanResult(null); setPhoto(null); setNote(""); }}>
+        <Button variant="ghost" size="sm" onClick={() => { setScanResult(null); setPhoto(null); setNote(""); setTagNumbers([]); }}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
           <h1 className="text-lg font-bold">
-            {verificationType === "pickup" ? "Pickup Verification" :
+            {isCollection ? "Luggage Collection" :
              verificationType === "dropoff" ? "Delivery Confirmation" : "Status Update"}
           </h1>
-          <p className="text-xs text-muted-foreground">Verify and confirm the action</p>
+          <p className="text-xs text-muted-foreground">
+            {isCollection ? "Collect luggage and assign physical tags" : "Verify and confirm the action"}
+          </p>
         </div>
       </div>
 
@@ -289,6 +589,35 @@ export default function QrScannerPage() {
               )}
             </div>
           </div>
+
+          {/* Trip summary */}
+          {scanResult.pickupLocation && (
+            <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg border bg-muted/20 p-3 text-xs">
+              <div className="flex items-start gap-2">
+                <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-blue-500" />
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Pickup / Collection</p>
+                  <p className="font-medium">{scanResult.pickupLocation}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-indigo-500" />
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Drop-off / Storage</p>
+                  <p className="font-medium">{scanResult.dropOffLocation || "—"}</p>
+                </div>
+              </div>
+              {scanResult.checkIn && (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Clock className="h-3 w-3 shrink-0" />
+                  <span>
+                    Check-in {new Date(scanResult.checkIn).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    {scanResult.checkOut ? ` → ${new Date(scanResult.checkOut).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Status Progress */}
           <div className="mt-4 flex items-center gap-1">
@@ -314,7 +643,7 @@ export default function QrScannerPage() {
       {/* Verification Type Selector */}
       <div className="grid grid-cols-3 gap-2">
         {([
-          { type: "pickup" as const, label: "Pickup", icon: Package, desc: "Receive from customer" },
+          { type: "pickup" as const, label: "Collection", icon: Package, desc: "Receive from customer" },
           { type: "dropoff" as const, label: "Delivery", icon: Truck, desc: "Hand to customer" },
           { type: "status" as const, label: "Status", icon: MapPin, desc: "Update progress" },
         ]).map((v) => (
@@ -375,12 +704,119 @@ export default function QrScannerPage() {
         </Card>
       )}
 
+      {/* Luggage Tags (collection) */}
+      {isCollection && selectedStatus === "RECEIVED" && (
+        <Card className={allTagsFilled ? "" : "border-t-2 border-t-red-500"}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Tag className="h-4 w-4" />
+              Assign Baggage Tag Numbers
+              <Badge variant="destructive" className="text-[10px]">Required</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Enter the tag numbers printed on the physical tags taken from the DropnFly location — they must be identical to the tags attached to each luggage piece.
+            </p>
+
+            {existingTags.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-medium text-muted-foreground">Already tagged</p>
+                {existingTags.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2">
+                    <span className="font-mono text-sm">{item.tagNumber}</span>
+                    <Badge variant="outline" className="text-[10px]">{item.status.replace(/_/g, " ")}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {tagSlots > 0 ? (
+              <div className="space-y-2">
+                {tagNumbers.map((value, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-purple-100 text-xs font-bold text-purple-700">
+                      {existingTags.length + i + 1}
+                    </div>
+                    <input
+                      value={value}
+                      onChange={(e) => handleTagChange(i, e.target.value)}
+                      placeholder={`Physical tag ${i + 1}`}
+                      className="flex h-11 flex-1 rounded-xl border border-input bg-background px-4 text-sm font-mono shadow-sm"
+                    />
+                    {value.trim() ? (
+                      <CheckCircle className="h-4 w-4 shrink-0 text-emerald-500" />
+                    ) : (
+                      <span className="text-[10px] font-medium text-red-500 w-14 text-right">required</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-emerald-700">✓ All bags already have tags assigned.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Customer Ownership Verification (drop-off / handover) */}
+      {verificationType === "dropoff" && selectedStatus === "DELIVERED" && (
+        <Card className={customerVerified ? "border-emerald-200 bg-emerald-50" : "border-t-2 border-t-orange-500"}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4" />
+              Verify Customer Ownership
+              {!customerVerified && <Badge variant="destructive" className="text-[10px]">Required</Badge>}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {customerVerified ? (
+              <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                <CheckCircle className="h-5 w-5 text-emerald-600" />
+                <p className="text-sm font-medium text-emerald-800">Customer QR verified — ownership confirmed</p>
+              </div>
+            ) : customerScanMode ? (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Scan the QR shown on the customer&apos;s phone (booking confirmation) to verify ownership.
+                </p>
+                <CameraQRScanner
+                  onScan={handleCustomerScan}
+                  onClose={() => setCustomerScanMode(false)}
+                  title="Scan Customer QR"
+                  description="Point at the QR on the customer's phone"
+                />
+                <div className="flex items-center gap-2">
+                  <input
+                    value={customerManualRef}
+                    onChange={(e) => setCustomerManualRef(e.target.value.toUpperCase())}
+                    placeholder="Or enter reference manually"
+                    className="flex h-10 flex-1 rounded-xl border border-input bg-background px-4 text-sm font-mono shadow-sm"
+                    onKeyDown={(e) => { if (e.key === "Enter" && customerManualRef) handleCustomerScan(customerManualRef); }}
+                  />
+                  <Button variant="outline" size="sm" onClick={() => customerManualRef && handleCustomerScan(customerManualRef)}>
+                    Verify
+                  </Button>
+                </div>
+                <Button variant="ghost" size="sm" className="w-full text-xs" onClick={() => setCustomerScanMode(false)}>
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button className="w-full bg-orange-500 text-white hover:bg-orange-600" onClick={() => setCustomerScanMode(true)}>
+                <QrCode className="mr-2 h-4 w-4" /> Scan Customer QR
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Photo Proof */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Camera className="h-4 w-4" />
-            Photo Proof
+            {isCollection ? "Luggage Photo" : "Photo Proof"}
             {verificationType !== "status" && (
               <Badge variant="destructive" className="text-[10px]">Required</Badge>
             )}
@@ -404,7 +840,7 @@ export default function QrScannerPage() {
             >
               <Camera className="h-8 w-8 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                {verificationType === "pickup" ? "Photo of received luggage" :
+                {isCollection ? "Photo confirmation of the luggage being collected" :
                  verificationType === "dropoff" ? "Photo of handover to customer" :
                  "Capture photo proof"}
               </p>
@@ -434,12 +870,18 @@ export default function QrScannerPage() {
         className="w-full h-12 rounded-xl text-base font-semibold shadow-lg"
         size="lg"
         onClick={handleSubmit}
-        disabled={processing || !selectedStatus || (verificationType !== "status" && !photo)}
+        disabled={
+          processing ||
+          !selectedStatus ||
+          (verificationType !== "status" && !photo) ||
+          (isCollection && selectedStatus === "RECEIVED" && !allTagsFilled) ||
+          (verificationType === "dropoff" && selectedStatus === "DELIVERED" && !customerVerified)
+        }
       >
         {processing ? (
           <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...</>
-        ) : verificationType === "pickup" ? (
-          <><Package className="mr-2 h-5 w-5" /> Confirm Pickup</>
+        ) : isCollection ? (
+          <><Package className="mr-2 h-5 w-5" /> {tagSlots > 0 ? "Confirm Collection & Tags" : "Confirm Collection"}</>
         ) : verificationType === "dropoff" ? (
           <><Truck className="mr-2 h-5 w-5" /> Confirm Delivery</>
         ) : (
@@ -449,7 +891,17 @@ export default function QrScannerPage() {
 
       {verificationType !== "status" && !photo && (
         <p className="text-center text-xs text-amber-600">
-          ⚠️ Photo proof required for {verificationType} verification
+          ⚠️ Photo of the luggage is required for {verificationType} verification
+        </p>
+      )}
+      {isCollection && selectedStatus === "RECEIVED" && !allTagsFilled && (
+        <p className="text-center text-xs text-red-600">
+          ⚠️ Enter a tag number for every luggage piece before updating
+        </p>
+      )}
+      {verificationType === "dropoff" && selectedStatus === "DELIVERED" && !customerVerified && (
+        <p className="text-center text-xs text-orange-600">
+          ⚠️ Scan the customer QR to verify ownership before confirming delivery
         </p>
       )}
     </div>

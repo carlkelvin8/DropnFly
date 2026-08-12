@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -22,15 +22,18 @@ import {
 } from "@/components/ui/table";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import {
-  ArrowLeft, Mail, Phone, MapPin, Calendar, Package, DollarSign,
+  ArrowLeft, Mail, Phone, MapPin, Calendar, Package,
   User, Navigation, Printer, Trash2, Tag, MessageCircle, Clock,
   Briefcase, Plus, Edit3, AlertTriangle, X, CheckCircle, ShieldAlert,
-  Wrench, ShoppingBag, CreditCard, Percent, Receipt, Ban, UserX,
-  RotateCcw, History, Flag, Check, XCircle, ChevronDown, Activity,
+  Wrench, ShoppingBag, CreditCard, Receipt, Ban, UserX,
+  RotateCcw, History, Flag, Check, XCircle, ChevronDown, Activity, Camera, Loader2,
+  Navigation2, Radio, Play, Square,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { LocationUpdater } from "@/components/tracking/LocationUpdater";
+import { BookingScannerPanel } from "@/components/scanner/BookingScannerPanel";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Booking {
@@ -50,7 +53,8 @@ interface Booking {
   totalPrice: number;
   status: string;
   createdAt: string;
-  assignments: { id: string; user: { name: string; email: string } }[];
+  pickupStartedAt: string | null;
+  assignments: { id: string; phase: string; user: { id: string; name: string; email: string } }[];
   payments?: { id: string; amount: number; method: string; status: string; paidAt: string | null }[];
   promoCode?: { code: string } | null;
 }
@@ -117,7 +121,16 @@ export default function BookingDetailPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
   const [serviceNote, setServiceNote] = useState("");
-  const [dangerConfirm, setDangerConfirm] = useState<{ action: string } | null>(null);
+  const [dangerModal, setDangerModal] = useState<{ action: "no-show" | "cancelled"; mode: "admin" | "report" } | null>(null);
+  const [dangerPhoto, setDangerPhoto] = useState<string | null>(null);
+  const [dangerNote, setDangerNote] = useState("");
+  const [dangerSubmitting, setDangerSubmitting] = useState(false);
+  const dangerFileRef = useRef<HTMLInputElement>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [pickupBusy, setPickupBusy] = useState(false);
+  const [showTrackingPanel, setShowTrackingPanel] = useState(false);
+  const [confirmCancelTracking, setConfirmCancelTracking] = useState(false);
   const [settleAmount, setSettleAmount] = useState<number>(0);
   const [settleMethod, setSettleMethod] = useState("CASH");
   const [refundAmount, setRefundAmount] = useState(0);
@@ -130,9 +143,7 @@ export default function BookingDetailPage() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [tagRequestCount, setTagRequestCount] = useState(1);
   const [requestingTags, setRequestingTags] = useState(false);
-  const [usedTags, setUsedTags] = useState<string[]>([]);
   const [flaggableItem, setFlaggableItem] = useState<string | null>(null);
-  const [flagReason, setFlagReason] = useState("LOST");
 
   useEffect(() => {
     const abort = new AbortController();
@@ -141,18 +152,30 @@ export default function BookingDetailPage() {
       fetch("/api/employees", { signal: abort.signal }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/extensions`, { signal: abort.signal }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/luggage`, { signal: abort.signal }).then((r) => r.json()),
-      fetch("/api/baggage-tags/available", { signal: abort.signal }).then((r) => r.json()).catch(() => ({ usedTagNumbers: [] })),
-    ]).then(([bookingData, empData, extData, luggageData, tagData]) => {
+    ]).then(([bookingData, empData, extData, luggageData]) => {
       if (!abort.signal.aborted) {
         setBooking(bookingData);
         setEmployees(empData || []);
         setExtensions(extData || []);
         setLuggageItems(luggageData || []);
-        setUsedTags(tagData?.usedTagNumbers || []);
+        const paid = (bookingData?.payments || [])
+          .filter((p: { status: string }) => p.status === "PAID")
+          .reduce((s: number, p: { amount: number }) => s + p.amount, 0);
+        setSettleAmount(bookingData && bookingData.totalPrice - paid > 0 ? bookingData.totalPrice - paid : 0);
       }
     }).catch(() => {});
     return () => abort.abort();
   }, [params.id]);
+
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((s) => {
+        setUserRole(s?.user?.role || null);
+        setSessionUserId(s?.user?.id || null);
+      })
+      .catch(() => setUserRole(null));
+  }, []);
 
   const totalPaid = (booking?.payments || [])
     .filter((p) => p.status === "PAID")
@@ -162,15 +185,60 @@ export default function BookingDetailPage() {
     totalPaid >= booking.totalPrice && booking.totalPrice > 0 ? "full" :
     totalPaid > 0 ? "dp" : "unpaid";
 
-  useEffect(() => {
-    if (booking) setSettleAmount(balance > 0 ? balance : 0);
-  }, [booking, balance]);
+  const pickupStarted = !!booking?.pickupStartedAt;
+  const pickupEmployee = booking?.assignments?.find((a) => a.phase !== "DROPOFF")?.user ||
+    booking?.assignments?.[0]?.user || null;
+  const isAssignee = !!pickupEmployee && sessionUserId === pickupEmployee.id;
 
   function reloadBooking() {
     fetch(`/api/bookings/${params.id}`)
       .then((r) => r.json())
-      .then(setBooking)
+      .then((bookingData) => {
+        setBooking(bookingData);
+        const paid = (bookingData?.payments || [])
+          .filter((p: { status: string }) => p.status === "PAID")
+          .reduce((s: number, p: { amount: number }) => s + p.amount, 0);
+        setSettleAmount(bookingData && bookingData.totalPrice - paid > 0 ? bookingData.totalPrice - paid : 0);
+      })
       .catch(() => toast.error("Failed to reload booking"));
+  }
+
+  async function handleStartPickup() {
+    setPickupBusy(true);
+    try {
+      const res = await fetch(`/api/bookings/${params.id}/pickup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start" }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to start pickup");
+      setBooking(json.booking);
+      toast.success("Pickup started — live geolocation tracking enabled");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to start pickup");
+    } finally {
+      setPickupBusy(false);
+    }
+  }
+
+  async function handleCancelTracking() {
+    setPickupBusy(true);
+    try {
+      const res = await fetch(`/api/bookings/${params.id}/pickup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel" }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to cancel tracking");
+      setBooking(json.booking);
+      toast.success("Live tracking cancelled");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to cancel tracking");
+    } finally {
+      setPickupBusy(false);
+    }
   }
 
   async function handleAddLuggage() {
@@ -242,12 +310,13 @@ export default function BookingDetailPage() {
     setSaving(true);
     const formData = new FormData(e.currentTarget);
     const userId = formData.get("employeeId") as string;
+    const phase = formData.get("phase") as string;
     if (userId) {
       try {
         const res = await fetch(`/api/bookings/${params.id}/assign`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId }),
+          body: JSON.stringify({ userId, phase }),
         });
         if (!res.ok) throw new Error("Failed to assign employee");
         const getRes = await fetch(`/api/bookings/${params.id}`);
@@ -270,22 +339,70 @@ export default function BookingDetailPage() {
     setDeleteConfirm(false);
   }
 
-  async function handleDangerAction(action: string) {
-    setSaving(true);
+  function handleDangerPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => setDangerPhoto(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleDangerConfirm() {
+    if (!dangerModal) return;
+    setDangerSubmitting(true);
     try {
-      const res = await fetch(`/api/bookings/${params.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: action === "no-show" ? "NO_SHOW" : "CANCELLED" }),
-      });
-      if (!res.ok) throw new Error();
-      const getRes = await fetch(`/api/bookings/${params.id}`);
-      if (!getRes.ok) throw new Error();
-      setBooking(await getRes.json());
-      toast.success(`Booking marked as ${action === "no-show" ? "No Show" : "Cancelled"}`);
-    } catch { toast.error("Failed to update booking"); }
-    setSaving(false);
-    setDangerConfirm(null);
+      if (dangerModal.mode === "admin") {
+        const body: Record<string, unknown> = {
+          status: dangerModal.action === "no-show" ? "NO_SHOW" : "CANCELLED",
+          note: dangerNote || undefined,
+        };
+        if (dangerPhoto) body.photo = dangerPhoto;
+        if (navigator.geolocation) {
+          try {
+            const pos = await new Promise<GeolocationPosition>((res, rej) =>
+              navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 }));
+            body.latitude = pos.coords.latitude;
+            body.longitude = pos.coords.longitude;
+          } catch {}
+        }
+        const res = await fetch(`/api/bookings/${params.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Failed to update booking");
+        }
+        toast.success(`Booking marked as ${dangerModal.action === "no-show" ? "No Show" : "Cancelled"}`);
+      } else {
+        const res = await fetch("/api/incidents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bookingId: params.id,
+            customerId: booking?.customer?.id,
+            type: dangerModal.action === "no-show" ? "no_show" : "cancellation",
+            description: dangerNote || `${dangerModal.action === "no-show" ? "No-show" : "Cancellation"} report for booking ${booking?.referenceNumber}`,
+            photo: dangerPhoto || undefined,
+            note: dangerNote || undefined,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Failed to submit report");
+        }
+        toast.success("Report submitted — forwarded to an admin for review");
+      }
+      setDangerModal(null);
+      setDangerPhoto(null);
+      setDangerNote("");
+      reloadBooking();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setDangerSubmitting(false);
+    }
   }
 
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -407,13 +524,28 @@ export default function BookingDetailPage() {
 
     const serviceNames = ADDITIONAL_SERVICES
       .filter((s) => selectedServices.has(s.id))
-      .map((s) => s.name)
-      .join(", ");
+      .map((s) => s.name);
 
-    const note = `[Additional Services: ${serviceNames} — +₱${total}]${serviceNote ? ` - ${serviceNote}` : ""}`;
-    const newDetails = booking?.luggageDetails
-      ? `${booking.luggageDetails}\n${note}`
-      : note;
+    let newDetails: string;
+    try {
+      const parsed = booking?.luggageDetails ? JSON.parse(booking.luggageDetails) : [];
+      if (Array.isArray(parsed)) {
+        const servicesEntry = parsed.find((item: Record<string, unknown>) => item && Array.isArray(item.services));
+        if (servicesEntry) {
+          const existing = (servicesEntry.services as string[]) || [];
+          servicesEntry.services = Array.from(new Set([...existing, ...serviceNames]));
+        } else {
+          parsed.push({ services: serviceNames });
+        }
+        newDetails = JSON.stringify(parsed);
+      } else {
+        const note = `[Additional Services: ${serviceNames.join(", ")} — +₱${total}]${serviceNote ? ` - ${serviceNote}` : ""}`;
+        newDetails = booking?.luggageDetails ? `${booking.luggageDetails}\n${note}` : note;
+      }
+    } catch {
+      const note = `[Additional Services: ${serviceNames.join(", ")} — +₱${total}]${serviceNote ? ` - ${serviceNote}` : ""}`;
+      newDetails = booking?.luggageDetails ? `${booking.luggageDetails}\n${note}` : note;
+    }
     try {
       const res = await fetch(`/api/bookings/${params.id}`, {
         method: "PUT",
@@ -427,7 +559,7 @@ export default function BookingDetailPage() {
       reloadBooking();
       setSelectedServices(new Set());
       setServiceNote("");
-      toast.success(`Added services (${serviceNames}) — total adjusted`);
+      toast.success(`Added services (${serviceNames.join(", ")}) — total adjusted`);
     } catch { toast.error("Failed to add services"); }
   }
 
@@ -512,10 +644,10 @@ export default function BookingDetailPage() {
       const res = await fetch(`/api/luggage/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ flag: flagReason || "LOST" }),
+        body: JSON.stringify({ flag: "LOST" }),
       });
       if (res.ok) {
-        setLuggageItems((prev) => prev.map((i) => i.id === itemId ? { ...i, flag: flagReason || "LOST" } : i));
+        setLuggageItems((prev) => prev.map((i) => i.id === itemId ? { ...i, flag: "LOST" } : i));
         toast.success("Baggage reported as lost");
       } else toast.error("Failed to report baggage");
     } catch { toast.error("Failed to report baggage"); }
@@ -541,6 +673,9 @@ export default function BookingDetailPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      {pickupStarted && isAssignee && (
+        <LocationUpdater enabled />
+      )}
       <div className="flex items-center gap-4">
         <Button variant="ghost" asChild>
           <Link href="/dashboard/bookings">
@@ -880,9 +1015,59 @@ export default function BookingDetailPage() {
                     <option key={emp.id} value={emp.id}>{emp.name}</option>
                   ))}
                 </select>
+                <select
+                  name="phase"
+                  defaultValue="PICKUP"
+                  className="flex h-9 w-36 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  aria-label="Assignment phase"
+                >
+                  <option value="PICKUP">Pickup</option>
+                  <option value="DROPOFF">Drop-off</option>
+                </select>
                 <Button type="submit" disabled={saving}>Assign</Button>
               </div>
             </form>
+
+            <div className="space-y-2 border-t border-dashed pt-3">
+              <div className="flex items-center gap-2">
+                {pickupStarted ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-green-300 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
+                    Pickup started — live tracking on
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">
+                    Start pickup to begin sharing the assigned employee&apos;s live location
+                  </span>
+                )}
+              </div>
+              <Button
+                className="w-full justify-start bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={handleStartPickup}
+                disabled={pickupBusy || pickupStarted || ["CANCELLED", "NO_SHOW", "DELIVERED"].includes(booking.status)}
+              >
+                {pickupBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : pickupStarted ? <Radio className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
+                {pickupStarted ? "Start Pickup (Started)" : "Start Pickup"}
+              </Button>
+              <Button
+                variant="outline" className="w-full justify-start"
+                onClick={() => setShowTrackingPanel((v) => !v)}
+                disabled={!pickupStarted}
+              >
+                {showTrackingPanel ? <XCircle className="mr-2 h-4 w-4" /> : <Navigation2 className="mr-2 h-4 w-4" />}
+                {showTrackingPanel ? "Close Update Tracking" : "Update Tracking"}
+              </Button>
+              {pickupStarted && userRole === "ADMIN" && (
+                <Button
+                  variant="outline" className="w-full justify-start text-amber-700 hover:text-amber-800"
+                  onClick={() => setConfirmCancelTracking(true)}
+                  disabled={pickupBusy}
+                >
+                  {pickupBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Square className="mr-2 h-4 w-4" />}
+                  Cancel Live Tracking (Admin)
+                </Button>
+              )}
+            </div>
 
             <div className="space-y-2">
               <Button variant="outline" className="w-full justify-start" onClick={() => setShowEditModal(true)}>
@@ -920,18 +1105,23 @@ export default function BookingDetailPage() {
           <CardContent className="space-y-3">
             <Button
               variant="destructive" className="w-full justify-start"
-              onClick={() => setDangerConfirm({ action: "cancelled" })}
+              onClick={() => setDangerModal({ action: "cancelled", mode: userRole === "ADMIN" ? "admin" : "report" })}
               disabled={["DELIVERED", "CANCELLED", "NO_SHOW"].includes(booking.status)}
             >
-              <Ban className="mr-2 h-4 w-4" /> Mark as Cancelled
+              <Ban className="mr-2 h-4 w-4" /> {userRole === "ADMIN" ? "Mark as Cancelled" : "Report Cancellation"}
             </Button>
             <Button
               variant="destructive" className="w-full justify-start"
-              onClick={() => setDangerConfirm({ action: "no-show" })}
+              onClick={() => setDangerModal({ action: "no-show", mode: userRole === "ADMIN" ? "admin" : "report" })}
               disabled={["DELIVERED", "CANCELLED", "NO_SHOW", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"].includes(booking.status)}
             >
-              <UserX className="mr-2 h-4 w-4" /> Mark as No Show
+              <UserX className="mr-2 h-4 w-4" /> {userRole === "ADMIN" ? "Mark as No Show" : "Report No-Show"}
             </Button>
+            {userRole !== "ADMIN" && (
+              <p className="text-xs text-muted-foreground">
+                Non-admins file a report that an admin reviews before the booking status changes.
+              </p>
+            )}
             <div className="border-t pt-3">
               <Button variant="destructive" className="w-full justify-start" onClick={() => setDeleteConfirm(true)}>
                 <Trash2 className="mr-2 h-4 w-4" /> Delete Booking
@@ -940,6 +1130,13 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {showTrackingPanel && (
+        <BookingScannerPanel
+          referenceNumber={booking.referenceNumber}
+          onUpdate={() => { reloadBooking(); }}
+        />
+      )}
 
       <Card className="border-t-2 border-t-purple-500">
         <CardHeader>
@@ -958,7 +1155,8 @@ export default function BookingDetailPage() {
                 key={svc.id}
                 onClick={() => {
                   const next = new Set(selectedServices);
-                  next.has(svc.id) ? next.delete(svc.id) : next.add(svc.id);
+                  if (next.has(svc.id)) next.delete(svc.id);
+                  else next.add(svc.id);
                   setSelectedServices(next);
                 }}
                 className={`cursor-pointer rounded-xl border-2 p-4 transition-all ${
@@ -1005,7 +1203,7 @@ export default function BookingDetailPage() {
                 className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
               />
             </div>
-            <Button onClick={handleAddServices} disabled={selectedServices.size === 0} className="bg-purple-600 hover:bg-purple-700">
+            <Button onClick={handleAddServices} disabled={selectedServices.size === 0} className="bg-orange-500 hover:bg-orange-600">
               <ShoppingBag className="mr-2 h-4 w-4" /> Add & Process
             </Button>
           </div>
@@ -1016,7 +1214,38 @@ export default function BookingDetailPage() {
         <Card>
           <CardHeader><CardTitle>Luggage Details</CardTitle></CardHeader>
           <CardContent>
-            <p className="text-sm whitespace-pre-wrap">{booking.luggageDetails}</p>
+            {(() => {
+              try {
+                const parsed = JSON.parse(booking.luggageDetails);
+                if (Array.isArray(parsed)) {
+                  const items = parsed.filter((item: Record<string, unknown>) => typeof item.type === "string" && typeof item.qty === "number");
+                  const services = parsed.flatMap((item: Record<string, unknown>) =>
+                    Array.isArray(item.services) ? (item.services as string[]) : []
+                  );
+                  if (items.length > 0 || services.length > 0) {
+                    return (
+                      <div className="space-y-1 text-sm">
+                        {items.map((item, i) => (
+                          <p key={i} className="flex items-center justify-between border-b border-gray-50 pb-1">
+                            <span>{item.type} <strong>×{item.qty}</strong></span>
+                            <span className="font-medium">&#x20B1;{(item.price * item.qty).toFixed(2)}</span>
+                          </p>
+                        ))}
+                        {services.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs font-medium text-purple-700 mb-1">Additional Services</p>
+                            {services.map((svc, i) => (
+                              <p key={i} className="text-purple-700">• {svc}</p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                }
+              } catch {}
+              return <p className="text-sm whitespace-pre-wrap">{booking.luggageDetails}</p>;
+            })()}
           </CardContent>
         </Card>
       )}
@@ -1356,6 +1585,7 @@ export default function BookingDetailPage() {
             <TableHeader className="bg-muted/50">
               <TableRow>
                 <TableHead className="text-xs font-medium uppercase">Name</TableHead>
+                <TableHead className="text-xs font-medium uppercase">Phase</TableHead>
                 <TableHead className="text-xs font-medium uppercase">Email</TableHead>
               </TableRow>
             </TableHeader>
@@ -1363,12 +1593,19 @@ export default function BookingDetailPage() {
               {booking.assignments?.map((a) => (
                 <TableRow key={a.id} className="border-b transition-colors hover:bg-muted/50">
                   <TableCell className="font-medium">{a.user.name}</TableCell>
+                  <TableCell>
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                      a.phase === "DROPOFF" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                    }`}>
+                      {a.phase === "DROPOFF" ? "Drop-off" : "Pickup"}
+                    </span>
+                  </TableCell>
                   <TableCell>{a.user.email}</TableCell>
                 </TableRow>
               ))}
               {(!booking.assignments || booking.assignments.length === 0) && (
                 <TableRow>
-                  <TableCell colSpan={2} className="text-center text-muted-foreground py-8">No employees assigned</TableCell>
+                  <TableCell colSpan={3} className="text-center text-muted-foreground py-8">No employees assigned</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -1386,14 +1623,95 @@ export default function BookingDetailPage() {
       />
 
       <ConfirmDialog
-        open={dangerConfirm !== null}
-        onClose={() => setDangerConfirm(null)}
-        onConfirm={() => dangerConfirm && handleDangerAction(dangerConfirm.action)}
-        title={dangerConfirm?.action === "no-show" ? "Mark as No Show" : "Mark as Cancelled"}
-        message={`Are you sure you want to mark this booking as ${dangerConfirm?.action === "no-show" ? "No Show" : "Cancelled"}? This action cannot be reversed.`}
-        confirmLabel={dangerConfirm?.action === "no-show" ? "No Show" : "Cancelled"}
-        variant="danger"
+        open={confirmCancelTracking}
+        onClose={() => setConfirmCancelTracking(false)}
+        onConfirm={handleCancelTracking}
+        title="Cancel Live Tracking"
+        message={`Stop sharing the assigned employee's live location for booking ${booking.referenceNumber}? The customer will be notified and tracking will end.`}
+        confirmLabel="Stop Tracking" variant="danger"
       />
+
+      {dangerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDangerModal(null)} />
+          <div className="relative z-10 mx-4 w-full max-w-lg rounded-xl border bg-background p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
+                  <ShieldAlert className="h-5 w-5 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    {dangerModal.mode === "admin"
+                      ? dangerModal.action === "no-show" ? "Mark as No Show" : "Mark as Cancelled"
+                      : dangerModal.action === "no-show" ? "Report No-Show" : "Report Cancellation"}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {dangerModal.mode === "admin"
+                      ? "Photo proof is required to confirm you are on-site."
+                      : "This report is forwarded to an admin for review."}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setDangerModal(null)} className="rounded-lg p-1 hover:bg-muted">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <Label>Photo proof {dangerModal.mode === "admin" && <span className="text-red-500">*</span>}</Label>
+                {dangerPhoto ? (
+                  <div className="relative mt-1 overflow-hidden rounded-lg border">
+                    <img src={dangerPhoto} alt="Proof" className="h-40 w-full object-cover" />
+                    <button
+                      onClick={() => setDangerPhoto(null)}
+                      className="absolute right-2 top-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => dangerFileRef.current?.click()}
+                    className="mt-1 flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/30 p-6 transition-colors hover:border-red-500/50 hover:bg-red-50/50"
+                  >
+                    <Camera className="h-8 w-8 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      {dangerModal.mode === "admin"
+                        ? "Take a photo showing you are on-site"
+                        : "Attach photo evidence (optional)"}
+                    </p>
+                  </button>
+                )}
+                <input
+                  ref={dangerFileRef} type="file" accept="image/*" capture="environment"
+                  onChange={handleDangerPhoto} className="hidden"
+                />
+              </div>
+              <div>
+                <Label>Reason / Note</Label>
+                <textarea
+                  value={dangerNote}
+                  onChange={(e) => setDangerNote(e.target.value)}
+                  placeholder={dangerModal.mode === "admin"
+                    ? "Optional note"
+                    : "Describe what happened (e.g. passenger not at pickup location)"}
+                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm"
+                />
+              </div>
+              <Button
+                variant="destructive" className="w-full"
+                onClick={handleDangerConfirm}
+                disabled={dangerSubmitting || (dangerModal.mode === "admin" && !dangerPhoto)}
+              >
+                {dangerSubmitting ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
+                ) : dangerModal.mode === "admin" ? "Confirm" : "Submit Report"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showEditModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">

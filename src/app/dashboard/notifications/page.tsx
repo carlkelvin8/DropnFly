@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -32,6 +34,15 @@ const typeIcons: Record<string, string> = {
 };
 
 export default function NotificationsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status !== "loading" && session?.user?.role === "ADMIN") {
+      router.replace("/dashboard");
+    }
+  }, [session, status, router]);
+
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -78,6 +89,8 @@ export default function NotificationsPage() {
       toast.error("Failed to mark notification as read");
     }
   }
+
+  if (session?.user?.role === "ADMIN") return null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -136,7 +149,7 @@ export default function NotificationsPage() {
                       )}
                     </div>
                     {!n.isRead && (
-                      <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600" />
+                      <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-orange-500" />
                     )}
                   </div>
                   <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">

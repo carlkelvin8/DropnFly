@@ -20,7 +20,7 @@ export async function PUT(req: Request) {
     if (!valid) return NextResponse.json({ error: "Current password is incorrect" }, { status: 400 });
     
     const hashed = await bcrypt.hash(newPassword, 12);
-    await prisma.user.update({ where: { id: session.user.id }, data: { password: hashed } });
+    await prisma.user.update({ where: { id: session.user.id }, data: { password: hashed, passwordChangedAt: new Date() } });
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: "Failed to update password" }, { status: 500 });

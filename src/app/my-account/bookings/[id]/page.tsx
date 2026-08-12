@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, MapPin, Calendar, Luggage, Package, AlertCircle, Clock,
   MessageCircle, Send, Star, User, CreditCard, Tag, ShoppingBag,
-  Phone, Mail, Globe, Building,
+  Phone, Mail, Globe, Building, Camera, CheckCircle2, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
@@ -82,13 +82,21 @@ export default function CustomerBookingDetailPage() {
   const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState("");
   const [submittingReview, setSubmittingReview] = useState(false);
+  const verifyFileRef = useRef<HTMLInputElement>(null);
+  const [verifyPhoto, setVerifyPhoto] = useState<string | null>(null);
+  const [verifySubmitting, setVerifySubmitting] = useState(false);
+  const [verifyDone, setVerifyDone] = useState(false);
+  const [verifyError, setVerifyError] = useState("");
+  const [paying, setPaying] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
         const res = await fetch(`/api/customer/bookings/${id}`);
         if (!res.ok) throw new Error("Not found");
-        setBooking(await res.json());
+        const json = await res.json();
+        setBooking(json);
+        if (Array.isArray(json.extensions)) setExtensions(json.extensions);
       } catch { router.push("/my-account"); }
       finally { setLoading(false); }
     }
@@ -114,7 +122,9 @@ export default function CustomerBookingDetailPage() {
     try {
       const res = await fetch(`/api/customer/bookings/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel" }) });
       if (!res.ok) { const d = await res.json(); setError(d.error || "Failed"); return; }
-      router.refresh();
+      const json = await res.json();
+      setBooking((prev) => (prev ? { ...prev, status: "CANCELLED" } : prev));
+      toast.success(json.message || "Booking cancelled");
     } catch { setError("Network error"); }
     finally { setCancelling(false); }
   }
@@ -154,6 +164,72 @@ export default function CustomerBookingDetailPage() {
       setReview(await res.json()); toast.success("Review submitted");
     } catch { toast.error("Failed"); }
     setSubmittingReview(false);
+  }
+
+  async function handlePayNow() {
+    if (!booking) return;
+    setPaying(true);
+    try {
+      const res = await fetch("/api/payments/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: booking.id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to start payment");
+      if (json.url) {
+        window.location.href = json.url;
+      } else {
+        toast.success(json.message || "Payment request recorded");
+        const refresh = await fetch(`/api/customer/bookings/${id}`);
+        if (refresh.ok) setBooking(await refresh.json());
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Payment failed");
+    }
+    setPaying(false);
+  }
+
+  function handleVerifyPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => setVerifyPhoto(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleVerifyDropoff() {
+    if (!verifyPhoto || !booking) return;
+    setVerifySubmitting(true);
+    setVerifyError("");
+    try {
+      const body: Record<string, unknown> = { photo: verifyPhoto, note: "Passenger drop-off verification" };
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((res, rej) =>
+            navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 })
+          );
+          body.latitude = pos.coords.latitude;
+          body.longitude = pos.coords.longitude;
+        } catch { /* location optional */ }
+      }
+      const res = await fetch(`/api/public/bookings/${booking.referenceNumber}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Verification failed");
+      setBooking((prev) => (prev ? { ...prev, status: "IN_STORAGE" } : prev));
+      setVerifyDone(true);
+      setVerifyPhoto(null);
+      toast.success("Drop-off verified — luggage is now In Storage");
+    } catch (e) {
+      setVerifyError(e instanceof Error ? e.message : "Verification failed");
+      toast.error(e instanceof Error ? e.message : "Verification failed");
+    } finally {
+      setVerifySubmitting(false);
+    }
   }
 
   if (loading) return (
@@ -227,19 +303,78 @@ export default function CustomerBookingDetailPage() {
               {statusSteps.map((step, i) => (
                 <div key={step} className="flex flex-col items-center flex-1">
                   <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold transition-all ${
-                    i <= currentStep ? "bg-blue-600 text-white shadow-md" : "bg-gray-100 text-gray-400"
+                    i <= currentStep ? "bg-orange-500 text-white shadow-md" : "bg-gray-100 text-gray-400"
                   }`}>{i + 1}</div>
                   <span className="mt-1.5 text-[9px] text-gray-400 text-center leading-tight max-w-[60px]">
                     {step.replace(/_/g, " ")}
                   </span>
                   {i < statusSteps.length - 1 && (
-                    <div className={`absolute h-0.5 w-full ${i < currentStep ? "bg-blue-600" : "bg-gray-200"}`} />
+                    <div className={`absolute h-0.5 w-full ${i < currentStep ? "bg-orange-500" : "bg-gray-200"}`} />
                   )}
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
+
+        {/* Drop-off Verification */}
+        {booking.status === "RECEIVED" && !verifyDone && (
+          <Card className="border-t-4 border-purple-500">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100">
+                  <Camera className="h-4 w-4 text-purple-600" />
+                </div>
+                Verify Your Drop-off
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-gray-500">
+                Your luggage has been received by our staff. Confirm the handover by taking a photo to move
+                your booking to <strong className="text-purple-700">In Storage</strong>.
+              </p>
+              {verifyPhoto ? (
+                <div className="relative overflow-hidden rounded-xl border">
+                  <img src={verifyPhoto} alt="Drop-off verification" className="h-40 w-full object-cover" />
+                  <button
+                    onClick={() => setVerifyPhoto(null)}
+                    className="absolute top-2 right-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => verifyFileRef.current?.click()}
+                  className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/30 p-6 transition-colors hover:border-purple-500/50 hover:bg-purple-50/50"
+                >
+                  <Camera className="h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Take a photo of your handed-over luggage</p>
+                </button>
+              )}
+              <input
+                ref={verifyFileRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleVerifyPhoto}
+                className="hidden"
+              />
+              {verifyError && <p className="text-xs text-red-600">{verifyError}</p>}
+              <Button
+                className="w-full bg-orange-500 text-white hover:bg-orange-600"
+                onClick={handleVerifyDropoff}
+                disabled={!verifyPhoto || verifySubmitting}
+              >
+                {verifySubmitting ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</>
+                ) : (
+                  <><CheckCircle2 className="mr-2 h-4 w-4" /> Confirm Drop-off</>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* 1. Customer Information */}
         {booking.customer && (
@@ -496,6 +631,42 @@ export default function CustomerBookingDetailPage() {
                 <span className="text-lg">₱{booking.totalPrice.toFixed(2)}</span>
               </div>
             </div>
+            {(() => {
+              const totalPaid = (booking.payments || []).filter((p) => p.status === "PAID").reduce((s, p) => s + p.amount, 0);
+              const remaining = booking.totalPrice - totalPaid;
+              const canPay = remaining > 0 && !["CANCELLED", "DELIVERED"].includes(booking.status);
+              return (
+                <>
+                  <div className="flex gap-3">
+                    <div className="flex-1 rounded-lg bg-emerald-50 px-3 py-2">
+                      <p className="text-[11px] text-emerald-600">Paid</p>
+                      <p className="text-sm font-bold text-emerald-700">₱{totalPaid.toFixed(2)}</p>
+                    </div>
+                    {remaining > 0 ? (
+                      <div className="flex-1 rounded-lg bg-amber-50 px-3 py-2">
+                        <p className="text-[11px] text-amber-600">Remaining</p>
+                        <p className="text-sm font-bold text-amber-700">₱{remaining.toFixed(2)}</p>
+                      </div>
+                    ) : (
+                      <div className="flex-1 rounded-lg bg-blue-50 px-3 py-2">
+                        <p className="text-[11px] text-blue-600">Status</p>
+                        <p className="text-sm font-bold text-blue-700">Fully Paid</p>
+                      </div>
+                    )}
+                  </div>
+                  {canPay && (
+                    <Button
+                      className="w-full bg-orange-500 text-white hover:bg-orange-600"
+                      onClick={handlePayNow}
+                      disabled={paying}
+                    >
+                      {paying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
+                      Pay Now via GCash / Maya / Card
+                    </Button>
+                  )}
+                </>
+              );
+            })()}
             {booking.payments && booking.payments.length > 0 && (() => {
               const totalPaid = booking.payments!.filter((p) => p.status === "PAID").reduce((s, p) => s + p.amount, 0);
               const remaining = booking.totalPrice - totalPaid;
@@ -529,7 +700,7 @@ export default function CustomerBookingDetailPage() {
                 <div className="space-y-2">
                   {booking.payments.map((p, i) => {
                     const methodIcons: Record<string, string> = { GCASH: "G", MAYA: "M", CARD: "C", CASH: "$" };
-                    const methodColors: Record<string, string> = { GCASH: "bg-blue-600", MAYA: "bg-green-600", CARD: "bg-violet-600", CASH: "bg-gray-600" };
+                    const methodColors: Record<string, string> = { GCASH: "bg-orange-500", MAYA: "bg-green-600", CARD: "bg-violet-600", CASH: "bg-gray-600" };
                     return (
                       <div key={i} className="flex items-center justify-between rounded-lg bg-gray-50 border p-3 text-sm">
                         <div className="flex items-center gap-3">
@@ -653,6 +824,28 @@ export default function CustomerBookingDetailPage() {
           </Card>
         )}
 
+        {/* Extension Requests */}
+        {extensions.length > 0 && (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Extension Requests</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {extensions.map((ext) => (
+                <div key={ext.id} className="flex items-center justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+                  <div>
+                    <p className="font-medium">Requested check-out: {formatDate(ext.requestedCheckOut)}</p>
+                    {ext.reason && <p className="text-xs text-muted-foreground">{ext.reason}</p>}
+                  </div>
+                  <Badge
+                    variant={ext.status === "APPROVED" ? "default" : ext.status === "DENIED" ? "destructive" : "secondary"}
+                  >
+                    {ext.status.replace(/_/g, " ")}
+                  </Badge>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Chat */}
         {showChat && (
           <Card>
@@ -662,7 +855,7 @@ export default function CustomerBookingDetailPage() {
                 {messages.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No messages yet</p>}
                 {messages.map((msg) => (
                   <div key={msg.id} className={`flex ${msg.isFromCustomer ? "justify-end" : ""}`}>
-                    <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${msg.isFromCustomer ? "bg-blue-600 text-white" : "bg-gray-100"}`}>
+                    <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${msg.isFromCustomer ? "bg-orange-500 text-white" : "bg-gray-100"}`}>
                       <p>{msg.message}</p>
                       <p className={`mt-1 text-[10px] ${msg.isFromCustomer ? "text-blue-200" : "text-gray-400"}`}>{formatDate(msg.createdAt)}</p>
                     </div>

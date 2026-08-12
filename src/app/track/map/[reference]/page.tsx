@@ -14,7 +14,6 @@ import { Badge } from "@/components/ui/badge";
 import { LiveMap } from "@/components/tracking/LiveMap";
 import {
   ChevronLeft,
-  Navigation,
   Clock,
   MapPin,
   Map,
@@ -25,7 +24,6 @@ import {
   MessageCircle,
   Phone,
   Send,
-  Gauge,
 } from "lucide-react";
 
 interface TrackingData {
@@ -74,14 +72,19 @@ export default function LiveTrackingPage() {
   const params = useParams();
   const [data, setData] = useState<TrackingData | null>(null);
   const [employeeLoc, setEmployeeLoc] = useState<{ lat: number; lng: number } | null>(null);
-  const [eta, setEta] = useState<string | null>(null);
-  const [distance, setDistance] = useState<number | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{ id: string; message: string; isFromCustomer: boolean; createdAt: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const isRiderView = typeof window !== "undefined" && window.location.pathname.startsWith("/dashboard");
+  const [isRiderView, setIsRiderView] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((s) => { if (s?.user) setIsRiderView(true); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,7 +113,6 @@ export default function LiveTrackingPage() {
 
   useEffect(() => {
     if (!data?.assignments?.[0]) return;
-
     const userId = data.assignments[0].user.id;
     const interval = setInterval(async () => {
       try {
@@ -124,28 +126,6 @@ export default function LiveTrackingPage() {
     }, 5000);
     return () => clearInterval(interval);
   }, [data]);
-
-  useEffect(() => {
-    if (employeeLoc && data?.booking) {
-      const pickupWords = data.booking.pickupLocation.match(/(-?\d+\.?\d*)/g);
-      const dropoffWords = data.booking.dropOffLocation.match(/(-?\d+\.?\d*)/g);
-      let destLat: number | null = null;
-      let destLng: number | null = null;
-      if (dropoffWords && dropoffWords.length >= 2) {
-        destLat = parseFloat(dropoffWords[0]);
-        destLng = parseFloat(dropoffWords[1]);
-      } else if (pickupWords && pickupWords.length >= 2) {
-        destLat = parseFloat(pickupWords[0]);
-        destLng = parseFloat(pickupWords[1]);
-      }
-      if (destLat && destLng) {
-        const d = haversine(employeeLoc.lat, employeeLoc.lng, destLat, destLng);
-        setDistance(d);
-        const mins = Math.round((d / 30) * 60);
-        setEta(mins <= 1 ? "1 min" : `${mins} mins`);
-      }
-    }
-  }, [employeeLoc, data]);
 
   useEffect(() => {
     if (!chatOpen) return;
@@ -178,6 +158,28 @@ export default function LiveTrackingPage() {
       }
     } catch {}
     setChatLoading(false);
+  }
+
+  let distance: number | null = null;
+  let eta: string | null = null;
+  if (employeeLoc && data?.booking) {
+    const pickupWords = data.booking.pickupLocation.match(/(-?\d+\.?\d*)/g);
+    const dropoffWords = data.booking.dropOffLocation.match(/(-?\d+\.?\d*)/g);
+    let destLat: number | null = null;
+    let destLng: number | null = null;
+    if (dropoffWords && dropoffWords.length >= 2) {
+      destLat = parseFloat(dropoffWords[0]);
+      destLng = parseFloat(dropoffWords[1]);
+    } else if (pickupWords && pickupWords.length >= 2) {
+      destLat = parseFloat(pickupWords[0]);
+      destLng = parseFloat(pickupWords[1]);
+    }
+    if (destLat && destLng) {
+      const d = haversine(employeeLoc.lat, employeeLoc.lng, destLat, destLng);
+      distance = d;
+      const mins = Math.round((d / 30) * 60);
+      eta = mins <= 1 ? "1 min" : `${mins} mins`;
+    }
   }
 
   if (!data) {

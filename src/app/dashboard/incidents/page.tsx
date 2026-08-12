@@ -5,25 +5,18 @@ import Link from "next/link";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatDate, formatRelativeTime } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/utils";
 import {
   AlertTriangle,
-  Search,
   ChevronRight,
   Clock,
   User,
   MessageCircle,
-  Flag,
-  Scan,
-  Loader2,
 } from "lucide-react";
 
 interface Incident {
@@ -65,6 +58,8 @@ const typeLabels: Record<string, string> = {
   lost_baggage: "Lost Baggage",
   damaged_baggage: "Damaged Baggage",
   service_complaint: "Service Complaint",
+  no_show: "No-Show Report",
+  cancellation: "Cancellation Report",
   other: "Other",
 };
 
@@ -72,6 +67,8 @@ const typeIcons: Record<string, string> = {
   lost_baggage: "🔍",
   damaged_baggage: "💔",
   service_complaint: "💬",
+  no_show: "🚫",
+  cancellation: "❌",
   other: "📋",
 };
 
@@ -81,17 +78,8 @@ export default function IncidentsPage() {
   const [priorityFilter, setPriorityFilter] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [flagging, setFlagging] = useState(false);
-  const [flagResult, setFlagResult] = useState<string | null>(null);
-  const hasFilter = statusFilter || priorityFilter;
 
   useEffect(() => {
-    if (!hasFilter) {
-      setLoading(false);
-      setData(null);
-      return;
-    }
-    setLoading(true);
     const params = new URLSearchParams();
     if (statusFilter) params.set("status", statusFilter);
     if (priorityFilter) params.set("priority", priorityFilter);
@@ -101,21 +89,7 @@ export default function IncidentsPage() {
       .then((d) => setData(d))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [statusFilter, priorityFilter, page, hasFilter]);
-
-  const runAutoFlag = async () => {
-    setFlagging(true);
-    setFlagResult(null);
-    try {
-      const res = await fetch("/api/incidents/auto-flag", { method: "POST" });
-      const json = await res.json();
-      setFlagResult(`🔍 ${json.flagged} found · ${json.created} new incidents created`);
-    } catch {
-      setFlagResult("❌ Failed to run auto-flag check");
-    } finally {
-      setFlagging(false);
-    }
-  };
+  }, [statusFilter, priorityFilter, page]);
 
   return (
     <div className="space-y-6">
@@ -168,7 +142,7 @@ export default function IncidentsPage() {
             <div className="flex flex-col items-center py-12 text-muted-foreground">
               <AlertTriangle className="mb-2 h-8 w-8" />
               <p className="text-sm font-medium">No incidents found</p>
-              <p className="text-xs">All clear — no reported issues match your filters</p>
+              <p className="text-xs">All clear — no reported issues{data ? " match your filters" : ""}</p>
             </div>
           ) : (
             <div className="divide-y">

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { invalidateSettingsCache } from "@/lib/settings";
 
 export async function GET() {
   const session = await auth();
@@ -33,6 +34,8 @@ export async function PUT(req: Request) {
         create: { key, value: String(value) },
       });
     }
+
+    invalidateSettingsCache();
 
     await logActivity({
       userId: session.user.id,

@@ -6,8 +6,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  LogOut, Luggage, Package, Clock, MapPin, User, Trophy,
-  Bell, ChevronRight, Plane, Shield, Sparkles, CalendarDays,
+  LogOut, Luggage, Package, Clock, MapPin, User,
+  ChevronRight, Plane, Shield, Sparkles, CalendarDays,
 } from "lucide-react";
 import { PushManager } from "@/components/PushManager";
 
@@ -84,16 +84,14 @@ export default function CustomerDashboardPage() {
   const router = useRouter();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [points, setPoints] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const [meRes, bookingsRes, loyaltyRes] = await Promise.all([
+        const [meRes, bookingsRes] = await Promise.all([
           fetch("/api/auth/customer/me"),
           fetch("/api/customer/bookings"),
-          fetch("/api/customer/loyalty"),
         ]);
 
         if (!meRes.ok) {
@@ -107,11 +105,6 @@ export default function CustomerDashboardPage() {
         if (bookingsRes.ok) {
           const bookingsData = await bookingsRes.json();
           setBookings(bookingsData);
-        }
-
-        if (loyaltyRes.ok) {
-          const loyaltyData = await loyaltyRes.json();
-          setPoints(loyaltyData.points);
         }
       } catch {
         router.push("/my-account/login");
@@ -152,7 +145,7 @@ export default function CustomerDashboardPage() {
       <header className="sticky top-0 z-50 border-b border-gray-100/80 bg-white/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-violet-600 shadow-lg shadow-blue-600/20">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-blue-500 shadow-lg shadow-orange-500/20">
               <Luggage className="h-4.5 w-4.5 text-white" />
             </div>
             <span className="text-lg font-bold tracking-tight">
@@ -166,7 +159,7 @@ export default function CustomerDashboardPage() {
               vapidKeyUrl="/api/notifications/vapid-key"
             />
             <div className="hidden sm:flex items-center gap-2 rounded-full bg-gray-50 px-3 py-1.5">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-blue-500">
                 <User className="h-3 w-3 text-white" />
               </div>
               <span className="text-sm font-medium text-gray-700">{customer?.name}</span>
@@ -189,7 +182,7 @@ export default function CustomerDashboardPage() {
               <p className="mt-1 text-gray-500">Here&apos;s what&apos;s happening with your luggage</p>
             </div>
             <Link href="/book">
-              <Button className="hidden sm:inline-flex gap-2 bg-gradient-to-r from-blue-600 to-violet-600 shadow-lg shadow-blue-600/20 hover:shadow-xl hover:shadow-blue-600/30 transition-all">
+              <Button className="hidden sm:inline-flex gap-2 bg-gradient-to-r from-orange-500 to-blue-500 shadow-lg shadow-orange-500/20 hover:shadow-xl hover:shadow-orange-500/30 transition-all">
                 <Plane className="h-4 w-4" />
                 New Booking
               </Button>
@@ -198,7 +191,7 @@ export default function CustomerDashboardPage() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-8">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 mb-8">
           <StatCard
             icon={Package}
             label="Active"
@@ -214,19 +207,11 @@ export default function CustomerDashboardPage() {
             gradient="bg-gradient-to-br from-emerald-500 to-emerald-600"
           />
           <StatCard
-            icon={Trophy}
-            label="Points"
-            value={points}
-            sublabel={points >= 100 ? "Redeem available!" : `${100 - points} to redeem`}
-            href="/my-account/loyalty"
-            gradient="bg-gradient-to-br from-amber-500 to-orange-500"
-          />
-          <StatCard
             icon={Shield}
             label="Account"
             value="Active"
             sublabel={customer?.email}
-            gradient="bg-gradient-to-br from-violet-500 to-purple-600"
+            gradient="bg-gradient-to-br from-orange-500 to-blue-500"
           />
         </div>
 
@@ -242,7 +227,7 @@ export default function CustomerDashboardPage() {
               {activeBookings.map((booking) => (
                 <Link key={booking.id} href={`/my-account/bookings/${booking.id}`}>
                   <div className="group relative overflow-hidden rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-blue-100 hover:-translate-y-0.5">
-                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-violet-500 opacity-0 transition-opacity group-hover:opacity-100" />
+                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-orange-500 to-blue-500 opacity-0 transition-opacity group-hover:opacity-100" />
                     <div className="flex items-start justify-between">
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -292,7 +277,7 @@ export default function CustomerDashboardPage() {
                 Book your first luggage pickup and enjoy hassle-free travel
               </p>
               <Link href="/book">
-                <Button className="mt-5 gap-2 bg-gradient-to-r from-blue-600 to-violet-600">
+                <Button className="mt-5 gap-2 bg-gradient-to-r from-orange-500 to-blue-500">
                   <Plane className="h-4 w-4" />
                   Book Now
                 </Button>
@@ -334,7 +319,7 @@ export default function CustomerDashboardPage() {
 
         {/* Mobile FAB */}
         <Link href="/book" className="sm:hidden fixed bottom-6 right-6 z-40">
-          <Button size="lg" className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-600 to-violet-600 shadow-xl shadow-blue-600/30 p-0">
+          <Button size="lg" className="h-14 w-14 rounded-full bg-gradient-to-br from-orange-500 to-blue-500 shadow-xl shadow-orange-500/30 p-0">
             <Plane className="h-6 w-6" />
           </Button>
         </Link>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { normalizeReference } from "@/lib/utils";
 import { auth } from "@/lib/auth";
 
 export async function GET(
@@ -14,7 +15,7 @@ export async function GET(
   const { ref } = await params;
 
   const booking = await prisma.booking.findUnique({
-    where: { referenceNumber: ref },
+    where: { referenceNumber: normalizeReference(ref) },
     select: { id: true },
   });
 

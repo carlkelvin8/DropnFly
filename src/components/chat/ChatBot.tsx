@@ -12,7 +12,7 @@ interface Message {
 function TypingIndicator() {
   return (
     <div className="flex items-start gap-2.5">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-blue-500">
         <Bot className="h-4 w-4 text-white" />
       </div>
       <div className="flex items-center gap-1 rounded-2xl rounded-tl-none bg-muted px-4 py-3">
@@ -57,11 +57,32 @@ export default function ChatBot() {
 
   const LIVE_AGENT_KEYWORDS = /\b(live agent|human|talk to someone|real person|speak to|speak with|talk to a|chat with staff|agent|support staff|customer service)\b/i;
 
+  const BOOKING_REF_PATTERN = /^[A-Z0-9]{3,}-?[A-Z0-9]{3,}$/i;
+
+  function isBookingRef(text: string) {
+    return /DROPFLY[-\s]?[A-Z0-9]{4,}/i.test(text) || BOOKING_REF_PATTERN.test(text);
+  }
+
   async function handleSend() {
     const text = input.trim();
     if (!text || loading) return;
 
     setInput("");
+
+    if (showLiveAgent && isBookingRef(text)) {
+      const ref = text.replace(/[\s,]+/g, "").toUpperCase();
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: text },
+        {
+          role: "assistant",
+          content: `Taking you to the tracking page for ${ref} with a live chat open — one moment!`,
+        },
+      ]);
+      setShowLiveAgent(false);
+      window.open(`/track/${ref}?chat=1`, "_blank", "noopener,noreferrer");
+      return;
+    }
 
     if (LIVE_AGENT_KEYWORDS.test(text)) {
       const userMsg: Message = { role: "user", content: text };
@@ -136,7 +157,7 @@ export default function ChatBot() {
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-xl shadow-blue-600/30 transition-shadow hover:shadow-2xl hover:shadow-blue-600/40"
+        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-orange-500 to-blue-500 text-white shadow-xl shadow-orange-500/30 transition-shadow hover:shadow-2xl hover:shadow-orange-500/40"
       >
         <motion.div
           animate={{ rotate: [0, 10, -10, 0] }}
@@ -168,7 +189,7 @@ export default function ChatBot() {
               className="fixed bottom-6 right-6 z-50 flex h-[540px] w-[380px] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl sm:h-[600px] sm:w-[420px]"
             >
               {/* Header */}
-              <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-3.5 text-white">
+              <div className="flex items-center justify-between bg-gradient-to-r from-orange-500 to-blue-500 px-4 py-3.5 text-white">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20">
                     <Bot className="h-5 w-5" />
@@ -206,7 +227,7 @@ export default function ChatBot() {
                       <div
                         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
                           msg.role === "user"
-                            ? "bg-gradient-to-br from-blue-600 to-violet-600"
+                            ? "bg-gradient-to-br from-orange-500 to-blue-500"
                             : "bg-muted"
                         }`}
                       >
@@ -219,7 +240,7 @@ export default function ChatBot() {
                       <div
                         className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                           msg.role === "user"
-                            ? "rounded-tr-none bg-gradient-to-r from-blue-600 to-violet-600 text-white"
+                            ? "rounded-tr-none bg-gradient-to-r from-orange-500 to-blue-500 text-white"
                             : "rounded-tl-none bg-muted"
                         }`}
                       >
@@ -243,15 +264,37 @@ export default function ChatBot() {
                         </p>
                       </div>
                       <p className="mb-3 text-xs text-blue-700/80 dark:text-blue-300/70">
-                        Have a booking? Enter your reference number on the tracking page to start a real-time conversation with our staff.
+                        Type your booking reference (e.g. DROPFLY-123456) below and I&apos;ll open the live chat with our staff for that booking.
                       </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleSend();
+                            }
+                          }}
+                          placeholder="DROPFLY-XXXXXX"
+                          className="min-w-0 flex-1 rounded-xl border bg-white/80 px-3 py-2 text-xs outline-none focus:border-blue-500 dark:bg-black/30"
+                        />
+                        <button
+                          onClick={handleSend}
+                          disabled={!isBookingRef(input)}
+                          className="shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-orange-600 disabled:opacity-40"
+                        >
+                          Open Chat
+                        </button>
+                      </div>
                       <a
                         href="/track"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
+                        className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-300"
                       >
-                        Go to Tracking Page
+                        Need your reference? Open the tracking page
                         <ExternalLink className="h-3 w-3" />
                       </a>
                     </motion.div>
@@ -310,7 +353,7 @@ export default function ChatBot() {
                   <button
                     onClick={handleSend}
                     disabled={!input.trim() || loading}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-orange-500 to-blue-500 text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100"
                   >
                     <Send className="h-4 w-4" />
                   </button>

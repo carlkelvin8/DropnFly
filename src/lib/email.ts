@@ -1,16 +1,45 @@
 import nodemailer from "nodemailer";
+import { getSystemSettings, setting } from "./settings";
 
-function getTransporter() {
-  if (!process.env.SMTP_USER) {
+interface EmailConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  from: string;
+}
+
+async function getEmailConfig(): Promise<EmailConfig> {
+  const map = await getSystemSettings();
+  const enabled = setting(map, "email_notifications_enabled", "true") !== "false";
+  const host = setting(map, "smtp_host", "") || process.env.SMTP_HOST || "smtp.ethereal.email";
+  const port = parseInt(setting(map, "smtp_port", process.env.SMTP_PORT || "587"));
+  const from = setting(map, "smtp_from", "") || process.env.SMTP_FROM || '"Dropnfly" <noreply@dropnfly.ph>';
+  return {
+    enabled,
+    host,
+    port,
+    secure: process.env.SMTP_SECURE === "true",
+    user: process.env.SMTP_USER || "",
+    pass: process.env.SMTP_PASS || "",
+    from,
+  };
+}
+
+async function getTransporter() {
+  const config = await getEmailConfig();
+  if (!config.user) {
     console.warn("[EMAIL] SMTP not configured — emails will not be sent. Set SMTP_HOST, SMTP_USER, and SMTP_PASS in .env");
   }
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.ethereal.email",
-    port: parseInt(process.env.SMTP_PORT || "587"),
-    secure: process.env.SMTP_SECURE === "true",
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
     auth: {
-      user: process.env.SMTP_USER || "",
-      pass: process.env.SMTP_PASS || "",
+      user: config.user,
+      pass: config.pass,
     },
   });
 }
@@ -34,53 +63,59 @@ export async function sendConfirmationEmail({
 }) {
   const qrDataUri = `data:image/png;base64,${qrCodeBase64}`;
 
+  const config = await getEmailConfig();
+  if (!config.enabled) {
+    console.warn("[EMAIL] Email notifications are disabled in settings");
+    return;
+  }
+
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: #2563eb; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+      <div style="background: #ea7d3d; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
         <h1 style="margin: 0; font-size: 24px;">Booking Confirmed!</h1>
         <p style="margin: 8px 0 0; opacity: 0.9;">Reference: <strong>${referenceNumber}</strong></p>
       </div>
-      <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+      <div style="background: #f8fafc; padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
         <p>Hi <strong>${customerName}</strong>,</p>
         <p>Your luggage pickup has been scheduled successfully.</p>
 
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
           <tr>
-            <td style="padding: 8px; color: #64748b;">Pickup Location</td>
+            <td style="padding: 8px; color: #9ca3af;">Pickup Location</td>
             <td style="padding: 8px; font-weight: 600;">${pickupLocation}</td>
           </tr>
           <tr style="background: #f1f5f9;">
-            <td style="padding: 8px; color: #64748b;">Drop-off Location</td>
+            <td style="padding: 8px; color: #9ca3af;">Drop-off Location</td>
             <td style="padding: 8px; font-weight: 600;">${dropOffLocation}</td>
           </tr>
           <tr>
-            <td style="padding: 8px; color: #64748b;">Scheduled Date</td>
+            <td style="padding: 8px; color: #9ca3af;">Scheduled Date</td>
             <td style="padding: 8px; font-weight: 600;">${scheduledDate}</td>
           </tr>
         </table>
 
         <div style="text-align: center; margin: 24px 0;">
-          <p style="color: #64748b; margin-bottom: 12px;">Scan this QR code to track your luggage:</p>
+          <p style="color: #9ca3af; margin-bottom: 12px;">Scan this QR code to track your luggage:</p>
           <img src="${qrDataUri}" alt="QR Code" style="width: 180px; height: 180px;" />
         </div>
 
         <p style="text-align: center;">
           <a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}/track/${referenceNumber}"
-             style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
+             style="display: inline-block; background: #ea7d3d; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
             Track Your Luggage
           </a>
         </p>
 
-        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-        <p style="color: #94a3b8; font-size: 12px; text-align: center;">
+        <hr style="border: none; border-top: 1px solid #d1d5db; margin: 24px 0;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center;">
           Dropnfly &bull; Reference: ${referenceNumber}
         </p>
       </div>
     </div>
   `;
 
-  await getTransporter().sendMail({
-    from: process.env.SMTP_FROM || '"Dropnfly" <noreply@dropnfly.ph>',
+  await (await getTransporter()).sendMail({
+    from: config.from,
     to,
     subject: `Booking Confirmed - ${referenceNumber}`,
     html,
@@ -104,57 +139,60 @@ export async function sendRiderAssignedEmail({
   vehicleType?: string | null;
   plateNumber?: string | null;
 }) {
+  const config = await getEmailConfig();
+  if (!config.enabled) {
+    console.warn("[EMAIL] Email notifications are disabled in settings");
+    return;
+  }
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: #2563eb; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+      <div style="background: #ea7d3d; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
         <h2 style="margin: 0;">Rider Assigned!</h2>
         <p style="margin: 8px 0 0; opacity: 0.9;">Reference: <strong>${referenceNumber}</strong></p>
       </div>
-      <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+      <div style="background: #f8fafc; padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
         <p>Hi <strong>${customerName}</strong>,</p>
         <p>A rider has been assigned to your booking. Here are the details:</p>
 
         <div style="text-align: center; margin: 24px 0;">
-          ${riderProfilePic ? `<img src="${riderProfilePic}" alt="${riderName}" style="width: 96px; height: 96px; border-radius: 50%; object-fit: cover; border: 3px solid #2563eb;" />` : `<div style="width: 96px; height: 96px; border-radius: 50%; background: #2563eb; color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; border: 3px solid #bfdbfe;">${riderName.charAt(0)}</div>`}
+          ${riderProfilePic ? `<img src="${riderProfilePic}" alt="${riderName}" style="width: 96px; height: 96px; border-radius: 50%; object-fit: cover; border: 3px solid #ea7d3d;" />` : `<div style="width: 96px; height: 96px; border-radius: 50%; background: #ea7d3d; color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; border: 3px solid #e3f0fb;">${riderName.charAt(0)}</div>`}
           <h3 style="margin: 12px 0 4px;">${riderName}</h3>
         </div>
 
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-          ${vehicleType ? `<tr><td style="padding: 8px; color: #64748b;">Vehicle</td><td style="padding: 8px; font-weight: 600;">${vehicleType}</td></tr>` : ""}
-          ${plateNumber ? `<tr style="background: #f1f5f9;"><td style="padding: 8px; color: #64748b;">Plate Number</td><td style="padding: 8px; font-weight: 600;">${plateNumber}</td></tr>` : ""}
+          ${vehicleType ? `<tr><td style="padding: 8px; color: #9ca3af;">Vehicle</td><td style="padding: 8px; font-weight: 600;">${vehicleType}</td></tr>` : ""}
+          ${plateNumber ? `<tr style="background: #f1f5f9;"><td style="padding: 8px; color: #9ca3af;">Plate Number</td><td style="padding: 8px; font-weight: 600;">${plateNumber}</td></tr>` : ""}
         </table>
 
         <p style="text-align: center; margin-top: 24px;">
           <a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}/track/${referenceNumber}"
-             style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
+             style="display: inline-block; background: #ea7d3d; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
             Track Your Luggage
           </a>
         </p>
 
-        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-        <p style="color: #94a3b8; font-size: 12px; text-align: center;">
+        <hr style="border: none; border-top: 1px solid #d1d5db; margin: 24px 0;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center;">
           Dropnfly &bull; Reference: ${referenceNumber}
         </p>
       </div>
     </div>
   `;
 
-  await getTransporter().sendMail({
-    from: process.env.SMTP_FROM || '"Dropnfly" <noreply@dropnfly.ph>',
+  await (await getTransporter()).sendMail({
+    from: config.from,
     to,
     subject: `Rider Assigned - ${referenceNumber}`,
     html,
   });
 }
 
-export async function sendIncidentEmail({
-  to,
+export async function sendIncidentEmail({  to,
   customerName,
   referenceNumber,
   incidentType,
   status,
   resolution,
-  incidentId,
   siteUrl,
 }: {
   to: string;
@@ -169,6 +207,12 @@ export async function sendIncidentEmail({
   const baseUrl = siteUrl || process.env.NEXTAUTH_URL || "http://localhost:3000";
   const trackUrl = `${baseUrl}/track/${referenceNumber}`;
   const typeLabel = incidentType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const config = await getEmailConfig();
+  if (!config.enabled) {
+    console.warn("[EMAIL] Email notifications are disabled in settings");
+    return;
+  }
 
   let statusSection = "";
   if (status === "PENDING") {
@@ -193,7 +237,7 @@ export async function sendIncidentEmail({
         <h2 style="margin: 0;">Incident Report Update</h2>
         <p style="margin: 8px 0 0; opacity: 0.9;">Reference: <strong>${referenceNumber}</strong></p>
       </div>
-      <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+      <div style="background: #f8fafc; padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
         <p>Hi <strong>${customerName}</strong>,</p>
         <p>There has been an update on your <strong>${typeLabel}</strong> report.</p>
 
@@ -210,18 +254,66 @@ export async function sendIncidentEmail({
           </a>
         </p>
 
-        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-        <p style="color: #94a3b8; font-size: 12px; text-align: center;">
+        <hr style="border: none; border-top: 1px solid #d1d5db; margin: 24px 0;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center;">
           Dropnfly &bull; Reference: ${referenceNumber}
         </p>
       </div>
     </div>
   `;
 
-  await getTransporter().sendMail({
-    from: process.env.SMTP_FROM || '"Dropnfly" <noreply@dropnfly.ph>',
+  await (await getTransporter()).sendMail({
+    from: config.from,
     to,
     subject: `Incident Report Update - ${referenceNumber}`,
+    html,
+  });
+}
+
+export async function sendPaymentConfirmationEmail({
+  to,
+  customerName,
+  referenceNumber,
+  amount,
+}: {
+  to: string;
+  customerName: string;
+  referenceNumber: string;
+  amount: number;
+}) {
+  const config = await getEmailConfig();
+  if (!config.enabled) {
+    console.warn("[EMAIL] Email notifications are disabled in settings");
+    return;
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #16a34a; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+        <h2 style="margin: 0;">Payment Confirmed</h2>
+        <p style="margin: 8px 0 0; opacity: 0.9;">Reference: <strong>${referenceNumber}</strong></p>
+      </div>
+      <div style="background: #f8fafc; padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
+        <p>Hi <strong>${customerName}</strong>,</p>
+        <p>We have received your payment of <strong style="color: #16a34a;">₱${amount.toFixed(2)}</strong> for booking <strong>${referenceNumber}</strong>. Thank you!</p>
+        <p style="text-align: center; margin-top: 24px;">
+          <a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}/track/${referenceNumber}"
+             style="display: inline-block; background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
+            Track Your Luggage
+          </a>
+        </p>
+        <hr style="border: none; border-top: 1px solid #d1d5db; margin: 24px 0;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center;">
+          Dropnfly &bull; Reference: ${referenceNumber}
+        </p>
+      </div>
+    </div>
+  `;
+
+  await (await getTransporter()).sendMail({
+    from: config.from,
+    to,
+    subject: `Payment Confirmed - ${referenceNumber}`,
     html,
   });
 }

@@ -48,7 +48,7 @@ export default function CustomerLoginPage() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 flex items-center justify-center px-4">
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-blue-950 flex items-center justify-center px-4">
       {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-1/4 -right-1/4 h-[600px] w-[600px] rounded-full bg-blue-500/10 blur-3xl" />
@@ -69,7 +69,7 @@ export default function CustomerLoginPage() {
         {/* Logo */}
         <div className="mb-10 text-center">
           <Link href="/" className="inline-flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-600 shadow-lg shadow-blue-500/25 ring-1 ring-white/10">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-blue-500 shadow-lg shadow-orange-500/25 ring-1 ring-white/10">
               <Luggage className="h-6 w-6 text-white" />
             </div>
             <div className="text-left">
@@ -99,7 +99,7 @@ export default function CustomerLoginPage() {
                 type="email"
                 placeholder="you@email.com"
                 required
-                className="h-11 rounded-xl border-white/10 bg-white/5 text-white placeholder:text-white/25 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20 transition-colors"
+                className="h-11 rounded-xl border-white/10 bg-white/5 text-white placeholder:text-white/45 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20 transition-colors"
               />
             </div>
 
@@ -114,7 +114,7 @@ export default function CustomerLoginPage() {
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   required
-                  className="h-11 rounded-xl border-white/10 bg-white/5 pr-11 text-white placeholder:text-white/25 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20 transition-colors"
+                  className="h-11 rounded-xl border-white/10 bg-white/5 pr-11 text-white placeholder:text-white/45 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20 transition-colors"
                 />
                 <button
                   type="button"
@@ -136,9 +136,9 @@ export default function CustomerLoginPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="relative h-11 w-full rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 text-white font-medium shadow-lg shadow-blue-600/25 hover:shadow-xl hover:shadow-blue-600/30 transition-all overflow-hidden group"
+              className="relative h-11 w-full rounded-xl bg-gradient-to-r from-orange-500 to-blue-500 text-white font-medium shadow-lg shadow-orange-500/25 hover:shadow-xl hover:shadow-orange-500/30 transition-all overflow-hidden group"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-violet-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute inset-0 bg-gradient-to-r from-orange-500 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
               <span className="relative flex items-center justify-center gap-2">
                 {loading ? (
                   <>

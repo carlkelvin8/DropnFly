@@ -27,7 +27,7 @@ export async function GET(
       location: true,
       user: { select: { name: true, email: true } },
       assignments: {
-        include: { user: { select: { name: true, email: true } } },
+        include: { user: { select: { id: true, name: true, email: true } } },
       },
       payments: { select: { id: true, amount: true, method: true, status: true, paidAt: true } },
       promoCode: { select: { code: true } },
@@ -53,6 +53,13 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await req.json();
+
+    if (body.status && ["NO_SHOW", "CANCELLED"].includes(body.status) && session.user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Only admins can directly mark a booking as no-show or cancelled. Staff can file a report for admin review." },
+        { status: 403 }
+      );
+    }
 
     const data: Record<string, unknown> = {};
 
@@ -107,6 +114,25 @@ export async function PUT(
         booking.referenceNumber,
         body.status
       );
+
+      if (body.photo) {
+        await prisma.scanEvent.create({
+          data: {
+            bookingId: id,
+            userId: session.user.id,
+            status: body.status,
+            photo: body.photo,
+            note:
+              body.status === "NO_SHOW"
+                ? "Admin on-site verification — passenger did not arrive (no-show)"
+                : body.status === "CANCELLED"
+                ? "Admin on-site verification — booking cancelled"
+                : null,
+            latitude: body.latitude ?? null,
+            longitude: body.longitude ?? null,
+          },
+        });
+      }
 
       if (body.status === "DELIVERED") {
         const existingPoints = await prisma.pointsTransaction.findFirst({

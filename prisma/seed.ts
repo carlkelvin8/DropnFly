@@ -43,8 +43,9 @@ async function main() {
   for (const u of userData) {
     const existing = await prisma.user.findUnique({ where: { email: u.email } });
     if (existing) {
+      await prisma.user.update({ where: { id: existing.id }, data: u });
       createdUsers.push({ email: u.email, id: existing.id });
-      console.log(`User ${u.email} already exists, skipping`);
+      console.log(`User ${u.email} already exists, updated`);
       continue;
     }
     const user = await prisma.user.create({ data: { ...u, password: hashedPassword } });
@@ -88,13 +89,14 @@ async function main() {
   for (const c of customerData) {
     const existing = await prisma.customer.findUnique({ where: { email: c.email } });
     if (existing) {
+      await prisma.customer.update({ where: { id: existing.id }, data: { password: hashedPassword } });
       createdCustomers.push({ email: c.email, id: existing.id });
-      console.log(`Customer ${c.email} already exists, skipping`);
+      console.log(`Customer ${c.email} already exists, updated password`);
       continue;
     }
-    const customer = await prisma.customer.create({ data: c });
+    const customer = await prisma.customer.create({ data: { ...c, password: hashedPassword } });
     createdCustomers.push({ email: customer.email, id: customer.id });
-    console.log(`Created customer: ${c.name}`);
+    console.log(`Created customer: ${c.name} / password123`);
   }
 
   // ── Bookings with realistic data ──
@@ -377,6 +379,22 @@ async function main() {
     }
     console.log(`Created ${bagCount} luggage items for ${b.ref}`);
   }
+
+  // ── Promo Codes ──
+  const promoData = [
+    { code: "DROP10", description: "10% off your booking", type: "PERCENTAGE" as const, value: 10, maxUsage: 200, minAmount: 0 },
+    { code: "SAVE100", description: "₱100 off bookings over ₱500", type: "FIXED" as const, value: 100, maxUsage: 150, minAmount: 500 },
+    { code: "FREEPICKUP", description: "₱180 off pick-up service", type: "FIXED" as const, value: 180, maxUsage: 100, minAmount: 0 },
+  ];
+  for (const p of promoData) {
+    const existing = await prisma.promoCode.findUnique({ where: { code: p.code } });
+    if (existing) {
+      await prisma.promoCode.update({ where: { code: p.code }, data: p });
+    } else {
+      await prisma.promoCode.create({ data: p });
+    }
+  }
+  console.log(`Created ${promoData.length} promo codes`);
 
   console.log("\n✅ Seed complete!");
 }

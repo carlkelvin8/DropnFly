@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
   const slots = generateSlots(operatingStart, operatingEnd, slotDuration);
 
-  const selectedDate = new Date(dateStr + "T00:00:00.000Z");
+  const selectedDate = new Date(dateStr + "T00:00:00");
   const nextDate = new Date(selectedDate);
   nextDate.setDate(nextDate.getDate() + 1);
 
@@ -74,8 +74,8 @@ export async function GET(req: NextRequest) {
   for (const b of existingBookings) {
     const dt = isPickup ? (b as { checkIn: Date }).checkIn : (b as { checkOut: Date | null }).checkOut;
     if (!dt) continue;
-    const hours = dt.getUTCHours().toString().padStart(2, "0");
-    const minutes = dt.getUTCMinutes().toString().padStart(2, "0");
+    const hours = dt.getHours().toString().padStart(2, "0");
+    const minutes = dt.getMinutes().toString().padStart(2, "0");
     const timeStr = `${hours}:${minutes}`;
 
     for (const slot of slots) {

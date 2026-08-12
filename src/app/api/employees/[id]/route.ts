@@ -8,11 +8,16 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { id } = await params;
+  const isOwner = session.user.id === id;
+  const isAdmin = session.user.role === "ADMIN";
+  if (!isAdmin && !isOwner) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id } = await params;
   const employee = await prisma.user.findUnique({
     where: { id },
     select: {
@@ -28,7 +33,9 @@ export async function GET(
       assignedBookings: {
         orderBy: { createdAt: "desc" },
         take: 20,
-        include: {
+        select: {
+          id: true,
+          phase: true,
           booking: {
             select: {
               id: true,
@@ -36,6 +43,11 @@ export async function GET(
               status: true,
               pickupLocation: true,
               dropOffLocation: true,
+              numberOfBags: true,
+              checkIn: true,
+              checkOut: true,
+              customer: { select: { name: true } },
+              baggageTags: { select: { tagNumber: true } },
             },
           },
         },
@@ -47,7 +59,14 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(employee);
+  const activityHistory = await prisma.activityLog.findMany({
+    where: { userId: id },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: { id: true, action: true, entity: true, details: true, createdAt: true },
+  });
+
+  return NextResponse.json({ ...employee, activityHistory });
 }
 
 export async function PATCH(
