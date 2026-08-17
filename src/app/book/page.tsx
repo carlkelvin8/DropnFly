@@ -156,6 +156,9 @@ export default function BookPage() {
   const [promoDiscount, setPromoDiscount] = useState(0);
   const [promoApplied, setPromoApplied] = useState("");
   const [promoError, setPromoError] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
 
   const [pickupDate, setPickupDate] = useState("");
   const [pickupSlot, setPickupSlot] = useState("");
@@ -327,7 +330,6 @@ export default function BookPage() {
     setLoading(true);
     setError("");
 
-    const formData = new FormData(e.currentTarget);
     const pickupDateTime = `${pickupDate}T${pickupSlot}:00`;
     const deliveryDateTime = deliveryDate && deliverySlot ? `${deliveryDate}T${deliverySlot}:00` : "";
 
@@ -338,9 +340,9 @@ export default function BookPage() {
       : buildLuggageDetails(luggageQty);
 
     const data = {
-      name: formData.get("name") as string,
-      email: formData.get("email") as string,
-      phone: formData.get("phone") as string,
+      name: customerName.trim(),
+      email: customerEmail.trim(),
+      phone: customerPhone.trim(),
       countryOfOrigin: selectedCountry || undefined,
       cityOfOrigin: selectedCity || undefined,
       pickupLocation: getPickupLocationText(),
@@ -399,12 +401,9 @@ export default function BookPage() {
   function handleNextStep() {
     const errors: string[] = [];
     if (step === 1) {
-      const nameEl = document.getElementById("name") as HTMLInputElement | null;
-      const emailEl = document.getElementById("email") as HTMLInputElement | null;
-      const phoneEl = document.getElementById("phone") as HTMLInputElement | null;
-      if (!nameEl?.value.trim()) errors.push("Please enter your Full Name");
-      if (!emailEl?.value.trim()) errors.push("Please enter your Email Address");
-      if (!phoneEl?.value.trim()) errors.push("Please enter your Phone Number");
+      if (!customerName.trim()) errors.push("Please enter your Full Name");
+      if (!customerEmail.trim()) errors.push("Please enter your Email Address");
+      if (!customerPhone.trim()) errors.push("Please enter your Phone Number");
       if (!selectedCountry) errors.push("Please select your Country of Origin");
       if (!selectedCity) errors.push("Please select your City of Origin");
     } else if (step === 2) {
@@ -491,15 +490,15 @@ export default function BookPage() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label htmlFor="name">Full Name <span className="text-red-500">*</span></Label>
-                        <Input id="name" name="name" placeholder="Juan Dela Cruz" required />
+                        <Input id="name" name="name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Juan Dela Cruz" required />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="email">Email Address <span className="text-red-500">*</span></Label>
-                        <Input id="email" name="email" type="email" placeholder="juan@email.com" required />
+                        <Input id="email" name="email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="juan@email.com" required />
                       </div>
                       <div className="space-y-2 md:col-span-2">
                         <Label htmlFor="phone">Phone Number <span className="text-red-500">*</span></Label>
-                        <Input id="phone" name="phone" type="tel" placeholder="+63 912 345 6789" required />
+                        <Input id="phone" name="phone" type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="+63 912 345 6789" required />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="countryOfOrigin">Country of Origin <span className="text-red-500">*</span></Label>

@@ -11,8 +11,8 @@ export function PublicHeader({ showBackToHome }: PublicHeaderProps) {
   return (
     <header className="sticky top-0 z-50 border-b bg-white/90 shadow-sm backdrop-blur-sm">
       <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 text-xl font-bold text-blue-600">
-          Dropnfly
+        <Link href="/" className="flex items-center gap-2 text-xl font-bold">
+          Drop<span className="text-blue-600">nfly</span>
         </Link>
         <nav className="flex items-center gap-4">
           {showBackToHome && (
@@ -26,7 +26,7 @@ export function PublicHeader({ showBackToHome }: PublicHeaderProps) {
           )}
           <Link
             href="/book"
-            className="text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
+            className="rounded-lg bg-gradient-to-r from-orange-500 to-blue-500 px-3 py-2 text-sm font-medium text-white shadow-sm transition-all hover:brightness-110"
           >
             Book
           </Link>
@@ -37,10 +37,10 @@ export function PublicHeader({ showBackToHome }: PublicHeaderProps) {
             Track
           </Link>
           <Link
-            href="/my-account"
+            href="/my-account/login"
             className="text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
           >
-            My Account
+            Login/Register
           </Link>
         </nav>
       </div>

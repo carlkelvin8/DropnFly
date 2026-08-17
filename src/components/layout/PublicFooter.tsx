@@ -6,7 +6,7 @@ export function PublicFooter() {
       <div className="mx-auto max-w-5xl px-4 py-8">
         <div className="grid gap-8 text-sm md:grid-cols-3">
           <div>
-            <p className="mb-2 font-bold text-blue-600">Dropnfly</p>
+            <p className="mb-2 font-bold">Drop<span className="text-blue-600">nfly</span></p>
             <p className="text-gray-500">Luggage storage and delivery at NAIA Terminals 1–4.</p>
           </div>
           <div>
@@ -14,7 +14,7 @@ export function PublicFooter() {
             <div className="space-y-1">
               <Link href="/book" className="block text-gray-500 transition-colors hover:text-blue-600">Book a Pickup</Link>
               <Link href="/track" className="block text-gray-500 transition-colors hover:text-blue-600">Track Luggage</Link>
-              <Link href="/my-account" className="block text-gray-500 transition-colors hover:text-blue-600">My Account</Link>
+              <Link href="/my-account/login" className="block text-gray-500 transition-colors hover:text-blue-600">Login/Register</Link>
             </div>
           </div>
           <div>
