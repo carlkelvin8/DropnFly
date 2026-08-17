@@ -10,9 +10,11 @@ import {
   History, Users, Activity,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { LocationPlayback } from "@/components/tracking/LocationPlayback";
+import { LocationUpdater } from "@/components/tracking/LocationUpdater";
 
 interface Employee {
   id: string;
@@ -35,6 +37,7 @@ interface Task {
   rider: { id: string; name: string; profilePic: string | null; vehicleType: string | null; plateNumber: string | null } | null;
   isAssignedToMe: boolean;
   createdAt: string;
+  pickupStartedAt: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -115,7 +118,7 @@ export default function LogisticsPage() {
       });
       if (!res.ok) throw new Error("Action failed");
       const data = await res.json();
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: data.status } : t));
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: data.status, pickupStartedAt: data.pickupStartedAt ?? t.pickupStartedAt } : t));
       toast.success(`Action completed — ${action}`);
       setActiveTask(null);
       setActiveAction(null);
@@ -131,6 +134,7 @@ export default function LogisticsPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      {filteredTasks.some((task) => task.isAssignedToMe && !!task.pickupStartedAt) && <LocationUpdater enabled />}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Logistics & Routes</h1>
@@ -275,7 +279,7 @@ export default function LogisticsPage() {
                             <div className="flex gap-2">
                               {photoProof ? (
                                 <div className="relative">
-                                  <img src={photoProof} alt="Proof" className="h-12 w-12 rounded object-cover" />
+                                  <Image unoptimized width={48} height={48} src={photoProof} alt="Proof" className="h-12 w-12 rounded object-cover" />
                                   <button onClick={() => setPhotoProof(null)}
                                     className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full text-xs w-4 h-4 flex items-center justify-center">×</button>
                                 </div>

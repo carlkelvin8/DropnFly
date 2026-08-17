@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
+import { canAccessBooking } from "@/lib/booking-access";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ reference: string }> }) {
   const { reference } = await params;
@@ -13,6 +14,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ referen
   if (!booking) {
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
+  if (!(await canAccessBooking(booking))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   return NextResponse.json({ booking });
 }
@@ -28,11 +30,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ referen
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
+    if (!(await canAccessBooking(booking))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
     const { type, description } = body;
 
-    if (!type || !description) {
+    if (!type || typeof description !== "string" || !description.trim() || description.length > 4000) {
       return NextResponse.json({ error: "Type and description are required" }, { status: 400 });
     }
 
@@ -46,7 +49,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ referen
         bookingId: booking.id,
         customerId: booking.customerId,
         type,
-        description,
+        description: description.trim(),
         priority: "MEDIUM",
         timeline: {
           create: {

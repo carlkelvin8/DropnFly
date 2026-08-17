@@ -1,9 +1,13 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { cookies } from "next/headers";
 
-const secret = new TextEncoder().encode(
-  process.env.CUSTOMER_JWT_SECRET || process.env.AUTH_SECRET || "customer-jwt-secret-dropnfly"
-);
+function getSecret() {
+  const configured = process.env.CUSTOMER_JWT_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (!configured && process.env.NODE_ENV === "production") {
+    throw new Error("CUSTOMER_JWT_SECRET is required in production");
+  }
+  return new TextEncoder().encode(configured || "dropnfly-local-development-only-secret");
+}
 
 const COOKIE_NAME = "customer_token";
 
@@ -11,18 +15,19 @@ export interface CustomerJWT extends JWTPayload {
   id: string;
   email: string;
   name: string;
+  authVersion: number;
 }
 
 export async function signCustomerToken(payload: CustomerJWT) {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("30d")
-    .sign(secret);
+    .sign(getSecret());
 }
 
 export async function verifyCustomerToken(token: string): Promise<CustomerJWT | null> {
   try {
-    const { payload } = await jwtVerify(token, secret);
+    const { payload } = await jwtVerify(token, getSecret());
     return payload as unknown as CustomerJWT;
   } catch {
     return null;
@@ -33,7 +38,18 @@ export async function getCustomerSession(): Promise<CustomerJWT | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
-  return verifyCustomerToken(token);
+  const payload = await verifyCustomerToken(token);
+  if (!payload?.id) return null;
+
+  // JWTs are not sufficient authorization by themselves: account deactivation
+  // and deletion must take effect immediately, not after the 30-day expiry.
+  const { prisma } = await import("@/lib/prisma");
+  const customer = await prisma.customer.findUnique({
+    where: { id: payload.id },
+    select: { id: true, email: true, name: true, isActive: true, emailVerifiedAt: true, authVersion: true },
+  });
+  if (!customer?.isActive || !customer.emailVerifiedAt || customer.email !== payload.email || customer.authVersion !== payload.authVersion) return null;
+  return { ...payload, id: customer.id, email: customer.email, name: customer.name, authVersion: customer.authVersion };
 }
 
 export async function setCustomerCookie(token: string) {

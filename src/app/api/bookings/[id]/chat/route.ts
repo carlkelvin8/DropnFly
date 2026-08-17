@@ -7,6 +7,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const session = await auth();
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
 
+  const allowed = await prisma.booking.findFirst({ where: { id, ...(session.user.role === "EMPLOYEE" ? { assignments: { some: { userId: session.user.id } } } : {}) }, select: { id: true } });
+  if (!allowed) return new NextResponse("Forbidden", { status: 403 });
+
   const messages = await prisma.chatMessage.findMany({
     where: { bookingId: id },
     orderBy: { createdAt: "asc" },
@@ -24,6 +27,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const session = await auth();
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
+
+  const allowed = await prisma.booking.findFirst({ where: { id, ...(session.user.role === "EMPLOYEE" ? { assignments: { some: { userId: session.user.id } } } : {}) }, select: { id: true } });
+  if (!allowed) return new NextResponse("Forbidden", { status: 403 });
 
   const { message } = await req.json();
   if (!message?.trim()) return new NextResponse("Message is required", { status: 400 });

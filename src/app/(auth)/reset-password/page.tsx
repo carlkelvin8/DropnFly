@@ -55,8 +55,8 @@ function ResetPasswordForm() {
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+    if (password.length < 10) {
+      setError("Password must be at least 10 characters");
       setLoading(false);
       return;
     }
@@ -88,7 +88,7 @@ function ResetPasswordForm() {
             placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            minLength={6}
+            minLength={10}
             required
           />
           <button
@@ -109,7 +109,7 @@ function ResetPasswordForm() {
             placeholder="••••••••"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            minLength={6}
+            minLength={10}
             required
           />
           <button

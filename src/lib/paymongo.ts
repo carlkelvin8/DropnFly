@@ -108,14 +108,17 @@ export function verifyWebhookSignature(
   signatureHeader: string | null
 ): boolean {
   const secret = process.env.PAYMONGO_WEBHOOK_SECRET;
-  if (!secret) return true;
+  // Never accept unsigned payment state changes. A missing secret is a
+  // configuration error, not a reason to bypass verification.
+  if (!secret) return false;
 
   if (!signatureHeader) return false;
 
   const parts: Record<string, string> = {};
   for (const chunk of signatureHeader.split(",")) {
-    const [key, value] = chunk.trim().split("=");
-    if (key && value) parts[key] = value;
+    const part = chunk.trim();
+    const separator = part.indexOf("=");
+    if (separator > 0) parts[part.slice(0, separator)] = part.slice(separator + 1);
   }
 
   const timestamp = parts["t"];

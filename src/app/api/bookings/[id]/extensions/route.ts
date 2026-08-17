@@ -9,6 +9,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const customer = await getCustomerSession();
   if (!session?.user && !customer) return new NextResponse("Unauthorized", { status: 401 });
 
+  if (customer && !session?.user) {
+    const owned = await prisma.booking.findFirst({ where: { id, customerId: customer.id }, select: { id: true } });
+    if (!owned) return new NextResponse("Forbidden", { status: 403 });
+  }
+
   const extensions = await prisma.bookingExtension.findMany({
     where: { bookingId: id },
     include: { reviewedBy: { select: { name: true } } },

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -246,7 +247,7 @@ export function BookingScannerPanel({ referenceNumber, onUpdate }: BookingScanne
             </p>
             {photo ? (
               <div className="relative overflow-hidden rounded-lg border">
-                <img src={photo} alt="Proof" className="h-32 w-full object-cover" />
+                <Image unoptimized width={800} height={256} src={photo} alt="Proof" className="h-32 w-full object-cover" />
                 <button
                   onClick={() => setPhoto(null)}
                   className="absolute right-2 top-2 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-medium text-white"

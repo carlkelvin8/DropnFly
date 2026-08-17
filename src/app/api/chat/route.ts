@@ -34,10 +34,14 @@ CONVERSATION RULES:
 
 export async function POST(req: Request) {
   if (!GEMINI_API_KEY) {
-    return NextResponse.json(
-      { error: "AI assistant is currently unavailable. Please try again later." },
-      { status: 503 }
-    );
+    const { message = "" } = await req.json();
+    const text = String(message).toLowerCase();
+    let reply = "I can help with booking, tracking, luggage storage, and delivery. For a live conversation, share your DROPFLY booking reference or open the chat inside My Account.";
+    if (text.includes("book")) reply = "You can create a test booking at /book. Online payment is optional in demo mode, so you can complete the full booking flow without PayMongo.";
+    else if (text.includes("track") || text.includes("where")) reply = "Open /track and enter your DROPFLY reference. The demo map and status timeline work even when Mapbox is not configured.";
+    else if (text.includes("price") || text.includes("cost")) reply = "Pricing depends on luggage size, storage duration, and pickup or delivery services. The booking form calculates the exact total before confirmation.";
+    else if (text.includes("human") || text.includes("agent") || text.includes("staff")) reply = "Enter your booking reference and I’ll direct you to the booking chat monitored by the assigned employee and administrators.";
+    return NextResponse.json({ reply, mode: "demo" });
   }
 
   try {

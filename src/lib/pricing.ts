@@ -69,8 +69,9 @@ export function computeBookingPrice(params: {
     if (feeKey) servicesCost += settings[feeKey];
   }
 
-  const clampedDiscount = Math.max(0, discount);
-  const totalPrice = Math.max(0, subtotal + extraFee + servicesCost - clampedDiscount);
+  const gross = subtotal + extraFee + servicesCost;
+  const clampedDiscount = Math.min(gross, Math.max(0, discount));
+  const totalPrice = gross - clampedDiscount;
 
   return { subtotal, extraFee, servicesCost, discount: clampedDiscount, totalPrice, totalBags };
 }

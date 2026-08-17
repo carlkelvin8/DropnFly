@@ -252,8 +252,8 @@ export default function AnalyticsPage() {
   );
 }
 
-function OverviewTab({ data, period }: { data: Analytics; period: string }) {
-  const { overview, bookingsByDay, hourlyDistribution, employeePerformance, customerTrends, storageLocations, revenueByStatus } = data;
+function OverviewTab({ data }: { data: Analytics; period: string }) {
+  const { bookingsByDay, hourlyDistribution, employeePerformance, customerTrends, revenueByStatus } = data;
   const maxDailyCount = Math.max(...bookingsByDay.map((d) => d.count), 1);
   const maxDailyRevenue = Math.max(...bookingsByDay.map((d) => d.revenue), 1);
   const maxHourlyCount = Math.max(...hourlyDistribution.map((h) => h.count), 1);
@@ -262,78 +262,6 @@ function OverviewTab({ data, period }: { data: Analytics; period: string }) {
 
   return (
     <div className="space-y-6">
-      {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-t-2 border-t-blue-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
-            <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
-              <Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{overview.totalBookings}</div>
-            <p className="text-xs text-muted-foreground">
-              {overview.activeBookings} active
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-t-2 border-t-green-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
-            <div className="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
-              <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {formatCurrency(overview.totalRevenue)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Avg {formatCurrency(overview.averagePrice)} per booking
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-t-2 border-t-violet-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Customers</CardTitle>
-            <div className="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
-              <Users className="h-4 w-4 text-violet-600 dark:text-violet-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{overview.totalCustomers}</div>
-            <p className="text-xs text-muted-foreground">
-              {overview.newCustomers} new this {period}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-t-2 border-t-cyan-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Storage Utilization
-            </CardTitle>
-            <div className="rounded-lg bg-cyan-100 p-2 dark:bg-cyan-900/30">
-              <BarChart3 className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {overview.storageUtilization.toFixed(1)}%
-            </div>
-            <div className="mt-2 h-2 rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all"
-                style={{ width: `${Math.min(overview.storageUtilization, 100)}%` }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       <div className="grid gap-4 md:grid-cols-2">
         {/* Bookings Over Time */}
         <Card className="border-t-2 border-t-blue-500">
@@ -522,64 +450,32 @@ function OverviewTab({ data, period }: { data: Analytics; period: string }) {
         </Card>
       </div>
 
+      <Card className="border-t-2 border-t-orange-500">
+        <CardHeader><CardTitle className="text-sm font-medium">Booking Activity Heatmap</CardTitle><CardDescription>Darker cells indicate busier booking days.</CardDescription></CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-10 gap-1 sm:grid-cols-15">
+            {bookingsByDay.slice(-60).map((day) => {
+              const opacity = day.count === 0 ? 0.08 : 0.2 + (day.count / maxDailyCount) * 0.8;
+              return <div key={day.date} className="aspect-square rounded-sm bg-orange-500" style={{ opacity }} title={`${day.date}: ${day.count} bookings`} aria-label={`${day.date}: ${day.count} bookings`} />;
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Booking Status Breakdown */}
       <Card className="border-t-2 border-t-indigo-500">
         <CardHeader>
           <CardTitle className="text-sm font-medium">Booking Status Breakdown</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex h-52 items-end gap-3 rounded-lg bg-muted/20 p-4">
             {data.bookingsByStatus.map((s) => (
-              <Badge
-                key={s.status}
-                variant="secondary"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium"
-              >
-                <span className={`h-2 w-2 rounded-full ${statusDot[s.status] || "bg-gray-400"}`} />
-                {s.status.replace(/_/g, " ")}
-                <span className="ml-0.5 rounded-full bg-background px-2 py-0.5 text-xs font-bold">
-                  {s.count}
-                </span>
-              </Badge>
+              <div key={s.status} className="flex h-full flex-1 flex-col items-center justify-end gap-2">
+                <div className={`w-full max-w-14 rounded-t ${statusDot[s.status] || "bg-gray-400"}`} style={{ height: `${Math.max((s.count / Math.max(...data.bookingsByStatus.map((x) => x.count), 1)) * 100, 3)}%` }} title={`${s.status.replace(/_/g, " ")}: ${s.count}`} />
+                <span className="max-w-20 text-center text-[9px] text-muted-foreground">{s.status.replace(/_/g, " ")}</span>
+              </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Storage Locations Utilization */}
-      <Card className="border-t-2 border-t-cyan-500">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Storage Locations Utilization</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {storageLocations.length === 0 && (
-            <div className="py-8 text-center text-muted-foreground">
-              <BarChart3 className="mx-auto mb-2 h-8 w-8 text-gray-300" />
-              <p className="text-sm">No storage data yet</p>
-            </div>
-          )}
-          {storageLocations.map((loc) => (
-            <div key={loc.name}>
-              <div className="mb-1.5 flex justify-between text-sm">
-                <span className="font-medium">{loc.name}</span>
-                <span className="text-muted-foreground">
-                  {loc.used}/{loc.capacity} slots &middot; {loc.utilization.toFixed(0)}%
-                </span>
-              </div>
-              <div className="h-2.5 w-full rounded-full bg-muted">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    loc.utilization > 85
-                      ? "bg-gradient-to-r from-red-500 to-rose-500"
-                      : loc.utilization > 60
-                        ? "bg-gradient-to-r from-amber-400 to-orange-500"
-                        : "bg-gradient-to-r from-cyan-400 to-blue-500"
-                  }`}
-                  style={{ width: `${Math.min(loc.utilization, 100)}%` }}
-                />
-              </div>
-            </div>
-          ))}
         </CardContent>
       </Card>
     </div>
@@ -752,7 +648,7 @@ function FinancialTab({
               <p>No payments yet</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="max-h-[460px] overflow-auto">
               <table className="w-full text-sm">
                 <thead className="border-b bg-muted/50">
                   <tr>
@@ -768,7 +664,7 @@ function FinancialTab({
                   {payments.slice(0, 10).map((p) => (
                     <tr key={p.id} className="hover:bg-muted/30">
                       <td className="px-4 py-3 font-medium">{p.booking.referenceNumber}</td>
-                      <td className="px-4 py-3">{p.customer.name}</td>
+                      <td className="px-4 py-3">{p.customer.name.split(" ").map((part) => `${part.charAt(0)}${"•".repeat(Math.max(part.length - 1, 1))}`).join(" ")}</td>
                       <td className="px-4 py-3 font-semibold">{formatCurrency(p.amount)}</td>
                       <td className="px-4 py-3">{p.method}</td>
                       <td className="px-4 py-3">

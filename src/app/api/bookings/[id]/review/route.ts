@@ -9,6 +9,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!session?.user && !customer) return new NextResponse("Unauthorized", { status: 401 });
 
   const { id } = await params;
+  if (customer && !session?.user) {
+    const owned = await prisma.booking.findFirst({ where: { id, customerId: customer.id }, select: { id: true } });
+    if (!owned) return new NextResponse("Forbidden", { status: 403 });
+  }
   const review = await prisma.bookingReview.findUnique({
     where: { bookingId: id },
     include: { customer: { select: { name: true } } },

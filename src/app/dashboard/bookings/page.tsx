@@ -99,7 +99,8 @@ export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
   const [riderFilter, setRiderFilter] = useState("");
-  const [dateFilter, setDateFilter] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -110,14 +111,15 @@ export default function BookingsPage() {
     if (statusFilter) params.set("status", statusFilter);
     if (paymentFilter) params.set("payment", paymentFilter);
     if (riderFilter) params.set("riderId", riderFilter);
-    if (dateFilter) params.set("date", dateFilter);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
     const qs = params.toString();
     fetch(`/api/bookings${qs ? `?${qs}` : ""}`)
       .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
       .then(setBookings)
       .catch(() => toast.error("Failed to load bookings"))
       .finally(() => setLoading(false));
-  }, [statusFilter, paymentFilter, riderFilter, dateFilter]);
+  }, [statusFilter, paymentFilter, riderFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     fetchBookings();
@@ -178,11 +180,12 @@ export default function BookingsPage() {
     setStatusFilter("");
     setPaymentFilter("");
     setRiderFilter("");
-    setDateFilter(new Date().toISOString().split("T")[0]);
+    setDateFrom("");
+    setDateTo("");
     setPage(1);
   }
 
-  const hasActiveFilters = statusFilter || paymentFilter || riderFilter;
+  const hasActiveFilters = statusFilter || paymentFilter || riderFilter || dateFrom || dateTo;
 
   return (
     <div className="space-y-6">
@@ -226,13 +229,16 @@ export default function BookingsPage() {
             ))}
           </select>
         </div>
-        <div className="w-44">
+        <div className="flex min-w-[300px] items-center gap-2">
           <Input
             type="date"
-            value={dateFilter}
-            onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
-            aria-label="Filter by date"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+            aria-label="Booking date from"
           />
+          <span className="text-xs text-muted-foreground">to</span>
+          <Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} aria-label="Booking date to" />
         </div>
         {hasActiveFilters && (
           <Button variant="ghost" size="icon" onClick={clearFilters} title="Clear all filters">

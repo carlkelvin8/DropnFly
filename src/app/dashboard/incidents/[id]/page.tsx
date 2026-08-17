@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Card,
   CardContent,
@@ -253,7 +254,7 @@ export default function IncidentDetailPage() {
               {reportPhoto && (
                 <div>
                   <p className="mb-1 text-xs text-muted-foreground">Evidence photo</p>
-                  <img
+                  <Image unoptimized width={800} height={600}
                     src={reportPhoto}
                     alt="Report evidence"
                     className="max-h-60 w-full rounded-lg border object-cover"

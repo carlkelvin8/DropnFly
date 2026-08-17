@@ -52,6 +52,7 @@ export async function GET() {
       rider,
       isAssignedToMe: rider?.id === session.user.id,
       createdAt: b.createdAt,
+      pickupStartedAt: b.pickupStartedAt,
     };
   });
 

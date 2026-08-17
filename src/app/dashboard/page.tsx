@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -46,7 +46,6 @@ interface DashboardData {
 
 interface DayActivity {
   bookings: { referenceNumber: string; status: string; checkIn: string; checkOut: string; createdAt: string; numberOfBags: number }[];
-  activities: { action: string; entity: string; createdAt: string }[];
 }
 
 const BAG_COLORS: Record<string, string> = {
@@ -77,7 +76,6 @@ export default function DashboardPage() {
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth() + 1);
-  const [activeDates, setActiveDates] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetch("/api/dashboard")
@@ -87,8 +85,11 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const fetchDayActivity = useCallback((date: string) => {
+  function openDay(date: string) {
     if (!date) return;
+    setSelectedDate(date);
+    setDayActivity(null);
+    setActivityLoading(true);
     fetch(`/api/dashboard/calendar?date=${date}`)
       .then((res) => {
         if (!res.ok) throw new Error();
@@ -97,18 +98,7 @@ export default function DashboardPage() {
       .then((data) => setDayActivity(data))
       .catch(() => setDayActivity(null))
       .finally(() => setActivityLoading(false));
-  }, []);
-
-  useEffect(() => {
-    fetchDayActivity(selectedDate);
-  }, [selectedDate, fetchDayActivity]);
-
-  useEffect(() => {
-    fetch(`/api/dashboard/calendar/month?year=${calYear}&month=${calMonth}`)
-      .then((r) => r.json())
-      .then((d) => setActiveDates(d.activeDates || {}))
-      .catch(() => setActiveDates({}));
-  }, [calYear, calMonth]);
+  }
 
   function prevMonth() {
     if (calMonth === 1) { setCalMonth(12); setCalYear((y) => y - 1); }
@@ -277,44 +267,46 @@ export default function DashboardPage() {
               {calendarCells.map((day, i) => {
                 if (day === null) return <div key={`empty-${i}`} />;
                 const key = dateKey(day);
-                const count = activeDates[key] || 0;
-                const hasActivity = count > 0;
                 const isSelected = key === selectedDate;
                 return (
                   <button
                     key={key}
-                    onClick={() => setSelectedDate(key)}
+                    onClick={() => openDay(key)}
                     className={`relative flex h-9 w-full items-center justify-center rounded-lg text-xs font-medium transition-all ${
                       isSelected
                         ? "bg-orange-500 text-white shadow-md"
-                        : hasActivity
-                          ? "bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold"
-                          : "text-gray-600 hover:bg-muted"
+                        : "text-gray-600 hover:bg-muted"
                     } ${isToday(day) && !isSelected ? "ring-2 ring-blue-400" : ""}`}
                   >
                     {day}
-                    {hasActivity && !isSelected && (
-                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-blue-500" />
-                    )}
+                    <span className="sr-only">Open day details</span>
                   </button>
                 );
               })}
             </div>
             <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500" /> Has bookings
-              </span>
+              <span>Details remain hidden until a date is intentionally opened.</span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-2 w-2 rounded ring-2 ring-blue-400" /> Today
               </span>
             </div>
 
-            {/* Day detail */}
-            <div className="mt-4 border-t pt-4">
-              {activityLoading ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
-              ) : dayActivity ? (
-                <div className="space-y-3 max-h-[240px] overflow-y-auto">
+          </CardContent>
+        </Card>
+
+        {selectedDate && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="calendar-detail-title" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedDate(""); }}>
+            <Card className="w-full max-w-lg shadow-xl">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle id="calendar-detail-title">Schedule details</CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">{new Date(`${selectedDate}T00:00:00`).toLocaleDateString("en-PH", { dateStyle: "long" })}</p>
+                </div>
+                <button className="rounded-lg p-2 hover:bg-muted" onClick={() => setSelectedDate("")} aria-label="Close schedule details">×</button>
+              </CardHeader>
+              <CardContent>
+              {activityLoading ? <p className="py-8 text-center text-sm text-muted-foreground">Loading details...</p> : dayActivity ? (
+                <div className="max-h-[60vh] space-y-3 overflow-y-auto">
                   {dayActivity.bookings.length > 0 && (
                     <div>
                       <p className="mb-1.5 text-xs font-semibold uppercase text-muted-foreground">Bookings ({dayActivity.bookings.length})</p>
@@ -328,29 +320,15 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   )}
-                  {dayActivity.activities.length > 0 && (
-                    <div>
-                      <p className="mb-1.5 text-xs font-semibold uppercase text-muted-foreground">Activities ({dayActivity.activities.length})</p>
-                      <div className="space-y-1">
-                        {dayActivity.activities.map((a, i) => (
-                          <div key={i} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-sm">
-                            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase">{a.action}</span>
-                            <span className="text-xs">{a.entity}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {dayActivity.bookings.length === 0 && dayActivity.activities.length === 0 && (
-                    <p className="py-4 text-center text-sm text-muted-foreground">No activity on this date</p>
+                  {dayActivity.bookings.length === 0 && (
+                    <p className="py-8 text-center text-sm text-muted-foreground">No bookings scheduled on this date</p>
                   )}
                 </div>
-              ) : (
-                <p className="py-4 text-center text-sm text-muted-foreground">Select a date to view details</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              ) : <p className="py-8 text-center text-sm text-muted-foreground">Unable to load schedule details</p>}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <div className="space-y-6">
           {/* Storage Duration Breakdown */}

@@ -44,6 +44,33 @@ async function getTransporter() {
   });
 }
 
+export async function sendCustomerActivationEmail({ to, customerName, token }: { to: string; customerName: string; token: string }) {
+  const config = await getEmailConfig();
+  if (!config.enabled) throw new Error("Email notifications are disabled");
+  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const activationUrl = `${baseUrl}/my-account/activate?token=${encodeURIComponent(token)}`;
+  const safeName = customerName.replace(/[<>&"']/g, "");
+  await (await getTransporter()).sendMail({
+    from: config.from,
+    to,
+    subject: "Activate your DropnFly account",
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>Activate your account</h2><p>Hi ${safeName},</p><p>Confirm this email address to securely activate your DropnFly account. This link expires in 30 minutes.</p><p><a href="${activationUrl}" style="display:inline-block;background:#2563eb;color:white;padding:12px 20px;border-radius:6px;text-decoration:none">Activate account</a></p><p>If you did not request this, you can ignore this email.</p></div>`,
+  });
+}
+
+export async function sendPasswordResetEmail({ to, token }: { to: string; token: string }) {
+  const config = await getEmailConfig();
+  if (!config.enabled) throw new Error("Email notifications are disabled");
+  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+  await (await getTransporter()).sendMail({
+    from: config.from,
+    to,
+    subject: "Reset your DropnFly password",
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>Reset your password</h2><p>This single-use link expires in one hour.</p><p><a href="${resetUrl}" style="display:inline-block;background:#2563eb;color:white;padding:12px 20px;border-radius:6px;text-decoration:none">Reset password</a></p><p>If you did not request this, ignore this email.</p></div>`,
+  });
+}
+
 export async function sendConfirmationEmail({
   to,
   customerName,

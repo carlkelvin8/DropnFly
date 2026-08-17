@@ -2,18 +2,12 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import { verifyTotp } from "./totp";
-import crypto from "crypto";
-
 const secret =
   process.env.AUTH_SECRET ||
   process.env.NEXTAUTH_SECRET ||
-  crypto
-    .createHash("sha256")
-    .update(
-      (process.env.VERCEL_DEPLOYMENT_ID || "dev") + "dropnfly-secret"
-    )
-    .digest("base64")
-    .slice(0, 32);
+  (process.env.NODE_ENV === "production"
+    ? (() => { throw new Error("AUTH_SECRET or NEXTAUTH_SECRET is required in production"); })()
+    : "dropnfly-local-development-only-nextauth-secret");
 
 export const PASSWORD_MAX_AGE_DAYS = 180;
 
@@ -68,6 +62,7 @@ export const config = {
           email: user.email,
           role: user.role,
           passwordExpired: isPasswordExpired(user),
+          authVersion: user.authVersion,
         };
       },
     }),
@@ -79,6 +74,18 @@ export const config = {
         token.id = user.id;
         token.role = user.role;
         token.passwordExpired = user.passwordExpired;
+        token.authVersion = user.authVersion;
+      } else if (token.id) {
+        const current = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { isActive: true, isApproved: true, role: true, authVersion: true },
+        });
+        if (!current?.isActive || !current.isApproved || current.authVersion !== token.authVersion) {
+          token.disabled = true;
+        } else {
+          token.role = current.role;
+          token.disabled = false;
+        }
       }
       if (trigger === "update" && token.passwordExpired !== false) {
         token.passwordExpired = false;
@@ -88,6 +95,7 @@ export const config = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async session({ session, token }: { session: any; token: any }) {
       if (session.user) {
+        if (token.disabled || !token.id) return { ...session, user: undefined };
         session.user.id = token.id;
         session.user.role = token.role;
         session.user.passwordExpired = token.passwordExpired === true;

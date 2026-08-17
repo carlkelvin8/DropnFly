@@ -41,6 +41,7 @@ model User {
   totpSecret          String?
   totpEnabled         Boolean   @default(false)
   passwordChangedAt   DateTime?
+  authVersion          Int       @default(0)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -77,6 +78,8 @@ model Customer {
   email           String   @unique
   phone           String
   password        String?
+  emailVerifiedAt DateTime?
+  authVersion     Int      @default(0)
   countryOfOrigin String?
   cityOfOrigin    String?
   isApproved      Boolean  @default(true)
@@ -93,6 +96,7 @@ model Customer {
   reviews           BookingReview[]
   pointsTransactions PointsTransaction[]
   incidentReports   IncidentReport[]
+  activationTokens  CustomerActivationToken[]
 }
 
 model Booking {
@@ -114,6 +118,7 @@ model Booking {
   promoCodeId     String?
   status          BookingStatus @default(PENDING)
   pickupStartedAt DateTime?     // set when "Start Pickup" pressed — enables geolocation monitoring
+  checkoutLockedUntil DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -214,6 +219,31 @@ model PasswordResetToken {
   token     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+model CustomerActivationToken {
+  id           String   @id @default(cuid())
+  customerId   String
+  tokenHash    String   @unique
+  passwordHash String
+  pendingName  String
+  pendingPhone String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([expiresAt])
+}
+
+model ApiRateLimit {
+  key         String   @id
+  count       Int      @default(1)
+  windowStart DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([expiresAt])
 }
 
 enum PaymentStatus {

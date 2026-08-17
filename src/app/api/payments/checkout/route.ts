@@ -12,6 +12,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  let lockedBookingId: string | null = null;
   try {
     const body = await req.json();
     const { bookingId, method } = body as {
@@ -50,6 +51,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Booking is already fully paid" }, { status: 400 });
     }
 
+    const pending = await prisma.payment.findFirst({
+      where: { bookingId: booking.id, status: "PENDING", gatewayRef: { not: null } },
+      select: { id: true, createdAt: true },
+    });
+    if (pending && pending.createdAt > new Date(Date.now() - 30 * 60 * 1000)) {
+      return NextResponse.json({ error: "A payment for this booking is already pending" }, { status: 409 });
+    }
+    if (pending) await prisma.payment.update({ where: { id: pending.id }, data: { status: "FAILED" } });
+
     const selectedMethod = method && ["GCASH", "MAYA", "CARD"].includes(method) ? method : "GCASH";
 
     if (!isPaymongoConfigured()) {
@@ -79,6 +89,19 @@ export async function POST(req: Request) {
         message: "Online payment gateway is not configured. Your payment request has been recorded — our team will confirm payment on pickup or delivery.",
       });
     }
+
+    const now = new Date();
+    const lock = await prisma.booking.updateMany({
+      where: {
+        id: booking.id,
+        OR: [{ checkoutLockedUntil: null }, { checkoutLockedUntil: { lt: now } }],
+      },
+      data: { checkoutLockedUntil: new Date(now.getTime() + 30 * 60 * 1000) },
+    });
+    if (lock.count !== 1) {
+      return NextResponse.json({ error: "A checkout is already being created for this booking" }, { status: 409 });
+    }
+    lockedBookingId = booking.id;
 
     const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
     const successUrl = `${baseUrl}/my-account/bookings/${booking.id}?paid=1`;
@@ -127,6 +150,9 @@ export async function POST(req: Request) {
       url: sessionResult.checkoutUrl,
     });
   } catch (e) {
+    if (lockedBookingId) {
+      await prisma.booking.updateMany({ where: { id: lockedBookingId }, data: { checkoutLockedUntil: null } }).catch(() => undefined);
+    }
     const message = e instanceof Error ? e.message : "Failed to start checkout";
     return NextResponse.json({ error: message }, { status: 500 });
   }

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -299,7 +300,7 @@ export default function LiveTrackingPage() {
                         <div className="flex items-center gap-3">
                           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-green-500 to-emerald-500 text-base font-bold text-white shadow-md">
                             {employee.profilePic ? (
-                              <img src={employee.profilePic} alt={employee.name} className="h-12 w-12 rounded-full object-cover" />
+                              <Image unoptimized width={48} height={48} src={employee.profilePic} alt={employee.name} className="h-12 w-12 rounded-full object-cover" />
                             ) : (
                               employee.name.charAt(0)
                             )}

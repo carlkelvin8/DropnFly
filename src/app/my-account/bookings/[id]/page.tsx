@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -335,7 +336,7 @@ export default function CustomerBookingDetailPage() {
               </p>
               {verifyPhoto ? (
                 <div className="relative overflow-hidden rounded-xl border">
-                  <img src={verifyPhoto} alt="Drop-off verification" className="h-40 w-full object-cover" />
+                  <Image unoptimized width={800} height={320} src={verifyPhoto} alt="Drop-off verification" className="h-40 w-full object-cover" />
                   <button
                     onClick={() => setVerifyPhoto(null)}
                     className="absolute top-2 right-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"
@@ -763,7 +764,7 @@ export default function CustomerBookingDetailPage() {
             <CardContent>
               <div className="grid grid-cols-3 gap-2">
                 {booking.luggagePhotos.map((photo, i) => (
-                  <img key={i} src={photo} alt={`Luggage ${i + 1}`} className="rounded-xl object-cover w-full h-24 border" />
+                  <Image unoptimized width={400} height={160} key={i} src={photo} alt={`Luggage ${i + 1}`} className="rounded-xl object-cover w-full h-24 border" />
                 ))}
               </div>
             </CardContent>

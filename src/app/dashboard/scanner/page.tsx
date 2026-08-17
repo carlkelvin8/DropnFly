@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import {
   Tag, Briefcase, Search,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { toast } from "sonner";
 import { CameraQRScanner } from "@/components/scanner/CameraQRScanner";
 
@@ -71,6 +72,14 @@ interface IntakeResult {
   storageEligible: boolean;
 }
 
+interface IntakeQueueBooking {
+  id: string;
+  referenceNumber: string;
+  status: string;
+  checkIn: string;
+  rider: { name: string } | null;
+}
+
 function cleanScanInput(ref: string): string {
   const withoutQuery = ref.split("?")[0].split("#")[0];
   const clean = withoutQuery.includes("/")
@@ -102,6 +111,36 @@ export default function QrScannerPage() {
   const [intakeLoading, setIntakeLoading] = useState(false);
   const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
   const [intakeProcessing, setIntakeProcessing] = useState(false);
+  const [intakeQueue, setIntakeQueue] = useState<IntakeQueueBooking[]>([]);
+  const [queueBooking, setQueueBooking] = useState<IntakeQueueBooking | null>(null);
+  const [queuePhoto, setQueuePhoto] = useState<string | null>(null);
+
+  const loadIntakeQueue = useCallback(() => {
+    fetch("/api/bookings?include=basic")
+      .then((r) => r.ok ? r.json() : [])
+      .then((rows) => setIntakeQueue(Array.isArray(rows) ? rows.filter((b) => ["RECEIVED", "IN_STORAGE"].includes(b.status)) : []))
+      .catch(() => setIntakeQueue([]));
+  }, []);
+
+  useEffect(() => { loadIntakeQueue(); }, [loadIntakeQueue]);
+
+  async function updateQueuedBooking() {
+    if (!queueBooking) return;
+    if (queueBooking.status === "RECEIVED" && !queuePhoto) {
+      toast.error("Take a luggage verification photo before storage intake");
+      return;
+    }
+    setIntakeProcessing(true);
+    const nextStatus = queueBooking.status === "RECEIVED" ? "IN_STORAGE" : "OUT_FOR_DELIVERY";
+    try {
+      const res = await fetch("/api/qr/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ referenceNumber: queueBooking.referenceNumber, status: nextStatus, photo: queuePhoto, note: `Intake queue update to ${nextStatus}` }) });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Update failed");
+      toast.success(`Booking updated to ${nextStatus.replace(/_/g, " ")}`);
+      setQueueBooking(null); setQueuePhoto(null); loadIntakeQueue();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Update failed"); }
+    finally { setIntakeProcessing(false); }
+  }
 
   const handleScan = useCallback(async (ref: string) => {
     const cleanRef = cleanScanInput(ref);
@@ -278,6 +317,7 @@ export default function QrScannerPage() {
           luggageScan: true,
           tagNumber: intakeResult.luggage.tagNumber,
           referenceNumber: intakeResult.booking.referenceNumber,
+          photo,
         }),
       });
       const json = await res.json();
@@ -286,6 +326,7 @@ export default function QrScannerPage() {
       setIntakeResult(null);
       setIntakeTag("");
       setIntakeRef("");
+      setPhoto(null);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Intake failed");
     } finally {
@@ -404,6 +445,20 @@ export default function QrScannerPage() {
         {/* Luggage intake flow */}
         {flow === "luggage" && (
           <>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Waiting to be stored</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {intakeQueue.filter((b) => b.status === "RECEIVED").map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · Received</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); }}>Update</Button></div>)}
+                {intakeQueue.every((b) => b.status !== "RECEIVED") && <p className="py-4 text-center text-sm text-muted-foreground">No luggage waiting for storage</p>}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Waiting to be delivered</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {intakeQueue.filter((b) => b.status === "IN_STORAGE").map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · In storage</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); }}>Update</Button></div>)}
+                {intakeQueue.every((b) => b.status !== "IN_STORAGE") && <p className="py-4 text-center text-sm text-muted-foreground">No luggage waiting for delivery</p>}
+              </CardContent>
+            </Card>
             {intakeCamera ? (
               <CameraQRScanner
                 onScan={(ref) => { setIntakeTag(cleanScanInput(ref)); setIntakeCamera(false); }}
@@ -468,11 +523,13 @@ export default function QrScannerPage() {
                       ✓ This luggage is already in storage.
                     </div>
                   ) : (
+                    <div className="space-y-3">
+                    <label className="block rounded-lg border border-dashed p-3 text-sm"><span className="mb-2 block font-medium">Luggage verification photo (required)</span><input type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} />{photo && <span className="mt-2 block text-xs text-emerald-600">Photo ready</span>}</label>
                     <Button
                       className="w-full h-11 rounded-xl"
                       size="lg"
                       onClick={handleIntakeConfirm}
-                      disabled={intakeProcessing}
+                      disabled={intakeProcessing || !photo}
                     >
                       {intakeProcessing ? (
                         <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...</>
@@ -480,6 +537,7 @@ export default function QrScannerPage() {
                         <><Warehouse className="mr-2 h-5 w-5" /> Confirm Storage Intake</>
                       )}
                     </Button>
+                    </div>
                   )}
                   {intakeResult.remaining > 0 && (
                     <p className="text-center text-[10px] text-muted-foreground">
@@ -496,12 +554,7 @@ export default function QrScannerPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Button
-                    variant="outline" className="w-full justify-start"
-                    onClick={() => setIntakeCamera(true)}
-                  >
-                    <QrCode className="mr-2 h-4 w-4" /> Scan Baggage Tag QR
-                  </Button>
+                  <p className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">Physical baggage tags use printed numbers. Enter the tag number below for manual verification.</p>
                   <div className="space-y-2">
                     <input
                       value={intakeTag}
@@ -529,6 +582,16 @@ export default function QrScannerPage() {
               </Card>
             )}
           </>
+        )}
+
+        {queueBooking && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+            <Card className="w-full max-w-md"><CardHeader><CardTitle>Update {queueBooking.referenceNumber}</CardTitle></CardHeader><CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">Move from {queueBooking.status.replace(/_/g, " ")} to {queueBooking.status === "RECEIVED" ? "IN STORAGE" : "OUT FOR DELIVERY"}.</p>
+              {queueBooking.status === "RECEIVED" && <div><p className="mb-2 text-sm font-medium">Luggage verification photo (required)</p><input type="file" accept="image/*" capture="environment" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onloadend = () => setQueuePhoto(reader.result as string); reader.readAsDataURL(file); }} />{queuePhoto && <p className="mt-2 text-xs text-emerald-600">Photo ready for verification</p>}</div>}
+              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => { setQueueBooking(null); setQueuePhoto(null); }}>Cancel</Button><Button disabled={intakeProcessing || (queueBooking.status === "RECEIVED" && !queuePhoto)} onClick={updateQueuedBooking}>{intakeProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Update"}</Button></div>
+            </CardContent></Card>
+          </div>
         )}
 
         {/* Recent scans tip */}
@@ -825,7 +888,7 @@ export default function QrScannerPage() {
         <CardContent>
           {photo ? (
             <div className="relative rounded-xl overflow-hidden border">
-              <img src={photo} alt="Proof" className="w-full h-40 object-cover" />
+              <Image unoptimized width={800} height={320} src={photo} alt="Proof" className="w-full h-40 object-cover" />
               <button
                 onClick={() => setPhoto(null)}
                 className="absolute top-2 right-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"

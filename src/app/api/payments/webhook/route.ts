@@ -19,6 +19,9 @@ export async function POST(req: Request) {
 
   const eventType = payload.type || "";
   const resourceId = payload.data?.id;
+  if (!resourceId || typeof resourceId !== "string") {
+    return NextResponse.json({ error: "Invalid webhook payload" }, { status: 400 });
+  }
 
   try {
     if (eventType === "checkout_session.payment_paid") {
@@ -26,29 +29,34 @@ export async function POST(req: Request) {
         where: { gatewayRef: resourceId },
       });
 
-      if (payment) {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: { status: "PAID", paidAt: new Date() },
+      if (payment && payment.status !== "REFUNDED") {
+        await prisma.payment.updateMany({
+          where: { id: payment.id, status: { in: ["PENDING", "FAILED"] } },
+          data: { status: "PAID", paidAt: payment.paidAt || new Date() },
         });
 
         const booking = await prisma.booking.findUnique({ where: { id: payment.bookingId } });
         if (booking && booking.status === "PENDING") {
           await prisma.booking.update({
             where: { id: booking.id },
-            data: { status: "CONFIRMED" },
+            data: { status: "CONFIRMED", checkoutLockedUntil: null },
           });
+        } else if (booking) {
+          await prisma.booking.update({ where: { id: booking.id }, data: { checkoutLockedUntil: null } });
         }
       }
     } else if (eventType === "checkout_session.payment_failed") {
+      const failed = await prisma.payment.findFirst({ where: { gatewayRef: resourceId }, select: { bookingId: true } });
       await prisma.payment.updateMany({
         where: { gatewayRef: resourceId, status: "PENDING" },
         data: { status: "FAILED" },
       });
+      if (failed) await prisma.booking.update({ where: { id: failed.bookingId }, data: { checkoutLockedUntil: null } });
     }
 
     return NextResponse.json({ received: true });
-  } catch {
+  } catch (error) {
+    console.error("PayMongo webhook processing failed", error);
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 }

@@ -35,13 +35,21 @@ export default function ChatRoomPage() {
 
   useEffect(() => {
     if (!bookingId) return;
-    Promise.all([
-      fetch(`/api/bookings/${bookingId}`).then((r) => r.json()),
-      fetch(`/api/bookings/${bookingId}/chat`).then((r) => r.json()),
-    ]).then(([b, m]) => {
-      setBooking(b);
-      setMessages(m);
-    }).catch(() => toast.error("Failed to load chat"));
+    let active = true;
+    const load = async (initial = false) => {
+      try {
+        const requests = initial
+          ? [fetch(`/api/bookings/${bookingId}`).then((r) => { if (!r.ok) throw new Error(); return r.json(); }), fetch(`/api/bookings/${bookingId}/chat`).then((r) => { if (!r.ok) throw new Error(); return r.json(); })]
+          : [Promise.resolve(null), fetch(`/api/bookings/${bookingId}/chat`).then((r) => { if (!r.ok) throw new Error(); return r.json(); })];
+        const [b, m] = await Promise.all(requests);
+        if (!active) return;
+        if (b) setBooking(b);
+        setMessages(m);
+      } catch { if (initial) toast.error("Failed to load chat"); }
+    };
+    load(true);
+    const poll = window.setInterval(() => load(false), 3000);
+    return () => { active = false; window.clearInterval(poll); };
   }, [bookingId]);
 
   useEffect(() => {

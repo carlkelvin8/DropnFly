@@ -147,6 +147,7 @@ function calcStorageDays(pickupDate: string, pickupSlot: string, deliveryDate: s
 }
 
 export default function BookPage() {
+  const paymentDemoMode = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED !== "true";
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -198,7 +199,7 @@ export default function BookPage() {
   ];
   const servicesCost = servicesList.filter((s) => selectedServices[s.id]).reduce((sum, s) => sum + s.price, 0);
   const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
-  const downPayment = Math.ceil(grandTotal * (paymentPercent / 100));
+  const downPayment = paymentDemoMode ? 0 : Math.ceil(grandTotal * (paymentPercent / 100));
   const remainingBalance = grandTotal - downPayment;
   const storageDays = calcStorageDays(pickupDate, pickupSlot, deliveryDate, deliverySlot);
   const dpMin = Math.max(50, Math.min(100, minDpPercent || 50));
@@ -488,8 +489,9 @@ export default function BookPage() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="countryOfOrigin">Country of Origin <span className="text-red-500">*</span></Label>
-                        <select
+                        <Input
                           id="countryOfOrigin"
+                          list="country-options"
                           value={selectedCountry}
                           onChange={(e) => {
                             setSelectedCountry(e.target.value);
@@ -497,31 +499,23 @@ export default function BookPage() {
                             setSelectedCity("");
                             setCitiesLoading(!!e.target.value);
                           }}
-                          disabled={countriesLoading}
                           required
-                          className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        >
-                          <option value="">{countriesLoading ? "Loading countries..." : "Select country..."}</option>
-                          {countries.map((c) => (
-                            <option key={c.code} value={c.name}>{c.name}</option>
-                          ))}
-                        </select>
+                          placeholder={countriesLoading ? "Loading countries..." : "Type or select a country"}
+                        />
+                        <datalist id="country-options">{countries.map((c) => <option key={c.code} value={c.name} />)}</datalist>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="cityOfOrigin">City of Origin <span className="text-red-500">*</span></Label>
-                        <select
+                        <Input
                           id="cityOfOrigin"
+                          list="city-options"
                           value={selectedCity}
                           onChange={(e) => setSelectedCity(e.target.value)}
-                          disabled={!selectedCountry || citiesLoading}
+                          disabled={!selectedCountry}
                           required
-                          className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        >
-                          <option value="">{!selectedCountry ? "Select a country first" : citiesLoading ? "Loading cities..." : "Select city..."}</option>
-                          {cities.map((city) => (
-                            <option key={city} value={city}>{city}</option>
-                          ))}
-                        </select>
+                          placeholder={!selectedCountry ? "Enter a country first" : citiesLoading ? "Loading cities..." : "Type or select a city"}
+                        />
+                        <datalist id="city-options">{cities.map((city) => <option key={city} value={city} />)}</datalist>
                       </div>
                     </div>
                     {error && (
@@ -976,7 +970,7 @@ export default function BookPage() {
                         </svg>
                         <h3 className="text-base font-semibold">Payment Option</h3>
                       </div>
-                      <p className="mb-3 text-xs text-blue-700">Slide to choose how much to pay now. Minimum of <strong>50%</strong> is required to reserve your slot.</p>
+                      <p className="mb-3 text-xs text-blue-700">{paymentDemoMode ? "Online payment is temporarily suspended. No payment is required while testing the complete booking workflow." : <>Slide to choose how much to pay now. Minimum of <strong>{dpMin}%</strong> is required to reserve your slot.</>}</p>
                       <div className="mb-3 flex items-center gap-4">
                         <div
                           className="relative w-full"
@@ -996,6 +990,7 @@ export default function BookPage() {
                             onChange={(e) => setPaymentPercent(Number(e.target.value))}
                             className="w-full accent-blue-600"
                             aria-label="Down payment percentage"
+                            disabled={paymentDemoMode}
                           />
                           {paymentHover !== null && (
                             <div
@@ -1007,7 +1002,7 @@ export default function BookPage() {
                           )}
                         </div>
                         <span className="shrink-0 rounded-lg border border-blue-200 bg-blue-100 px-3 py-1 text-sm font-bold text-blue-700 tabular-nums">
-                          {paymentPercent}%
+                          {paymentDemoMode ? "Demo" : `${paymentPercent}%`}
                         </span>
                       </div>
                       <div className="mb-1 flex justify-between text-[10px] font-medium text-blue-500">
@@ -1016,11 +1011,11 @@ export default function BookPage() {
                       </div>
                       <div className="space-y-1.5">
                         <div className="flex justify-between text-blue-800">
-                          <span>Pay now</span>
+                          <span>{paymentDemoMode ? "Due now (demo mode)" : "Pay now"}</span>
                           <span className="font-bold">&#x20B1;{downPayment.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-blue-600">
-                          <span>Collect later (remaining)</span>
+                          <span>{paymentDemoMode ? "Balance for staff recording" : "Collect later (remaining)"}</span>
                           <span className="font-medium">&#x20B1;{remainingBalance.toFixed(2)}</span>
                         </div>
                       </div>
@@ -1089,7 +1084,7 @@ export default function BookPage() {
                         {loading ? (
                           <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Processing...</span>
                         ) : (
-                          <span className="flex items-center justify-center gap-2">Pay &#x20B1;{downPayment.toFixed(2)} now <ChevronRight className="h-5 w-5" /></span>
+                          <span className="flex items-center justify-center gap-2">{paymentDemoMode ? "Confirm Demo Booking" : `Pay ₱${downPayment.toFixed(2)} now`} <ChevronRight className="h-5 w-5" /></span>
                         )}
                       </Button>
                     </div>

@@ -18,13 +18,12 @@ export async function GET(req: NextRequest) {
     const nextDay = new Date(selected);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    const [bookings, activities] = await Promise.all([
-      prisma.booking.findMany({
+    const bookings = await prisma.booking.findMany({
         where: {
+          ...(session.user.role === "EMPLOYEE" ? { assignments: { some: { userId: session.user.id } } } : {}),
           OR: [
             { checkIn: { gte: selected, lt: nextDay } },
             { checkOut: { gte: selected, lt: nextDay } },
-            { createdAt: { gte: selected, lt: nextDay } },
           ],
         },
         select: {
@@ -36,16 +35,9 @@ export async function GET(req: NextRequest) {
           numberOfBags: true,
         },
         orderBy: { createdAt: "desc" },
-      }),
-      prisma.activityLog.findMany({
-        where: { createdAt: { gte: selected, lt: nextDay } },
-        select: { action: true, entity: true, createdAt: true },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-      }),
-    ]);
+      });
 
-    return NextResponse.json({ bookings, activities });
+    return NextResponse.json({ bookings });
   } catch (e) {
     console.error("Calendar API error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

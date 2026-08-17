@@ -8,6 +8,24 @@ const publicRoutes = ["/", "/login", "/book", "/track", "/api/public", "/api/aut
 
 export default function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
+  const method = req.method.toUpperCase();
+  const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);
+
+  if (path.startsWith("/api/") && mutating) {
+    const contentLength = Number(req.headers.get("content-length") || "0");
+    if (Number.isFinite(contentLength) && contentLength > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: "Request body is too large" }, { status: 413 });
+    }
+
+    // Webhooks are authenticated by provider signatures. Browser-originated
+    // mutations must come from this deployment to limit cookie-based CSRF.
+    if (path !== "/api/payments/webhook") {
+      const origin = req.headers.get("origin");
+      if (origin && origin !== req.nextUrl.origin) {
+        return NextResponse.json({ error: "Invalid request origin" }, { status: 403 });
+      }
+    }
+  }
   const isProtectedRoute = protectedRoutes.some((route) =>
     path.startsWith(route)
   );

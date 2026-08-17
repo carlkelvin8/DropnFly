@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Card,
   CardContent,
@@ -296,7 +297,7 @@ export default function TrackResultPage() {
               <div className="flex items-center gap-4">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-600 text-lg font-bold text-white shadow-md">
                   {rider.profilePic ? (
-                    <img src={rider.profilePic} alt={rider.name} className="h-14 w-14 rounded-full object-cover" />
+                    <Image unoptimized width={56} height={56} src={rider.profilePic} alt={rider.name} className="h-14 w-14 rounded-full object-cover" />
                   ) : (
                     rider.name.charAt(0)
                   )}
@@ -338,7 +339,7 @@ export default function TrackResultPage() {
                     <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
                       {rider.profilePic && (
                         <div className="flex justify-center">
-                          <img src={rider.profilePic} alt={rider.name} className="h-24 w-24 rounded-full border-4 border-green-200 object-cover shadow-md" />
+                          <Image unoptimized width={96} height={96} src={rider.profilePic} alt={rider.name} className="h-24 w-24 rounded-full border-4 border-green-200 object-cover shadow-md" />
                         </div>
                       )}
                       <div className="text-center">
@@ -478,7 +479,7 @@ export default function TrackResultPage() {
               </p>
               {verifyPhoto ? (
                 <div className="relative overflow-hidden rounded-xl border">
-                  <img src={verifyPhoto} alt="Drop-off verification" className="h-40 w-full object-cover" />
+                  <Image unoptimized width={800} height={320} src={verifyPhoto} alt="Drop-off verification" className="h-40 w-full object-cover" />
                   <button
                     onClick={() => setVerifyPhoto(null)}
                     className="absolute top-2 right-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"
@@ -592,7 +593,7 @@ export default function TrackResultPage() {
                               <div className="flex flex-wrap gap-1.5 mt-1">
                                 {scan.photo && (
                                   <button onClick={() => setShowPhotoModal(scan.photo!)}>
-                                    <img
+                                    <Image unoptimized width={80} height={80}
                                       src={scan.photo}
                                       alt="Proof"
                                       className="h-10 w-10 rounded border object-cover hover:opacity-80 transition-opacity"
@@ -730,7 +731,7 @@ export default function TrackResultPage() {
       {showPhotoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setShowPhotoModal(null)}>
           <div className="relative max-w-lg max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
-            <img src={showPhotoModal} alt="Photo proof" className="max-h-[80vh] w-auto rounded-lg shadow-2xl" />
+            <Image unoptimized width={1000} height={1000} src={showPhotoModal} alt="Photo proof" className="max-h-[80vh] w-auto rounded-lg shadow-2xl" />
             <button onClick={() => setShowPhotoModal(null)}
               className="absolute -top-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-700 shadow-lg hover:bg-gray-100">
               <X className="h-4 w-4" />

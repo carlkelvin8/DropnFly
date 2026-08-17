@@ -5,7 +5,7 @@ import { signIn, getSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Luggage, Eye, EyeOff, LogIn, ShieldCheck } from "lucide-react";
+import { Luggage, Eye, EyeOff, LogIn, ShieldCheck, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -92,6 +92,15 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
+  const [alternateOrigin] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const url = new URL(window.location.href);
+    if (url.hostname === "localhost") url.hostname = "127.0.0.1";
+    else if (url.hostname === "127.0.0.1") url.hostname = "localhost";
+    else return "";
+    url.pathname = "/login";
+    return url.toString();
+  });
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -369,6 +378,11 @@ function LoginForm() {
             >
               Employee accounts are created by your administrator.
             </motion.p>
+            {alternateOrigin && (
+              <a href={alternateOrigin} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-1.5 text-xs text-blue-300 hover:text-blue-200">
+                <ExternalLink className="h-3.5 w-3.5" /> Open an independent login tab
+              </a>
+            )}
           </motion.div>
         </motion.div>
       </div>

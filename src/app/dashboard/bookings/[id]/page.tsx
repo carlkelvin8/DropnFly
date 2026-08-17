@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -27,13 +28,10 @@ import {
   Briefcase, Plus, Edit3, AlertTriangle, X, CheckCircle, ShieldAlert,
   Wrench, ShoppingBag, CreditCard, Receipt, Ban, UserX,
   RotateCcw, History, Flag, Check, XCircle, ChevronDown, Activity, Camera, Loader2,
-  Navigation2, Radio, Play, Square,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { LocationUpdater } from "@/components/tracking/LocationUpdater";
-import { BookingScannerPanel } from "@/components/scanner/BookingScannerPanel";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Booking {
@@ -94,8 +92,6 @@ const statusOptions = [
   { value: "IN_STORAGE", label: "In Storage" },
   { value: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
   { value: "DELIVERED", label: "Delivered" },
-  { value: "NO_SHOW", label: "No Show" },
-  { value: "CANCELLED", label: "Cancelled" },
 ];
 
 const ADDITIONAL_SERVICES = [
@@ -110,7 +106,6 @@ export default function BookingDetailPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [extensions, setExtensions] = useState<Extension[]>([]);
@@ -127,10 +122,6 @@ export default function BookingDetailPage() {
   const [dangerSubmitting, setDangerSubmitting] = useState(false);
   const dangerFileRef = useRef<HTMLInputElement>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
-  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-  const [pickupBusy, setPickupBusy] = useState(false);
-  const [showTrackingPanel, setShowTrackingPanel] = useState(false);
-  const [confirmCancelTracking, setConfirmCancelTracking] = useState(false);
   const [settleAmount, setSettleAmount] = useState<number>(0);
   const [settleMethod, setSettleMethod] = useState("CASH");
   const [refundAmount, setRefundAmount] = useState(0);
@@ -172,7 +163,6 @@ export default function BookingDetailPage() {
       .then((r) => r.json())
       .then((s) => {
         setUserRole(s?.user?.role || null);
-        setSessionUserId(s?.user?.id || null);
       })
       .catch(() => setUserRole(null));
   }, []);
@@ -185,11 +175,6 @@ export default function BookingDetailPage() {
     totalPaid >= booking.totalPrice && booking.totalPrice > 0 ? "full" :
     totalPaid > 0 ? "dp" : "unpaid";
 
-  const pickupStarted = !!booking?.pickupStartedAt;
-  const pickupEmployee = booking?.assignments?.find((a) => a.phase !== "DROPOFF")?.user ||
-    booking?.assignments?.[0]?.user || null;
-  const isAssignee = !!pickupEmployee && sessionUserId === pickupEmployee.id;
-
   function reloadBooking() {
     fetch(`/api/bookings/${params.id}`)
       .then((r) => r.json())
@@ -201,44 +186,6 @@ export default function BookingDetailPage() {
         setSettleAmount(bookingData && bookingData.totalPrice - paid > 0 ? bookingData.totalPrice - paid : 0);
       })
       .catch(() => toast.error("Failed to reload booking"));
-  }
-
-  async function handleStartPickup() {
-    setPickupBusy(true);
-    try {
-      const res = await fetch(`/api/bookings/${params.id}/pickup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start" }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to start pickup");
-      setBooking(json.booking);
-      toast.success("Pickup started — live geolocation tracking enabled");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to start pickup");
-    } finally {
-      setPickupBusy(false);
-    }
-  }
-
-  async function handleCancelTracking() {
-    setPickupBusy(true);
-    try {
-      const res = await fetch(`/api/bookings/${params.id}/pickup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cancel" }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to cancel tracking");
-      setBooking(json.booking);
-      toast.success("Live tracking cancelled");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to cancel tracking");
-    } finally {
-      setPickupBusy(false);
-    }
   }
 
   async function handleAddLuggage() {
@@ -403,46 +350,6 @@ export default function BookingDetailPage() {
     } finally {
       setDangerSubmitting(false);
     }
-  }
-
-  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingPhoto(true);
-    try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-        const res = await fetch(`/api/bookings/${params.id}/photos`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ photo: base64 }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setBooking((prev) => prev ? { ...prev, luggagePhotos: data.photos } : prev);
-          toast.success("Photo uploaded");
-        } else toast.error("Failed to upload photo");
-        setUploadingPhoto(false);
-      };
-      reader.readAsDataURL(file);
-    } catch {
-      toast.error("Failed to upload photo");
-      setUploadingPhoto(false);
-    }
-  }
-
-  async function handleDeletePhoto(index: number) {
-    const res = await fetch(`/api/bookings/${params.id}/photos`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ index }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setBooking((prev) => prev ? { ...prev, luggagePhotos: data.photos } : prev);
-      toast.success("Photo removed");
-    } else toast.error("Failed to remove photo");
   }
 
   async function handleAddPayment(e: React.FormEvent<HTMLFormElement>) {
@@ -673,9 +580,6 @@ export default function BookingDetailPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      {pickupStarted && isAssignee && (
-        <LocationUpdater enabled />
-      )}
       <div className="flex items-center gap-4">
         <Button variant="ghost" asChild>
           <Link href="/dashboard/bookings">
@@ -978,7 +882,7 @@ export default function BookingDetailPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="border-t-2 border-t-gray-500">
+        <Card className="self-start border-t-2 border-t-gray-500">
           <CardHeader>
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
@@ -1028,47 +932,6 @@ export default function BookingDetailPage() {
               </div>
             </form>
 
-            <div className="space-y-2 border-t border-dashed pt-3">
-              <div className="flex items-center gap-2">
-                {pickupStarted ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-green-300 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
-                    Pickup started — live tracking on
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-muted-foreground">
-                    Start pickup to begin sharing the assigned employee&apos;s live location
-                  </span>
-                )}
-              </div>
-              <Button
-                className="w-full justify-start bg-emerald-600 text-white hover:bg-emerald-700"
-                onClick={handleStartPickup}
-                disabled={pickupBusy || pickupStarted || ["CANCELLED", "NO_SHOW", "DELIVERED"].includes(booking.status)}
-              >
-                {pickupBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : pickupStarted ? <Radio className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
-                {pickupStarted ? "Start Pickup (Started)" : "Start Pickup"}
-              </Button>
-              <Button
-                variant="outline" className="w-full justify-start"
-                onClick={() => setShowTrackingPanel((v) => !v)}
-                disabled={!pickupStarted}
-              >
-                {showTrackingPanel ? <XCircle className="mr-2 h-4 w-4" /> : <Navigation2 className="mr-2 h-4 w-4" />}
-                {showTrackingPanel ? "Close Update Tracking" : "Update Tracking"}
-              </Button>
-              {pickupStarted && userRole === "ADMIN" && (
-                <Button
-                  variant="outline" className="w-full justify-start text-amber-700 hover:text-amber-800"
-                  onClick={() => setConfirmCancelTracking(true)}
-                  disabled={pickupBusy}
-                >
-                  {pickupBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Square className="mr-2 h-4 w-4" />}
-                  Cancel Live Tracking (Admin)
-                </Button>
-              )}
-            </div>
-
             <div className="space-y-2">
               <Button variant="outline" className="w-full justify-start" onClick={() => setShowEditModal(true)}>
                 <Edit3 className="mr-2 h-4 w-4" /> Edit Booking
@@ -1092,7 +955,7 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-t-2 border-t-red-500">
+        <Card className="self-start border-t-2 border-t-red-500">
           <CardHeader>
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-100">
@@ -1130,13 +993,6 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
       </div>
-
-      {showTrackingPanel && (
-        <BookingScannerPanel
-          referenceNumber={booking.referenceNumber}
-          onUpdate={() => { reloadBooking(); }}
-        />
-      )}
 
       <Card className="border-t-2 border-t-purple-500">
         <CardHeader>
@@ -1251,27 +1107,16 @@ export default function BookingDetailPage() {
       )}
 
       <Card>
-        <CardHeader><CardTitle>Luggage Photos</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Luggage Photos</CardTitle><CardDescription>Submitted photos are read-only. Employees add verification photos only while updating luggage status.</CardDescription></CardHeader>
         <CardContent>
           <div className="grid grid-cols-4 gap-2 mb-4">
             {booking.luggagePhotos.map((photo, i) => (
               <div key={i} className="relative group">
-                <img src={photo} alt={`Luggage ${i + 1}`} className="rounded-lg object-cover w-full h-24" />
-                <button onClick={() => handleDeletePhoto(i)}
-                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                ><Trash2 className="h-3 w-3" /></button>
+                <Image unoptimized width={400} height={160} src={photo} alt={`Luggage ${i + 1}`} className="rounded-lg object-cover w-full h-24" />
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={uploadingPhoto} className="relative">
-              {uploadingPhoto ? "Uploading..." : "Add Photo"}
-              <input type="file" accept="image/*" capture="environment"
-                onChange={handlePhotoUpload}
-                className="absolute inset-0 opacity-0 cursor-pointer" />
-            </Button>
-            <span className="text-xs text-muted-foreground">{booking.luggagePhotos.length} photo(s)</span>
-          </div>
+          <span className="text-xs text-muted-foreground">{booking.luggagePhotos.length} submitted photo(s)</span>
         </CardContent>
       </Card>
 
@@ -1310,9 +1155,9 @@ export default function BookingDetailPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Luggage Items</CardTitle>
+            <div><CardTitle>Additional Baggage</CardTitle><CardDescription>Register baggage added after the original booking.</CardDescription></div>
             <Button variant="outline" size="sm" onClick={handleAddLuggage} disabled={addingLuggage}>
-              <Plus className="mr-1 h-4 w-4" /> Add Bag
+              <Plus className="mr-1 h-4 w-4" /> Add Additional Bag
             </Button>
           </div>
         </CardHeader>
@@ -1622,15 +1467,6 @@ export default function BookingDetailPage() {
         confirmLabel="Delete" variant="danger"
       />
 
-      <ConfirmDialog
-        open={confirmCancelTracking}
-        onClose={() => setConfirmCancelTracking(false)}
-        onConfirm={handleCancelTracking}
-        title="Cancel Live Tracking"
-        message={`Stop sharing the assigned employee's live location for booking ${booking.referenceNumber}? The customer will be notified and tracking will end.`}
-        confirmLabel="Stop Tracking" variant="danger"
-      />
-
       {dangerModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDangerModal(null)} />
@@ -1662,7 +1498,7 @@ export default function BookingDetailPage() {
                 <Label>Photo proof {dangerModal.mode === "admin" && <span className="text-red-500">*</span>}</Label>
                 {dangerPhoto ? (
                   <div className="relative mt-1 overflow-hidden rounded-lg border">
-                    <img src={dangerPhoto} alt="Proof" className="h-40 w-full object-cover" />
+                    <Image unoptimized width={800} height={320} src={dangerPhoto} alt="Proof" className="h-40 w-full object-cover" />
                     <button
                       onClick={() => setDangerPhoto(null)}
                       className="absolute right-2 top-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"

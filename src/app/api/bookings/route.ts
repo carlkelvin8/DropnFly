@@ -16,6 +16,8 @@ export async function GET(req: Request) {
   const paymentFilter = searchParams.get("payment");
   const riderId = searchParams.get("riderId");
   const dateParam = searchParams.get("date");
+  const dateFrom = searchParams.get("dateFrom");
+  const dateTo = searchParams.get("dateTo");
 
   const statusGroups: Record<string, string[]> = {
     upcoming: ["PENDING"],
@@ -37,6 +39,9 @@ export async function GET(req: Request) {
   }
 
   const where: Record<string, unknown> = {};
+  if (session.user.role === "EMPLOYEE") {
+    where.assignments = { some: { userId: session.user.id } };
+  }
   if (statusFilter) {
     where.status = { in: statusFilter };
   }
@@ -47,6 +52,20 @@ export async function GET(req: Request) {
       next.setUTCDate(next.getUTCDate() + 1);
       where.checkIn = { gte: day, lt: next };
     }
+  } else if (dateFrom || dateTo) {
+    const range: { gte?: Date; lt?: Date } = {};
+    if (dateFrom) {
+      const from = new Date(`${dateFrom}T00:00:00.000Z`);
+      if (!Number.isNaN(from.getTime())) range.gte = from;
+    }
+    if (dateTo) {
+      const to = new Date(`${dateTo}T00:00:00.000Z`);
+      if (!Number.isNaN(to.getTime())) {
+        to.setUTCDate(to.getUTCDate() + 1);
+        range.lt = to;
+      }
+    }
+    if (Object.keys(range).length) where.checkIn = range;
   }
 
   const bookings = await prisma.booking.findMany({
@@ -64,6 +83,7 @@ export async function GET(req: Request) {
       luggageItems: { select: { id: true, tagNumber: true, status: true } },
       ...(include === "chat" ? {
         _count: { select: { chatMessages: true } },
+        chatMessages: { orderBy: { createdAt: "desc" as const }, take: 1 },
       } : {}),
     },
   });
@@ -102,6 +122,7 @@ export async function GET(req: Request) {
       rider,
       pickupRider,
       dropoffRider,
+      ...(include === "chat" ? { lastMessage: b.chatMessages?.[0] || null } : {}),
     };
   });
 

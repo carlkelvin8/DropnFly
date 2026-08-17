@@ -45,7 +45,10 @@ export async function POST(
     const [updated] = await Promise.all([
       prisma.booking.update({
         where: { id },
-        data: { status: newStatus as BookingStatus },
+        data: {
+          status: newStatus as BookingStatus,
+          pickupStartedAt: action === "start-pickup" ? new Date() : action === "complete-pickup" ? null : undefined,
+        },
       }),
       prisma.scanEvent.create({
         data: {
@@ -94,7 +97,7 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ success: true, status: newStatus });
+    return NextResponse.json({ success: true, status: newStatus, pickupStartedAt: updated.pickupStartedAt });
   } catch {
     return NextResponse.json({ error: "Failed to process action" }, { status: 500 });
   }

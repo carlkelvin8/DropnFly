@@ -5,7 +5,9 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Mail, Shield, Calendar, User, Activity } from "lucide-react";
+import { Mail, Shield, Calendar, User, Activity, Pencil } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -50,6 +52,10 @@ export default function EmployeeDetailPage() {
 
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPassword, setEditPassword] = useState("");
 
   useEffect(() => {
     const abort = new AbortController();
@@ -70,6 +76,8 @@ export default function EmployeeDetailPage() {
     if (res.ok) {
       const updated = await res.json();
       setEmployee((prev) => prev ? { ...prev, ...updated } : prev);
+      setEditing(false);
+      setEditPassword("");
       toast.success("Employee updated successfully");
     } else {
       toast.error("Failed to update employee");
@@ -163,6 +171,9 @@ export default function EmployeeDetailPage() {
             <CardTitle>Account Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <Button variant="outline" className="w-full" disabled={saving} onClick={() => { setEditName(employee.name); setEditEmail(employee.email); setEditing(true); }}>
+              <Pencil className="mr-2 h-4 w-4" /> Update Details
+            </Button>
             <Button
               variant={employee.isApproved ? "secondary" : "default"}
               className="w-full"
@@ -193,6 +204,20 @@ export default function EmployeeDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+          <Card className="w-full max-w-md">
+            <CardHeader><CardTitle>Update Employee Details</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5"><Label htmlFor="edit-name">Name</Label><Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} /></div>
+              <div className="space-y-1.5"><Label htmlFor="edit-email">Username / Email</Label><Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} /></div>
+              <div className="space-y-1.5"><Label htmlFor="edit-password">New Password</Label><Input id="edit-password" type="password" minLength={8} value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="Leave blank to keep current password" /></div>
+              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button><Button disabled={saving || !editName.trim() || !editEmail.trim() || (!!editPassword && editPassword.length < 8)} onClick={() => updateEmployee({ name: editName, email: editEmail, ...(editPassword ? { password: editPassword } : {}) })}>Save Details</Button></div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <Card>
         <CardHeader>

@@ -11,7 +11,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const customer = await prisma.customer.findUnique({ where: { email } });
+    const customer = await prisma.customer.findUnique({ where: { email: String(email).trim().toLowerCase() } });
 
     if (!customer || !customer.password) {
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
@@ -25,8 +25,11 @@ export async function POST(req: Request) {
     if (!customer.isActive) {
       return NextResponse.json({ error: "Account is deactivated" }, { status: 403 });
     }
+    if (!customer.emailVerifiedAt) {
+      return NextResponse.json({ error: "Verify your email before signing in" }, { status: 403 });
+    }
 
-    const token = await signCustomerToken({ id: customer.id, email: customer.email, name: customer.name });
+    const token = await signCustomerToken({ id: customer.id, email: customer.email, name: customer.name, authVersion: customer.authVersion });
     await setCustomerCookie(token);
 
     return NextResponse.json({

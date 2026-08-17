@@ -41,6 +41,9 @@ async function handleLuggageIntake({
   if (!cleanTag) {
     return NextResponse.json({ error: "Baggage tag number is required" }, { status: 400 });
   }
+  if (!photo) {
+    return NextResponse.json({ error: "A luggage verification photo is required for storage intake" }, { status: 400 });
+  }
 
   const item = await prisma.luggageItem.findUnique({
     where: { tagNumber: cleanTag },
@@ -185,6 +188,9 @@ export async function POST(req: Request) {
 
     if (status === "DELIVERED" && !customerVerified) {
       return NextResponse.json({ error: "Customer QR verification is required before confirming delivery" }, { status: 400 });
+    }
+    if (status === "IN_STORAGE" && !photo) {
+      return NextResponse.json({ error: "A luggage verification photo is required before marking a booking in storage" }, { status: 400 });
     }
 
     const booking = await prisma.booking.findUnique({
