@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { canReadBooking } from "@/lib/staff-access";
 
 export async function POST(
   req: Request,
@@ -14,6 +15,7 @@ export async function POST(
 
   try {
     const { id } = await params;
+    if (!(await canReadBooking(session.user, id))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const { photo } = await req.json();
 
     if (!photo) {
@@ -65,6 +67,7 @@ export async function DELETE(
 
   try {
     const { id } = await params;
+    if (!(await canReadBooking(session.user, id))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const { index } = await req.json();
 
     if (typeof index !== "number" || index < 0) {

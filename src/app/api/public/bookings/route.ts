@@ -269,9 +269,6 @@ export async function POST(req: Request) {
         discount: pricing.discount,
         promoCodeId,
         status: "PENDING",
-        payments: downPaymentAmount > 0
-          ? { create: { amount: downPaymentAmount, method: "CASH", status: "PENDING", customerId: customer.id } }
-          : undefined,
         },
       });
     });
@@ -324,6 +321,8 @@ export async function POST(req: Request) {
       {
         success: true,
         referenceNumber: booking.referenceNumber,
+        bookingId: booking.id,
+        paymentAmount: downPaymentAmount,
         qrCode: qrCode,
       },
       { status: 201 }

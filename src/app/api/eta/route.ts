@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
+import { canAccessBooking } from "@/lib/booking-access";
 
 /**
  * ETA Engine for DropnFly
@@ -78,11 +79,14 @@ export async function GET(req: Request) {
   if (reference && !riderLat && !riderLng) {
     const booking = await prisma.booking.findUnique({
       where: { referenceNumber: normalizeReference(reference) },
-      select: { id: true },
+      select: { id: true, customerId: true },
     });
 
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
+    if (!(await canAccessBooking(booking))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const assignment = await prisma.bookingAssignment.findFirst({

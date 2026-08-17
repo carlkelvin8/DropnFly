@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { hasStaffRole } from "@/lib/staff-access";
+import { awardDeliveryPoints } from "@/lib/loyalty";
 
 export async function PATCH(req: Request) {
   const session = await auth();
@@ -11,6 +13,13 @@ export async function PATCH(req: Request) {
 
   try {
     const { ids, action } = await req.json();
+
+    if (!hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (["delete", "cancel"].includes(action) && session.user.role !== "ADMIN") {
+      return NextResponse.json({ error: "Only administrators may delete or cancel bookings" }, { status: 403 });
+    }
 
     if (!Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: "No bookings selected" }, { status: 400 });
@@ -26,8 +35,10 @@ export async function PATCH(req: Request) {
         prisma.chatMessage.deleteMany({ where: { bookingId: { in: cappedIds } } }),
         prisma.bookingReview.deleteMany({ where: { bookingId: { in: cappedIds } } }),
         prisma.bookingExtension.deleteMany({ where: { bookingId: { in: cappedIds } } }),
-        prisma.luggageItem.deleteMany({ where: { bookingId: { in: cappedIds } } }),
+        prisma.incidentTimeline.deleteMany({ where: { incident: { bookingId: { in: cappedIds } } } }),
         prisma.incidentReport.deleteMany({ where: { bookingId: { in: cappedIds } } }),
+        prisma.baggageTag.updateMany({ where: { bookingId: { in: cappedIds } }, data: { bookingId: null, luggageItemId: null, status: "AVAILABLE", assignedAt: null } }),
+        prisma.luggageItem.deleteMany({ where: { bookingId: { in: cappedIds } } }),
         prisma.booking.deleteMany({ where: { id: { in: cappedIds } } }),
       ]);
 
@@ -70,31 +81,7 @@ export async function PATCH(req: Request) {
         data: { status: "DELIVERED" },
       });
 
-      for (const b of bookings) {
-        const existingPoints = await prisma.pointsTransaction.findFirst({
-          where: { reference: b.id, type: "EARNED" },
-        });
-        if (!existingPoints) {
-          const pointsEarned = Math.floor(b.totalPrice / 10);
-          if (pointsEarned > 0) {
-            await Promise.all([
-              prisma.customer.update({
-                where: { id: b.customerId },
-                data: { points: { increment: pointsEarned } },
-              }),
-              prisma.pointsTransaction.create({
-                data: {
-                  customerId: b.customerId,
-                  points: pointsEarned,
-                  type: "EARNED",
-                  reference: b.id,
-                  description: `Earned from booking ${b.referenceNumber}`,
-                },
-              }),
-            ]);
-          }
-        }
-      }
+      for (const booking of bookings) await awardDeliveryPoints(booking);
 
       await logActivity({
         userId: session.user.id,

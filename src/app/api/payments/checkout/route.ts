@@ -4,20 +4,18 @@ import { auth } from "@/lib/auth";
 import { getCustomerSession } from "@/lib/customer-auth";
 import { createCheckoutSession, isPaymongoConfigured } from "@/lib/paymongo";
 import { logActivity } from "@/lib/activity";
+import { canAccessBooking } from "@/lib/booking-access";
 
 export async function POST(req: Request) {
   const session = await auth();
   const customer = await getCustomerSession();
-  if (!session?.user && !customer) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   let lockedBookingId: string | null = null;
   try {
     const body = await req.json();
-    const { bookingId, method } = body as {
+    const { bookingId, method, amount } = body as {
       bookingId: string;
       method?: "GCASH" | "MAYA" | "CARD";
+      amount?: number;
     };
 
     if (!bookingId) {
@@ -31,6 +29,12 @@ export async function POST(req: Request) {
 
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
+    if (session?.user?.role === "EMPLOYEE") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (!(await canAccessBooking(booking))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     if (booking.status === "CANCELLED") {
@@ -50,6 +54,10 @@ export async function POST(req: Request) {
     if (remaining <= 0) {
       return NextResponse.json({ error: "Booking is already fully paid" }, { status: 400 });
     }
+    const checkoutAmount = amount == null ? remaining : Number(amount);
+    if (!Number.isFinite(checkoutAmount) || checkoutAmount <= 0 || checkoutAmount > remaining) {
+      return NextResponse.json({ error: "Invalid payment amount" }, { status: 400 });
+    }
 
     const pending = await prisma.payment.findFirst({
       where: { bookingId: booking.id, status: "PENDING", gatewayRef: { not: null } },
@@ -67,7 +75,7 @@ export async function POST(req: Request) {
         data: {
           bookingId: booking.id,
           customerId: booking.customerId,
-          amount: remaining,
+          amount: checkoutAmount,
           method: selectedMethod,
           status: "PENDING",
         },
@@ -79,7 +87,7 @@ export async function POST(req: Request) {
           action: "CREATE",
           entity: "Payment",
           entityId: payment.id,
-          details: `Payment request of ${remaining} for booking ${booking.referenceNumber}`,
+          details: `Payment request of ${checkoutAmount} for booking ${booking.referenceNumber}`,
         });
       }
 
@@ -104,11 +112,12 @@ export async function POST(req: Request) {
     lockedBookingId = booking.id;
 
     const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-    const successUrl = `${baseUrl}/my-account/bookings/${booking.id}?paid=1`;
-    const cancelUrl = `${baseUrl}/my-account/bookings/${booking.id}`;
+    const customerPath = customer ? `/my-account/bookings/${booking.id}` : `/book/confirm/${booking.referenceNumber}`;
+    const successUrl = `${baseUrl}${customerPath}?paid=1`;
+    const cancelUrl = `${baseUrl}${customerPath}`;
 
     const sessionResult = await createCheckoutSession({
-      amount: remaining,
+      amount: checkoutAmount,
       description: `DropnFly luggage booking ${booking.referenceNumber}`,
       name: booking.customer.name,
       email: booking.customer.email,
@@ -127,7 +136,7 @@ export async function POST(req: Request) {
       data: {
         bookingId: booking.id,
         customerId: booking.customerId,
-        amount: remaining,
+        amount: checkoutAmount,
         method: selectedMethod,
         status: "PENDING",
         gatewayRef: sessionResult.id,
@@ -140,7 +149,7 @@ export async function POST(req: Request) {
         action: "CREATE",
         entity: "Payment",
         entityId: payment.id,
-        details: `Payment request of ${remaining} for booking ${booking.referenceNumber}`,
+        details: `Payment request of ${checkoutAmount} for booking ${booking.referenceNumber}`,
       });
     }
 

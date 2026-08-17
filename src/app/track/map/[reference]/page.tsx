@@ -117,7 +117,7 @@ export default function LiveTrackingPage() {
     const userId = data.assignments[0].user.id;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/tracking/location/${userId}`);
+        const res = await fetch(`/api/tracking/location/${userId}?reference=${encodeURIComponent(String(params.reference))}`);
         if (!res.ok) return;
         const loc = await res.json();
         if (loc.currentLat && loc.currentLng) {
@@ -126,7 +126,7 @@ export default function LiveTrackingPage() {
       } catch {}
     }, 5000);
     return () => clearInterval(interval);
-  }, [data]);
+  }, [data, params.reference]);
 
   useEffect(() => {
     if (!chatOpen) return;

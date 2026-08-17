@@ -4,11 +4,20 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { notifyBookingStatusChanged } from "@/lib/notifications";
 import type { BookingStatus } from "@/generated/prisma/client";
+import { canReadBooking, hasStaffRole } from "@/lib/staff-access";
+import { awardDeliveryPoints } from "@/lib/loyalty";
 
 const VALID_STATUS = [
   "PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE",
   "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW",
 ] as const;
+const NEXT_STATUS: Partial<Record<BookingStatus, BookingStatus>> = {
+  PENDING: "CONFIRMED",
+  CONFIRMED: "RECEIVED",
+  RECEIVED: "IN_STORAGE",
+  IN_STORAGE: "OUT_FOR_DELIVERY",
+  OUT_FOR_DELIVERY: "DELIVERED",
+};
 
 export async function GET(
   _req: Request,
@@ -20,10 +29,18 @@ export async function GET(
   }
 
   const { id } = await params;
+  if (!(await canReadBooking(session.user, id))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const booking = await prisma.booking.findUnique({
     where: { id },
     include: {
-      customer: true,
+      customer: {
+        select: {
+          id: true, name: true, email: true, phone: true,
+          countryOfOrigin: true, cityOfOrigin: true, points: true,
+        },
+      },
       location: true,
       user: { select: { name: true, email: true } },
       assignments: {
@@ -49,10 +66,15 @@ export async function PUT(
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   try {
     const { id } = await params;
     const body = await req.json();
+    const existingBooking = await prisma.booking.findUnique({ where: { id }, select: { status: true, checkIn: true, checkOut: true } });
+    if (!existingBooking) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
 
     if (body.status && ["NO_SHOW", "CANCELLED"].includes(body.status) && session.user.role !== "ADMIN") {
       return NextResponse.json(
@@ -73,19 +95,38 @@ export async function PUT(
       if (isNaN(d.getTime())) return NextResponse.json({ error: "Invalid check-out date" }, { status: 400 });
       data.checkOut = d;
     }
-    if (data.checkIn && data.checkOut && new Date(data.checkOut as Date) <= new Date(data.checkIn as Date)) {
+    const resultingCheckIn = (data.checkIn as Date | undefined) || existingBooking.checkIn;
+    const resultingCheckOut = (data.checkOut as Date | undefined) || existingBooking.checkOut;
+    if (resultingCheckOut && resultingCheckOut <= resultingCheckIn) {
       return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
     }
 
-    if (body.numberOfBags !== undefined) data.numberOfBags = body.numberOfBags;
-    if (body.pickupLocation !== undefined) data.pickupLocation = body.pickupLocation;
-    if (body.dropOffLocation !== undefined) data.dropOffLocation = body.dropOffLocation;
-    if (body.luggageDetails !== undefined) data.luggageDetails = body.luggageDetails;
-    if (body.totalPrice !== undefined) data.totalPrice = body.totalPrice;
+    if (body.numberOfBags !== undefined) {
+      if (!Number.isInteger(body.numberOfBags) || body.numberOfBags <= 0) return NextResponse.json({ error: "Invalid bag count" }, { status: 400 });
+      data.numberOfBags = body.numberOfBags;
+    }
+    for (const field of ["pickupLocation", "dropOffLocation"] as const) {
+      if (body[field] !== undefined) {
+        if (typeof body[field] !== "string" || !body[field].trim() || body[field].length > 500) return NextResponse.json({ error: `Invalid ${field}` }, { status: 400 });
+        data[field] = body[field].trim();
+      }
+    }
+    if (body.luggageDetails !== undefined) {
+      if (typeof body.luggageDetails !== "string" || body.luggageDetails.length > 20_000) return NextResponse.json({ error: "Invalid luggage details" }, { status: 400 });
+      data.luggageDetails = body.luggageDetails;
+    }
+    if (body.totalPrice !== undefined) {
+      if (!Number.isFinite(body.totalPrice) || body.totalPrice < 0) return NextResponse.json({ error: "Invalid total price" }, { status: 400 });
+      data.totalPrice = body.totalPrice;
+    }
 
     if (body.status) {
       if (!VALID_STATUS.includes(body.status)) {
         return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+      }
+      const isAdminOverride = session.user.role === "ADMIN" && ["CANCELLED", "NO_SHOW"].includes(body.status);
+      if (!isAdminOverride && body.status !== existingBooking.status && NEXT_STATUS[existingBooking.status] !== body.status) {
+        return NextResponse.json({ error: `Invalid status transition from ${existingBooking.status} to ${body.status}` }, { status: 409 });
       }
       data.status = body.status;
     }
@@ -134,31 +175,7 @@ export async function PUT(
         });
       }
 
-      if (body.status === "DELIVERED") {
-        const existingPoints = await prisma.pointsTransaction.findFirst({
-          where: { reference: id, type: "EARNED" },
-        });
-        if (!existingPoints) {
-          const pointsEarned = Math.floor(booking.totalPrice / 10);
-          if (pointsEarned > 0) {
-            await Promise.all([
-              prisma.customer.update({
-                where: { id: booking.customerId },
-                data: { points: { increment: pointsEarned } },
-              }),
-              prisma.pointsTransaction.create({
-                data: {
-                  customerId: booking.customerId,
-                  points: pointsEarned,
-                  type: "EARNED",
-                  reference: booking.id,
-                  description: `Earned from booking ${booking.referenceNumber}`,
-                },
-              }),
-            ]);
-          }
-        }
-      }
+      if (body.status === "DELIVERED") await awardDeliveryPoints(booking);
     }
 
     return NextResponse.json(booking);
@@ -178,6 +195,9 @@ export async function DELETE(
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   try {
     const { id } = await params;
@@ -190,8 +210,10 @@ export async function DELETE(
       prisma.chatMessage.deleteMany({ where: { bookingId: id } }),
       prisma.bookingReview.deleteMany({ where: { bookingId: id } }),
       prisma.bookingExtension.deleteMany({ where: { bookingId: id } }),
-      prisma.luggageItem.deleteMany({ where: { bookingId: id } }),
+      prisma.incidentTimeline.deleteMany({ where: { incident: { bookingId: id } } }),
       prisma.incidentReport.deleteMany({ where: { bookingId: id } }),
+      prisma.baggageTag.updateMany({ where: { bookingId: id }, data: { bookingId: null, luggageItemId: null, status: "AVAILABLE", assignedAt: null } }),
+      prisma.luggageItem.deleteMany({ where: { bookingId: id } }),
       prisma.booking.delete({ where: { id } }),
     ]);
 

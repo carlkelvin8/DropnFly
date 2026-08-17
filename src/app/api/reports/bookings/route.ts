@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { hasStaffRole } from "@/lib/staff-access";
 
 export async function GET(req: Request) {
   const session = await auth();
-  if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+    return new NextResponse("Forbidden", { status: 403 });
+  }
 
   const { searchParams } = new URL(req.url);
   const from = searchParams.get("from");
@@ -12,6 +15,9 @@ export async function GET(req: Request) {
 
   const where: Record<string, unknown> = {};
   if (from || to) {
+    if ((from && !isIsoDate(from)) || (to && !isIsoDate(to))) {
+      return NextResponse.json({ error: "Dates must use YYYY-MM-DD format" }, { status: 400 });
+    }
     where.createdAt = {};
     if (from) (where.createdAt as Record<string, unknown>).gte = new Date(from);
     if (to) (where.createdAt as Record<string, unknown>).lte = new Date(to + "T23:59:59.999Z");
@@ -19,7 +25,11 @@ export async function GET(req: Request) {
 
   const bookings = await prisma.booking.findMany({
     where,
-    include: { customer: true, location: true, payments: true, promoCode: true },
+    include: {
+      customer: { select: { name: true, email: true, phone: true } },
+      location: { select: { name: true } },
+      promoCode: { select: { code: true } },
+    },
     orderBy: { createdAt: "desc" },
   });
 
@@ -51,5 +61,12 @@ export async function GET(req: Request) {
 }
 
 function escapeCsv(val: string) {
-  return `"${val.replace(/"/g, '""')}"`;
+  const safe = /^[=+\-@\t\r]/.test(val) ? `'${val}` : val;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
+function isIsoDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
 }

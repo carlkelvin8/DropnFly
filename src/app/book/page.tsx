@@ -379,6 +379,20 @@ export default function BookPage() {
     }
 
     const result = await res.json();
+    if (!paymentDemoMode && result.paymentAmount > 0) {
+      const checkout = await fetch("/api/payments/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: result.bookingId, amount: result.paymentAmount }),
+      }).catch(() => null);
+      if (checkout?.ok) {
+        const payment = await checkout.json();
+        if (payment.url) {
+          window.location.assign(payment.url);
+          return;
+        }
+      }
+    }
     router.push(`/book/confirm/${result.referenceNumber}`);
   }
 

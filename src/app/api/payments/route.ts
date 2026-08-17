@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { hasStaffRole } from "@/lib/staff-access";
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const payments = await prisma.payment.findMany({
@@ -22,36 +23,50 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {
     const body = await req.json();
     const { bookingId, amount, method, status } = body;
 
-    if (!bookingId || !amount || !method) {
+    const numericAmount = Number(amount);
+    if (!bookingId || !Number.isFinite(numericAmount) || numericAmount <= 0 || !["GCASH", "MAYA", "CARD", "CASH"].includes(method) || !["PENDING", "PAID", "FAILED"].includes(status || "PAID")) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { customerId: true, referenceNumber: true },
+      select: { customerId: true, referenceNumber: true, totalPrice: true },
     });
 
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
+    const payment = await prisma.$transaction(async (tx) => {
+      // Serialize manual payments per booking so concurrent requests cannot
+      // both pass the remaining-balance check.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${bookingId}))`;
+      const totals = await tx.payment.aggregate({
+        where: { bookingId, status: "PAID" },
+        _sum: { amount: true },
+      });
+      const remaining = Math.max(0, booking.totalPrice - (totals._sum.amount || 0));
+      if ((status || "PAID") === "PAID" && numericAmount > remaining) {
+        throw new PaymentBalanceError(remaining);
+      }
 
-    const payment = await prisma.payment.create({
-      data: {
-        bookingId,
-        customerId: booking.customerId,
-        amount,
-        method,
-        status: status || "PAID",
-        paidAt: status === "PAID" ? new Date() : null,
-      },
+      return tx.payment.create({
+        data: {
+          bookingId,
+          customerId: booking.customerId,
+          amount: numericAmount,
+          method,
+          status: status || "PAID",
+          paidAt: (status || "PAID") === "PAID" ? new Date() : null,
+        },
+      });
     });
 
     await logActivity({
@@ -59,11 +74,23 @@ export async function POST(req: Request) {
       action: "CREATE",
       entity: "Payment",
       entityId: payment.id,
-      details: `Payment of ${amount} for booking ${booking.referenceNumber}`,
+      details: `Payment of ${numericAmount} for booking ${booking.referenceNumber}`,
     });
 
     return NextResponse.json(payment, { status: 201 });
-  } catch {
+  } catch (error) {
+    if (error instanceof PaymentBalanceError) {
+      return NextResponse.json(
+        { error: `Payment exceeds remaining balance of ${error.remaining}` },
+        { status: 400 }
+      );
+    }
     return NextResponse.json({ error: "Failed to create payment" }, { status: 500 });
+  }
+}
+
+class PaymentBalanceError extends Error {
+  constructor(readonly remaining: number) {
+    super("Payment exceeds remaining balance");
   }
 }

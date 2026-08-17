@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getCustomerSession } from "@/lib/customer-auth";
+import { canReadBooking } from "@/lib/staff-access";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -12,6 +13,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (customer && !session?.user) {
     const owned = await prisma.booking.findFirst({ where: { id, customerId: customer.id }, select: { id: true } });
     if (!owned) return new NextResponse("Forbidden", { status: 403 });
+  }
+  if (session?.user && !(await canReadBooking(session.user, id))) {
+    return new NextResponse("Forbidden", { status: 403 });
   }
   const review = await prisma.bookingReview.findUnique({
     where: { bookingId: id },

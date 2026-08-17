@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { auth } from "@/lib/auth";
 import { getCustomerSession } from "@/lib/customer-auth";
+import { canReadBooking, hasStaffRole } from "@/lib/staff-access";
 
 const COOKIE_NAME = "booking_access";
 
@@ -41,7 +42,7 @@ export async function grantBookingAccess(bookingId: string, customerId: string) 
 
 export async function canAccessBooking(booking: { id: string; customerId: string }) {
   const [staff, customer] = await Promise.all([auth(), getCustomerSession()]);
-  if (staff?.user) return true;
+  if (staff?.user && (hasStaffRole(staff.user, ["ADMIN", "STAFF"]) || await canReadBooking(staff.user, booking.id))) return true;
   if (customer?.id === booking.customerId) return true;
 
   const token = (await cookies()).get(COOKIE_NAME)?.value;

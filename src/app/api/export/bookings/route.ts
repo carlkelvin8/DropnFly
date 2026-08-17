@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { hasStaffRole } from "@/lib/staff-access";
 
 export async function GET(req: Request) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -51,11 +52,9 @@ export async function GET(req: Request) {
   });
 
   const escapeCsv = (val: string | number | null | undefined) => {
-    const s = String(val ?? "");
-    if (/^[=+\-@\t]/.test(s) || s.includes(",") || s.includes('"') || s.includes("\n")) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return `"${s}"`;
+    const raw = String(val ?? "");
+    const s = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+    return `"${s.replace(/"/g, '""')}"`;
   };
 
   const header = [

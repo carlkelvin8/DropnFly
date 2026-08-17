@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canReadBooking, hasStaffRole } from "@/lib/staff-access";
 
 export async function GET(
   _req: Request,
@@ -10,6 +11,9 @@ export async function GET(
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await canReadBooking(session.user, id))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const items = await prisma.luggageItem.findMany({
     where: { bookingId: id },
     orderBy: { createdAt: "asc" },
@@ -23,11 +27,17 @@ export async function POST(
 ) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
-    const count = body.count || 1;
+    const count = Number(body.count ?? 1);
+    if (!Number.isInteger(count) || count < 1 || count > 100) {
+      return NextResponse.json({ error: "Count must be an integer from 1 to 100" }, { status: 400 });
+    }
 
     const booking = await prisma.booking.findUnique({
       where: { id },

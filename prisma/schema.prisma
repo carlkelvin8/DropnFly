@@ -397,6 +397,7 @@ model PointsTransaction {
   customer Customer @relation(fields: [customerId], references: [id])
 
   @@index([customerId, createdAt])
+  @@unique([reference, type])
 }
 
 model LuggageItem {
