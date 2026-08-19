@@ -9,7 +9,7 @@ interface PublicHeaderProps {
 
 export function PublicHeader({ showBackToHome }: PublicHeaderProps) {
   return (
-    <header className="sticky top-0 z-50 border-b bg-white/90 shadow-sm backdrop-blur-sm">
+    <header className="sticky top-0 z-50 border-b bg-background/90 shadow-sm backdrop-blur-sm">
       <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2 text-xl font-bold">
           Drop<span className="text-blue-600">nfly</span>
@@ -18,7 +18,7 @@ export function PublicHeader({ showBackToHome }: PublicHeaderProps) {
           {showBackToHome && (
             <Link
               href="/"
-              className="flex items-center gap-1.5 text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
+              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-blue-600"
             >
               <Home className="h-4 w-4" />
               Home
@@ -32,13 +32,13 @@ export function PublicHeader({ showBackToHome }: PublicHeaderProps) {
           </Link>
           <Link
             href="/track"
-            className="text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
+            className="text-sm font-medium text-muted-foreground transition-colors hover:text-blue-600"
           >
             Track
           </Link>
           <Link
             href="/my-account/login"
-            className="text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
+            className="text-sm font-medium text-muted-foreground transition-colors hover:text-blue-600"
           >
             Login/Register
           </Link>

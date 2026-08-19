@@ -47,7 +47,9 @@ export function PushManager({ subscribeUrl, unsubscribeUrl, vapidKeyUrl }: PushM
             }
             setSubscribed(false);
           } catch {
-            console.warn("Push unsubscription failed");
+            if (process.env.NODE_ENV === "development") {
+              console.warn("Push unsubscription failed");
+            }
           }
         } else {
           try {
@@ -65,7 +67,9 @@ export function PushManager({ subscribeUrl, unsubscribeUrl, vapidKeyUrl }: PushM
             });
             setSubscribed(true);
           } catch {
-            console.warn("Push subscription failed");
+            if (process.env.NODE_ENV === "development") {
+              console.warn("Push subscription failed");
+            }
           }
         }
       }}

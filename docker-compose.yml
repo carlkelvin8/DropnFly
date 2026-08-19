@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: carlkelvinmanahan
+      POSTGRES_USER: dropnfly
       POSTGRES_DB: luggage_storage
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
@@ -15,9 +15,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://carlkelvinmanahan@postgres:5432/luggage_storage?schema=public
+      DATABASE_URL: postgresql://dropnfly@postgres:5432/luggage_storage?schema=public
       NEXTAUTH_URL: http://localhost:3000
-      NEXTAUTH_SECRET: change-this-in-production
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-this-in-production}
     depends_on:
       - postgres
 

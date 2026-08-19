@@ -31,7 +31,9 @@ async function getEmailConfig(): Promise<EmailConfig> {
 async function getTransporter() {
   const config = await getEmailConfig();
   if (!config.user) {
-    console.warn("[EMAIL] SMTP not configured — emails will not be sent. Set SMTP_HOST, SMTP_USER, and SMTP_PASS in .env");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[EMAIL] SMTP not configured — emails will not be sent. Set SMTP_HOST, SMTP_USER, and SMTP_PASS in .env");
+    }
   }
   return nodemailer.createTransport({
     host: config.host,
@@ -92,7 +94,9 @@ export async function sendConfirmationEmail({
 
   const config = await getEmailConfig();
   if (!config.enabled) {
-    console.warn("[EMAIL] Email notifications are disabled in settings");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[EMAIL] Email notifications are disabled in settings");
+    }
     return;
   }
 
@@ -168,7 +172,9 @@ export async function sendRiderAssignedEmail({
 }) {
   const config = await getEmailConfig();
   if (!config.enabled) {
-    console.warn("[EMAIL] Email notifications are disabled in settings");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[EMAIL] Email notifications are disabled in settings");
+    }
     return;
   }
   const html = `
@@ -237,7 +243,9 @@ export async function sendIncidentEmail({  to,
 
   const config = await getEmailConfig();
   if (!config.enabled) {
-    console.warn("[EMAIL] Email notifications are disabled in settings");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[EMAIL] Email notifications are disabled in settings");
+    }
     return;
   }
 
@@ -310,7 +318,9 @@ export async function sendPaymentConfirmationEmail({
 }) {
   const config = await getEmailConfig();
   if (!config.enabled) {
-    console.warn("[EMAIL] Email notifications are disabled in settings");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[EMAIL] Email notifications are disabled in settings");
+    }
     return;
   }
 

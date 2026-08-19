@@ -35,7 +35,9 @@ export async function sendPushToUser(userId: string, payload: { title: string; b
       }
     }
   } catch {
-    console.warn("Push notification sending failed");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("Push notification sending failed");
+    }
   }
 }
 
@@ -56,6 +58,8 @@ export async function sendPushToCustomer(customerId: string, payload: { title: s
       }
     }
   } catch {
-    console.warn("Push notification sending failed");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("Push notification sending failed");
+    }
   }
 }

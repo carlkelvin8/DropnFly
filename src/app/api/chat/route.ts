@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rateLimit, requestKey } from "@/lib/rate-limit";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
@@ -33,6 +34,15 @@ CONVERSATION RULES:
 - For complex inquiries, direct users to contact hello@dropnfly.ph or call +63 (2) 8123 4567`;
 
 export async function POST(req: Request) {
+  const key = requestKey(req);
+  const { allowed, retryAfter } = await rateLimit(`chat:${key}`, 10, 60 * 1000);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait before sending another message." },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
+
   if (!GEMINI_API_KEY) {
     const { message = "" } = await req.json();
     const text = String(message).toLowerCase();
@@ -61,10 +71,13 @@ export async function POST(req: Request) {
     ];
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": GEMINI_API_KEY,
+        },
         body: JSON.stringify({
           contents,
           generationConfig: {
@@ -77,7 +90,9 @@ export async function POST(req: Request) {
 
     if (!res.ok) {
       const err = await res.text();
-      console.error("Gemini API error:", res.status, err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Gemini API error:", res.status, err);
+      }
       return NextResponse.json(
         { error: "Failed to generate response. Please try again." },
         { status: 500 }

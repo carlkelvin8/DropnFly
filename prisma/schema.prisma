@@ -135,6 +135,12 @@ model Booking {
   scanEvents       ScanEvent[]
   baggageTags      BaggageTag[]
   incidentReports  IncidentReport[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([customerId, status])
 }
 
 model ScanEvent {
@@ -177,6 +183,9 @@ model ActivityLog {
   createdAt DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 model LocationUpdate {
@@ -276,6 +285,10 @@ model Payment {
 
   booking  Booking  @relation(fields: [bookingId], references: [id])
   customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([customerId])
 }
 
 enum DiscountType {

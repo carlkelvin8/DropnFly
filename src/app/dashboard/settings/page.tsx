@@ -572,7 +572,7 @@ export default function SettingsPage() {
                   {WEEKDAYS.map((day, i) => {
                     const active = (settings.store_operating_days || "").split(",").includes(String(i));
                     return (
-                      <button key={i} type="button" onClick={() => toggleDay(String(i))}
+                      <button key={i} type="button" onClick={() => toggleDay(String(i))} aria-label={`Toggle ${day}`}
                         className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
                           active ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted text-muted-foreground hover:bg-muted/80"
                         }`}>

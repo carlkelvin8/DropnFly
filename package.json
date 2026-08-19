@@ -24,6 +24,7 @@
     "date-fns": "^4.4.0",
     "framer-motion": "^12.40.0",
     "html5-qrcode": "2.3.8",
+    "jose": "^6.0.11",
     "lucide-react": "^1.17.0",
     "mapbox-gl": "^3.24.0",
     "next": "^16.2.9",

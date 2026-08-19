@@ -248,13 +248,13 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between mb-4">
-              <button onClick={prevMonth} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors">
+              <button onClick={prevMonth} aria-label="Previous month" className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors">
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <p className="text-sm font-semibold">
                 {new Date(calYear, calMonth - 1).toLocaleDateString("en-PH", { month: "long", year: "numeric" })}
               </p>
-              <button onClick={nextMonth} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors">
+              <button onClick={nextMonth} aria-label="Next month" className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors">
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>

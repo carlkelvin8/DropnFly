@@ -1,5 +1,21 @@
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
+const geminiCache = new Map<string, { data: unknown; expiresAt: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+function getCached<T>(key: string): T | null {
+  const entry = geminiCache.get(key);
+  if (!entry || Date.now() > entry.expiresAt) {
+    geminiCache.delete(key);
+    return null;
+  }
+  return entry.data as T;
+}
+
+function setCache(key: string, data: unknown): void {
+  geminiCache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
 interface PredictionResult {
   label: string;
   value: number;
@@ -18,10 +34,13 @@ async function queryGemini(prompt: string): Promise<string> {
   }
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY,
+      },
       body: JSON.stringify({
         contents: [
           {
@@ -97,14 +116,20 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 Keep predictions realistic based on the data. Values must be numbers.`;
 
   try {
+    const cacheKey = `predictions:${JSON.stringify(analyticsData).slice(0, 500)}`;
+    const cached = getCached<PredictionResponse>(cacheKey);
+    if (cached) return cached;
+
     const raw = await queryGemini(prompt);
     const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
     const parsed = JSON.parse(cleaned);
-    return {
+    const result: PredictionResponse = {
       predictions: parsed.predictions || [],
       insights: parsed.insights || [],
       generatedAt: new Date().toISOString(),
     };
+    setCache(cacheKey, result);
+    return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Prediction failed";
     throw new Error(message);
@@ -185,16 +210,22 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
   };
 
   try {
+    const cacheKey = `report:${type}:${JSON.stringify(analyticsData).slice(0, 500)}`;
+    const cached = getCached<{ title: string; summary: string; sections: { heading: string; content: string }[]; generatedAt: string }>(cacheKey);
+    if (cached) return cached;
+
     const prompt = prompts[type] || prompts.descriptive;
     const raw = await queryGemini(prompt);
     const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
     const parsed = JSON.parse(cleaned);
-    return {
+    const result = {
       title: parsed.title || `${type.charAt(0).toUpperCase() + type.slice(1)} Report`,
       summary: parsed.summary || "",
       sections: parsed.sections || [],
       generatedAt: new Date().toISOString(),
     };
+    setCache(cacheKey, result);
+    return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Report generation failed";
     throw new Error(message);

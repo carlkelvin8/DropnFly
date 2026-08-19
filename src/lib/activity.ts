@@ -24,6 +24,8 @@ export async function logActivity({
       },
     });
   } catch {
-    console.warn("Failed to log activity");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("Failed to log activity");
+    }
   }
 }

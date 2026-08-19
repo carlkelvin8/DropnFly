@@ -303,8 +303,10 @@ export default function ProfilePage() {
               <div className="space-y-4">
                 <div className="rounded-lg border bg-muted/30 p-4 text-center">
                   <p className="mb-3 text-sm font-medium">Scan this QR code with Google Authenticator</p>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={totpSetup.qrDataUrl} alt="TOTP QR code" className="mx-auto h-48 w-48 rounded-lg border bg-white" />
+                   <div className="mx-auto h-48 w-48 overflow-hidden rounded-lg border bg-white">
+                     {/* eslint-disable-next-line @next/next/no-img-element */}
+                     <img src={totpSetup.qrDataUrl} alt="TOTP QR code for two-factor authentication setup" className="h-full w-full object-contain" />
+                   </div>
                   <p className="mt-3 text-xs text-muted-foreground break-all font-mono">{totpSetup.secret}</p>
                 </div>
                 <div className="space-y-2">

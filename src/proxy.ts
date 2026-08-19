@@ -6,7 +6,7 @@ import type { NextRequest } from "next/server";
 const protectedRoutes = ["/dashboard"];
 const publicRoutes = ["/", "/login", "/book", "/track", "/api/public", "/api/auth"];
 
-export default function proxy(req: NextRequest) {
+export default function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
   const method = req.method.toUpperCase();
   const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);

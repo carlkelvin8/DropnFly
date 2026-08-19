@@ -3,10 +3,13 @@ import { cookies } from "next/headers";
 
 function getSecret() {
   const configured = process.env.CUSTOMER_JWT_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-  if (!configured && process.env.NODE_ENV === "production") {
-    throw new Error("CUSTOMER_JWT_SECRET is required in production");
+  if (!configured) {
+    throw new Error(
+      "CUSTOMER_JWT_SECRET, AUTH_SECRET, or NEXTAUTH_SECRET environment variable is required. " +
+      "Generate one with: openssl rand -base64 32"
+    );
   }
-  return new TextEncoder().encode(configured || "dropnfly-local-development-only-secret");
+  return new TextEncoder().encode(configured);
 }
 
 const COOKIE_NAME = "customer_token";

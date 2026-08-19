@@ -8,8 +8,13 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const promos = await prisma.promoCode.findMany({ orderBy: { createdAt: "desc" } });
-  return NextResponse.json(promos);
+  try {
+    const promos = await prisma.promoCode.findMany({ orderBy: { createdAt: "desc" } });
+    return NextResponse.json(promos);
+  } catch (error) {
+    console.error("Promo codes error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {

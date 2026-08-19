@@ -8,38 +8,43 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { searchParams } = new URL(req.url);
-  const entity = searchParams.get("entity");
-  const action = searchParams.get("action");
-  const search = searchParams.get("search");
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "30");
+  try {
+    const { searchParams } = new URL(req.url);
+    const entity = searchParams.get("entity");
+    const action = searchParams.get("action");
+    const search = searchParams.get("search");
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "30");
 
-  const where: Record<string, unknown> = {};
-  if (entity) where.entity = entity;
-  if (action) where.action = action;
+    const where: Record<string, unknown> = {};
+    if (entity) where.entity = entity;
+    if (action) where.action = action;
 
-  if (search) {
-    where.OR = [
-      { details: { contains: search } },
-      { user: { name: { contains: search } } },
-    ];
+    if (search) {
+      where.OR = [
+        { details: { contains: search } },
+        { user: { name: { contains: search } } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [logs, total] = await Promise.all([
+      prisma.activityLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: Math.min(limit, 200),
+        skip,
+        include: {
+          user: { select: { name: true, email: true } },
+        },
+      }),
+      prisma.activityLog.count({ where }),
+    ]);
+
+    return NextResponse.json({ logs, total, page, limit, totalPages: Math.ceil(total / limit) });
+  } catch (error) {
+    console.error("Activity logs error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-
-  const skip = (page - 1) * limit;
-
-  const [logs, total] = await Promise.all([
-    prisma.activityLog.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: Math.min(limit, 200),
-      skip,
-      include: {
-        user: { select: { name: true, email: true } },
-      },
-    }),
-    prisma.activityLog.count({ where }),
-  ]);
-
-  return NextResponse.json({ logs, total, page, limit, totalPages: Math.ceil(total / limit) });
 }

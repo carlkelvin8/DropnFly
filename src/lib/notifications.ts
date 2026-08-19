@@ -36,13 +36,17 @@ export async function sendNotification({
       data: { userId, type, title, message, link },
     });
   } catch {
-    console.warn("Failed to create in-app notification");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("Failed to create in-app notification");
+    }
   }
 
   try {
     await sendPushToUser(userId, { title, body: message, url: link });
   } catch {
-    console.warn("Failed to send push notification");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("Failed to send push notification");
+    }
   }
 
   if (sendEmail) {
@@ -75,7 +79,9 @@ export async function sendNotification({
         });
       }
     } catch {
-      console.warn("Failed to send email notification");
+      if (process.env.NODE_ENV === "development") {
+        console.warn("Failed to send email notification");
+      }
     }
   }
 }
@@ -196,12 +202,16 @@ export async function sendCustomerNotification({
       data: { customerId, type, title, message, link },
     });
   } catch {
-    console.warn("Failed to send customer notification");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("Failed to send customer notification");
+    }
   }
 
   try {
     await sendPushToCustomer(customerId, { title, body: message, url: link });
   } catch {
-    console.warn("Failed to send customer push notification");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("Failed to send customer push notification");
+    }
   }
 }
