@@ -1,12 +1,39 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 
 // API-level role enforcement is handled in the API routes (e.g., /api/employees, /api/settings).
 // Page-level role checks are done client-side via useSession in the dashboard layout.
 const protectedRoutes = ["/dashboard"];
 const publicRoutes = ["/", "/login", "/book", "/track", "/api/public", "/api/auth"];
 
-export default function middleware(req: NextRequest) {
+const SESSION_COOKIES = [
+  "authjs.session-token",
+  "__Secure-authjs.session-token",
+  "next-auth.session-token",
+  "__Secure-next-auth.session-token",
+];
+
+async function hasValidSession(req: NextRequest): Promise<boolean> {
+  const cookie = SESSION_COOKIES.map((name) => req.cookies.get(name)).find(Boolean);
+  if (!cookie) return false;
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (!secret) return false;
+  try {
+    const token = await getToken({
+      req: { headers: req.headers },
+      secret,
+      cookieName: cookie.name,
+      secureCookie: cookie.name.startsWith("__Secure-"),
+    });
+    // The jwt callback marks deactivated/invalidated sessions via token.disabled.
+    return Boolean(token && !token.disabled);
+  } catch {
+    return false;
+  }
+}
+
+export default async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
   const method = req.method.toUpperCase();
   const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);
@@ -37,11 +64,9 @@ export default function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const sessionToken =
-    req.cookies.get("next-auth.session-token")?.value ||
-    req.cookies.get("__Secure-next-auth.session-token")?.value;
+  const validSession = await hasValidSession(req);
 
-  if (isProtectedRoute && !sessionToken) {
+  if (isProtectedRoute && !validSession) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", path);
     return NextResponse.redirect(loginUrl);
@@ -49,7 +74,7 @@ export default function middleware(req: NextRequest) {
 
   if (
     path === "/" &&
-    sessionToken
+    validSession
   ) {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }

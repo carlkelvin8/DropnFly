@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { locationSchema } from "@/lib/validations";
 import { hasStaffRole } from "@/lib/staff-access";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function GET(
   _req: Request,
@@ -22,7 +23,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(location);
+  return NextResponse.json(decimalsToNumbers(location));
 }
 
 export async function PUT(
@@ -55,7 +56,7 @@ export async function PUT(
       },
     });
 
-    return NextResponse.json(location);
+    return NextResponse.json(decimalsToNumbers(location));
   } catch {
     return NextResponse.json(
       { error: "Failed to update location" },

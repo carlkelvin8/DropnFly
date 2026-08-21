@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       where: { bookingId: booking.id, status: "PAID" },
       _sum: { amount: true },
     });
-    const remaining = booking.totalPrice - (paidAmount._sum.amount || 0);
+    const remaining = Number(booking.totalPrice) - Number(paidAmount._sum.amount || 0);
 
     if (remaining <= 0) {
       return NextResponse.json({ error: "Booking is already fully paid" }, { status: 400 });

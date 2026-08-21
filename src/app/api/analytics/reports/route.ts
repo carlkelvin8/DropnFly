@@ -46,8 +46,8 @@ export async function GET(req: Request) {
 
     const analyticsData = {
       totalBookings,
-      totalRevenue: revenueAgg._sum.totalPrice || 0,
-      totalPayments: payments._sum.amount || 0,
+      totalRevenue: Number(revenueAgg._sum.totalPrice || 0),
+      totalPayments: Number(payments._sum.amount || 0),
       bookingsByStatus,
       bookingsLast90Days: recentBookings.length,
       averageDailyBookings: recentBookings.length > 0 ? recentBookings.length / 90 : 0,
@@ -57,7 +57,7 @@ export async function GET(req: Request) {
       storageUtilization: totalCapacity > 0 ? Math.round((activeBookings / totalCapacity) * 100) : 0,
       totalCustomers: customerCount,
       totalLuggageItems: luggageCount,
-      avgBookingValue: totalBookings > 0 ? Math.round((revenueAgg._sum.totalPrice || 0) / totalBookings) : 0,
+      avgBookingValue: totalBookings > 0 ? Math.round(Number(revenueAgg._sum.totalPrice || 0) / totalBookings) : 0,
     };
 
     const result = await generateReport(type as "descriptive" | "predictive" | "financial", analyticsData as Record<string, unknown>);

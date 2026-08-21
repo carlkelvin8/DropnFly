@@ -29,7 +29,7 @@ export async function GET(
   const mapped = bookings.map((b) => {
     const totalPaid = b.payments
       .filter((p) => p.status === "PAID")
-      .reduce((sum, p) => sum + p.amount, 0);
+      .reduce((sum, p) => sum + Number(p.amount), 0);
 
     return {
       id: b.id,
@@ -37,10 +37,10 @@ export async function GET(
       pickupLocation: b.pickupLocation,
       dropOffLocation: b.dropOffLocation,
       numberOfBags: b.numberOfBags,
-      totalPrice: b.totalPrice,
+      totalPrice: Number(b.totalPrice),
       status: b.status,
       totalPaid,
-      balance: b.totalPrice - totalPaid,
+      balance: Number(b.totalPrice) - totalPaid,
       rider: b.assignments[0]?.user?.name || null,
       createdAt: b.createdAt,
     };

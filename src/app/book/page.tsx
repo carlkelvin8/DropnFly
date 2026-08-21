@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -41,6 +41,7 @@ export default function BookPage() {
   const paymentsEnabled = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
   const paymentDemoMode = !paymentsEnabled;
   const router = useRouter();
+  const submittingRef = useRef(false);
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -86,6 +87,16 @@ export default function BookPage() {
 
   function nextStep() { setStep((s) => Math.min(s + 1, totalSteps)); }
   function prevStep() { setStep((s) => Math.max(s - 1, 1)); }
+
+  // Changing a date invalidates any previously selected time slot.
+  function updatePickupDate(date: string) {
+    setPickupDate(date);
+    setPickupSlot("");
+  }
+  function updateDeliveryDate(date: string) {
+    setDeliveryDate(date);
+    setDeliverySlot("");
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -173,7 +184,9 @@ export default function BookPage() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!acceptedTerms) { setShowTermsPopup(true); return; }
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    if (!acceptedTerms) { setShowTermsPopup(true); submittingRef.current = false; return; }
     setLoading(true);
     setError("");
 
@@ -221,6 +234,7 @@ export default function BookPage() {
     } catch {
       setError("Network error. Please check your connection.");
       setLoading(false);
+      submittingRef.current = false;
       return;
     }
 
@@ -228,6 +242,7 @@ export default function BookPage() {
       try { const err = await res.json(); setError(err.error || "Something went wrong"); }
       catch { setError("Something went wrong"); }
       setLoading(false);
+      submittingRef.current = false;
       return;
     }
 
@@ -242,6 +257,11 @@ export default function BookPage() {
         const payment = await checkout.json();
         if (payment.url) { window.location.assign(payment.url); return; }
       }
+      // Checkout failed — show error with retry option
+      setError("Payment setup failed. Your booking is confirmed but payment was not processed. Please contact support or retry from My Account.");
+      setLoading(false);
+      submittingRef.current = false;
+      return;
     }
     router.push(`/book/confirm/${result.referenceNumber}`);
   }
@@ -251,7 +271,9 @@ export default function BookPage() {
     if (step === 1) {
       if (!customerName.trim()) errors.push("Please enter your Full Name");
       if (!customerEmail.trim()) errors.push("Please enter your Email Address");
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) errors.push("Please enter a valid Email Address");
       if (!customerPhone.trim()) errors.push("Please enter your Phone Number");
+      else if (!/^\+?[0-9\s\-()]{7,20}$/.test(customerPhone.trim())) errors.push("Please enter a valid Phone Number");
       if (!selectedCountry) errors.push("Please select your Country of Origin");
       if (!selectedCity) errors.push("Please select your City of Origin");
     } else if (step === 2) {
@@ -341,12 +363,12 @@ export default function BookPage() {
                   <PickupStep
                     pickupTerminal={pickupTerminal} setPickupTerminal={setPickupTerminal}
                     setPickupAirline={setPickupAirline} pickupAirline={pickupAirline}
-                    pickupDate={pickupDate} setPickupDate={setPickupDate}
+                    pickupDate={pickupDate} setPickupDate={updatePickupDate}
                     setPickupSlotsLoading={setPickupSlotsLoading}
                     pickupSlots={pickupSlots} pickupSlotsLoading={pickupSlotsLoading}
                     pickupSlot={pickupSlot} setPickupSlot={setPickupSlot}
                     deliveryTerminal={deliveryTerminal} setDeliveryTerminal={setDeliveryTerminal}
-                    deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate}
+                    deliveryDate={deliveryDate} setDeliveryDate={updateDeliveryDate}
                     setDeliverySlotsLoading={setDeliverySlotsLoading}
                     deliverySlots={deliverySlots} deliverySlotsLoading={deliverySlotsLoading}
                     deliverySlot={deliverySlot} setDeliverySlot={setDeliverySlot}

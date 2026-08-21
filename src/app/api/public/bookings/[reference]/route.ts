@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
 import { canAccessBooking } from "@/lib/booking-access";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function GET(
   _req: Request,
@@ -22,5 +23,5 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return NextResponse.json(booking);
+  return NextResponse.json(decimalsToNumbers(booking));
 }

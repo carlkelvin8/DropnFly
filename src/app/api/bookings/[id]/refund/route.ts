@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function POST(
   req: Request,
@@ -44,7 +45,7 @@ export async function POST(
 
     const totalPaid = booking.payments
       .filter((p) => !p.refundedAt)
-      .reduce((sum, p) => sum + p.amount, 0);
+      .reduce((sum, p) => sum + Number(p.amount), 0);
 
     if (amount > totalPaid) {
       return NextResponse.json(
@@ -71,10 +72,10 @@ export async function POST(
       if (remaining <= 0) break;
       if (payment.refundedAt) continue;
 
-      const toRefund = Math.min(payment.amount, remaining);
+      const toRefund = Math.min(Number(payment.amount), remaining);
       remaining -= toRefund;
 
-      if (toRefund >= payment.amount) {
+      if (toRefund >= Number(payment.amount)) {
         await prisma.payment.update({
           where: { id: payment.id },
           data: { refundedAt: new Date(), status: "REFUNDED" },
@@ -90,7 +91,7 @@ export async function POST(
       details: `Refunded ${amount} for booking ${booking.referenceNumber}: ${reason}`,
     });
 
-    return NextResponse.json(refund, { status: 201 });
+    return NextResponse.json(decimalsToNumbers(refund), { status: 201 });
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
       console.error("Refund error:", error);

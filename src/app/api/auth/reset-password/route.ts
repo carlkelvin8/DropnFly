@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
     const resetToken = await prisma.passwordResetToken.findUnique({
-      where: { token: tokenHash },
+      where: { tokenHash },
     });
 
     if (!resetToken || resetToken.expiresAt < new Date()) {

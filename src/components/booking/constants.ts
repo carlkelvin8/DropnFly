@@ -70,4 +70,6 @@ export const BOOKING_STEPS = [
   { num: 4, label: "Payment", iconName: "Check" },
 ];
 
-export const today = () => new Date().toISOString().split("T")[0];
+export function today(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date());
+}

@@ -2,6 +2,11 @@ import { prisma } from "./prisma";
 import nodemailer from "nodemailer";
 import { sendPushToUser, sendPushToCustomer } from "./push";
 
+function sanitizeHtml(str: string): string {
+  if (typeof str !== "string") return "";
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
 function createTransporter() {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || "smtp.ethereal.email",
@@ -65,12 +70,12 @@ export async function sendNotification({
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
               <div style="background: #ea7d3d; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
-                <h2 style="margin: 0;">${title}</h2>
+                <h2 style="margin: 0;">${sanitizeHtml(title)}</h2>
               </div>
               <div style="padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
-                <p>Hi <strong>${user.name}</strong>,</p>
-                ${message ? `<p>${message}</p>` : ""}
-                ${link ? `<p style="text-align: center; margin-top: 16px;"><a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}${link}" style="display: inline-block; background: #ea7d3d; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">View Details</a></p>` : ""}
+                <p>Hi <strong>${sanitizeHtml(user.name)}</strong>,</p>
+                ${message ? `<p>${sanitizeHtml(message)}</p>` : ""}
+                ${link ? `<p style="text-align: center; margin-top: 16px;"><a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}${sanitizeHtml(link)}" style="display: inline-block; background: #ea7d3d; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">View Details</a></p>` : ""}
                 <hr style="border: none; border-top: 1px solid #d1d5db; margin: 24px 0;" />
                 <p style="color: #9ca3af; font-size: 12px; text-align: center;">Dropnfly Notification</p>
               </div>

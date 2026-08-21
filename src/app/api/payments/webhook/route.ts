@@ -6,6 +6,18 @@ export async function POST(req: Request) {
   const rawBody = await req.text();
   const signature = req.headers.get("paymongo-signature");
 
+  // Reject stale signatures to prevent replay of captured webhooks.
+  const t = signature
+    ?.split(",")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("t="))
+    ?.slice(2);
+  const timestamp = Number(t);
+  const now = Math.floor(Date.now() / 1000);
+  if (!t || !Number.isFinite(timestamp) || Math.abs(now - timestamp) > 300) { // 5 minutes tolerance
+    return NextResponse.json({ error: "Webhook timestamp too old" }, { status: 400 });
+  }
+
   if (!verifyWebhookSignature(rawBody, signature)) {
     return NextResponse.json({ error: "Invalid webhook signature" }, { status: 400 });
   }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCustomerSession } from "@/lib/customer-auth";
 import { prisma } from "@/lib/prisma";
 import { notifyBookingCancelled } from "@/lib/notifications";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function GET(
   _req: Request,
@@ -29,7 +30,7 @@ export async function GET(
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
 
-  return NextResponse.json(booking);
+  return NextResponse.json(decimalsToNumbers(booking));
 }
 
 export async function PATCH(
@@ -82,7 +83,7 @@ export async function PATCH(
           data: {
             bookingId: id,
             customerId: booking.customerId,
-            amount: -Math.abs(p.amount),
+            amount: -Math.abs(Number(p.amount)),
             method: p.method,
             status: "REFUNDED",
             reference: `RFND-${booking.referenceNumber}-${Date.now().toString(36).toUpperCase()}`,

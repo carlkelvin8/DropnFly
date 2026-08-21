@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { hasStaffRole } from "@/lib/staff-access";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function GET() {
   const session = await auth();
@@ -18,7 +19,7 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json(payments);
+  return NextResponse.json(decimalsToNumbers(payments));
 }
 
 export async function POST(req: Request) {
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
         where: { bookingId, status: "PAID" },
         _sum: { amount: true },
       });
-      const remaining = Math.max(0, booking.totalPrice - (totals._sum.amount || 0));
+      const remaining = Math.max(0, Number(booking.totalPrice) - Number(totals._sum.amount || 0));
       if ((status || "PAID") === "PAID" && numericAmount > remaining) {
         throw new PaymentBalanceError(remaining);
       }
@@ -77,7 +78,7 @@ export async function POST(req: Request) {
       details: `Payment of ${numericAmount} for booking ${booking.referenceNumber}`,
     });
 
-    return NextResponse.json(payment, { status: 201 });
+    return NextResponse.json(decimalsToNumbers(payment), { status: 201 });
   } catch (error) {
     if (error instanceof PaymentBalanceError) {
       return NextResponse.json(

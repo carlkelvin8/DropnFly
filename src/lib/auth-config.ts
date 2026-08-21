@@ -14,6 +14,26 @@ const secret =
 
 export const PASSWORD_MAX_AGE_DAYS = 180;
 
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+
+export function checkLoginAttempts(
+  identifier: string,
+  maxAttempts = 5,
+  windowMs = 15 * 60 * 1000
+): { allowed: boolean; retryAfter?: number } {
+  const now = Date.now();
+  const record = loginAttempts.get(identifier);
+  if (!record || now > record.resetAt) {
+    loginAttempts.set(identifier, { count: 1, resetAt: now + windowMs });
+    return { allowed: true };
+  }
+  if (record.count >= maxAttempts) {
+    return { allowed: false, retryAfter: Math.ceil((record.resetAt - now) / 1000) };
+  }
+  record.count++;
+  return { allowed: true };
+}
+
 function isPasswordExpired(user: { role: string; passwordChangedAt?: Date | null; createdAt: Date }): boolean {
   if (user.role !== "ADMIN") return false;
   const changed = user.passwordChangedAt ?? user.createdAt;
@@ -35,6 +55,10 @@ export const config = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
+
+        const identifier = String(credentials.email).trim().toLowerCase();
+        const attempt = checkLoginAttempts(identifier);
+        if (!attempt.allowed) return null;
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email as string },
@@ -72,7 +96,7 @@ export const config = {
   ],
   callbacks: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async jwt({ token, user, trigger }: { token: any; user?: any; trigger?: any }) {
+    async jwt({ token, user }: { token: any; user?: any }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
@@ -81,18 +105,28 @@ export const config = {
       } else if (token.id) {
         const current = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { isActive: true, isApproved: true, role: true, authVersion: true },
+          select: { isActive: true, isApproved: true, role: true, authVersion: true, passwordChangedAt: true },
         });
         if (!current?.isActive || !current.isApproved || current.authVersion !== token.authVersion) {
           token.disabled = true;
         } else {
           token.role = current.role;
           token.disabled = false;
+          // Only clear passwordExpired when a real password change is
+          // detected (passwordChangedAt newer than this token's issue
+          // time). Client-driven session updates must never clear it.
+          const changedAtSec = current.passwordChangedAt
+            ? Math.floor(new Date(current.passwordChangedAt).getTime() / 1000)
+            : null;
+          if (changedAtSec && typeof token.iat === "number" && changedAtSec > token.iat) {
+            token.passwordExpired = false;
+          }
         }
       }
-      if (trigger === "update" && token.passwordExpired !== false) {
-        token.passwordExpired = false;
-      }
+      // passwordExpired is intentionally NOT cleared on session update:
+      // clearing it here let users bypass forced password expiry without
+      // actually changing their password. It only resets when a real
+      // password change is detected above, or via re-login.
       return token;
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

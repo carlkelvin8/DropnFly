@@ -9,7 +9,7 @@ import { getSystemSettings, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
 import { isPaymongoConfigured } from "@/lib/paymongo";
 import { grantBookingAccess } from "@/lib/booking-access";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma, Booking } from "@/generated/prisma/client";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const { name, email, phone, countryOfOrigin, cityOfOrigin, pickupLocation, dropOffLocation, numberOfBags, luggageDetails, preferredDate, deliveryDate, promoCode, downPayment } = body;
+    const { name, email, phone, pickupLocation, dropOffLocation, numberOfBags, luggageDetails, preferredDate, deliveryDate, promoCode, downPayment } = body;
     const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
 
     const missing: string[] = [];
@@ -52,6 +52,15 @@ export async function POST(req: Request) {
     if (!/^\S+@\S+\.\S+$/.test(normalizedEmail) || String(name).length > 120 || String(phone).length > 40 || String(pickupLocation).length > 500 || String(dropOffLocation).length > 500 || String(luggageDetails).length > 20_000) {
       return NextResponse.json({ error: "One or more booking fields are invalid or too long" }, { status: 400 });
     }
+    if (body.countryOfOrigin && typeof body.countryOfOrigin === "string" && body.countryOfOrigin.length > 100) {
+      return NextResponse.json({ error: "Country of Origin is too long" }, { status: 400 });
+    }
+    if (body.cityOfOrigin && typeof body.cityOfOrigin === "string" && body.cityOfOrigin.length > 100) {
+      return NextResponse.json({ error: "City of Origin is too long" }, { status: 400 });
+    }
+
+    const safeCountry = typeof body.countryOfOrigin === "string" ? body.countryOfOrigin.slice(0, 100) : undefined;
+    const safeCity = typeof body.cityOfOrigin === "string" ? body.cityOfOrigin.slice(0, 100) : undefined;
 
     const checkInDate = new Date(preferredDate);
     if (isNaN(checkInDate.getTime())) {
@@ -100,15 +109,15 @@ export async function POST(req: Request) {
         if (!promo.expiresAt || new Date() <= promo.expiresAt) {
           const computed = computeBookingPrice({ luggageLines, services, discount: 0, settings: priceSettings });
           const orderAmount = computed.totalPrice;
-          if (orderAmount >= promo.minAmount) {
+          if (orderAmount >= Number(promo.minAmount)) {
             if (promo.type === "PERCENTAGE") {
-              discount = orderAmount * (promo.value / 100);
-              if (promo.maxDiscount) discount = Math.min(discount, promo.maxDiscount);
+              discount = orderAmount * (Number(promo.value) / 100);
+              if (promo.maxDiscount) discount = Math.min(discount, Number(promo.maxDiscount));
             } else {
-              discount = promo.value;
+              discount = Number(promo.value);
             }
+            if (discount > 0) promoCodeId = promo.id;
           }
-          promoCodeId = promo.id;
         }
       }
     }
@@ -191,13 +200,13 @@ export async function POST(req: Request) {
 
     if (!customer) {
       customer = await prisma.customer.create({
-        data: { name: String(name).trim(), email: normalizedEmail, phone: String(phone).trim(), countryOfOrigin: countryOfOrigin || null, cityOfOrigin: cityOfOrigin || null },
+        data: { name: String(name).trim(), email: normalizedEmail, phone: String(phone).trim(), countryOfOrigin: safeCountry || null, cityOfOrigin: safeCity || null },
       });
     } else {
       if (customerSession?.id === customer.id) {
         const updateData: Record<string, string> = { name, phone };
-        if (countryOfOrigin) updateData.countryOfOrigin = countryOfOrigin;
-        if (cityOfOrigin) updateData.cityOfOrigin = cityOfOrigin;
+        if (safeCountry) updateData.countryOfOrigin = safeCountry;
+        if (safeCity) updateData.cityOfOrigin = safeCity;
         customer = await prisma.customer.update({
           where: { email: normalizedEmail },
           data: updateData,
@@ -206,15 +215,7 @@ export async function POST(req: Request) {
     }
 
     const txPrefix = setting(settings, "tx_prefix", "DROPFLY");
-    const referenceNumber = generateReferenceNumber(txPrefix);
-
     const qrSize = parseInt(setting(settings, "qr_image_size", "300"));
-    const qrCode = await QRCode.toDataURL(referenceNumber, {
-      width: qrSize,
-      margin: 2,
-    });
-
-    const qrBase64 = qrCode.replace(/^data:image\/png;base64,/, "");
 
     const minDpPercent = parseInt(setting(settings, "min_dp_percentage", "0"));
     const paymentsEnabled = isPaymongoConfigured() && process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
@@ -232,47 +233,70 @@ export async function POST(req: Request) {
       );
     }
 
-    const booking = await prisma.$transaction(async (tx) => {
-      // Serialize reservations for these exact slots. This prevents two
-      // concurrent requests from both claiming the last available capacity.
-      const lockKeys = [checkInDate, checkOutDate].filter((d): d is Date => Boolean(d)).map((d) => d.toISOString()).sort();
-      for (const key of lockKeys) {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
-      }
-      await slotQuery(checkInDate, "pickup", tx);
-      if (checkOutDate) await slotQuery(checkOutDate, "delivery", tx);
-
-      if (promoCodeId) {
-        const claimed = await tx.promoCode.updateMany({
-          where: {
-            id: promoCodeId,
-            isActive: true,
-            usedCount: { lt: (await tx.promoCode.findUniqueOrThrow({ where: { id: promoCodeId }, select: { maxUsage: true } })).maxUsage },
-            OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
-          },
-          data: { usedCount: { increment: 1 } },
+    let booking: Booking | undefined;
+    let referenceNumber = "";
+    let qrCode = "";
+    let qrBase64 = "";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        referenceNumber = generateReferenceNumber(txPrefix);
+        qrCode = await QRCode.toDataURL(referenceNumber, {
+          width: qrSize,
+          margin: 2,
         });
-        if (claimed.count !== 1) throw new Error("Promo code is no longer available");
-      }
+        qrBase64 = qrCode.replace(/^data:image\/png;base64,/, "");
 
-      return tx.booking.create({
-        data: {
-        referenceNumber,
-        qrCode: qrBase64,
-        customerId: customer.id,
-        pickupLocation,
-        dropOffLocation,
-        luggageDetails: luggageDetails || null,
-        checkIn: checkInDate,
-        checkOut: checkOutDate,
-        numberOfBags: pricing.totalBags,
-        totalPrice: pricing.totalPrice,
-        discount: pricing.discount,
-        promoCodeId,
-        status: "PENDING",
-        },
-      });
-    });
+        booking = await prisma.$transaction(async (tx) => {
+          // Serialize reservations for these slots. Locking on date+type (not the
+          // exact minute) prevents two concurrent requests for overlapping slot
+          // windows from both claiming the last available capacity.
+          const lockKeys = [checkInDate, checkOutDate].filter((d): d is Date => Boolean(d)).map((d) => `slot:${d.toISOString().split('T')[0]}:${d === checkInDate ? "pickup" : "delivery"}`);
+          for (const key of lockKeys) {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+          }
+          await slotQuery(checkInDate, "pickup", tx);
+          if (checkOutDate) await slotQuery(checkOutDate, "delivery", tx);
+
+          if (promoCodeId) {
+            const claimed = await tx.promoCode.updateMany({
+              where: {
+                id: promoCodeId,
+                isActive: true,
+                usedCount: { lt: (await tx.promoCode.findUniqueOrThrow({ where: { id: promoCodeId }, select: { maxUsage: true } })).maxUsage },
+                OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+              },
+              data: { usedCount: { increment: 1 } },
+            });
+            if (claimed.count !== 1) throw new Error("Promo code is no longer available");
+          }
+
+          return tx.booking.create({
+            data: {
+            referenceNumber,
+            qrCode: qrBase64,
+            customerId: customer.id,
+            pickupLocation,
+            dropOffLocation,
+            luggageDetails: luggageDetails || null,
+            checkIn: checkInDate,
+            checkOut: checkOutDate,
+            numberOfBags: pricing.totalBags,
+            totalPrice: pricing.totalPrice,
+            discount: pricing.discount,
+            promoCodeId,
+            status: "PENDING",
+            },
+          });
+        });
+        break;
+      } catch (e) {
+        if ((e as { code?: string })?.code === "P2002" && attempt < 2) continue;
+        throw e;
+      }
+    }
+    if (!booking) {
+      throw new Error("Failed to create booking");
+    }
 
     await grantBookingAccess(booking.id, booking.customerId);
 
@@ -300,13 +324,17 @@ export async function POST(req: Request) {
     }
 
     if (customer.password) {
-      await sendCustomerNotification({
-        customerId: customer.id,
-        type: "booking_created",
-        title: "Booking Confirmed",
-        message: `Booking ${referenceNumber} has been created successfully.`,
-        link: `/my-account/bookings/${booking.id}`,
-      });
+      try {
+        await sendCustomerNotification({
+          customerId: customer.id,
+          type: "booking_created",
+          title: "Booking Confirmed",
+          message: `Booking ${referenceNumber} has been created successfully.`,
+          link: `/my-account/bookings/${booking.id}`,
+        });
+      } catch (e) {
+        if (process.env.NODE_ENV === "development") console.warn("Notification failed:", e);
+      }
     }
 
     const staffUsers = await prisma.user.findMany({
@@ -314,11 +342,15 @@ export async function POST(req: Request) {
       select: { id: true },
     });
 
-    await notifyBookingCreated(
-      staffUsers.map((u) => u.id),
-      referenceNumber,
-      name
-    );
+    try {
+      await notifyBookingCreated(
+        staffUsers.map((u) => u.id),
+        referenceNumber,
+        name
+      );
+    } catch (e) {
+      if (process.env.NODE_ENV === "development") console.warn("Staff notification failed:", e);
+    }
 
     return NextResponse.json(
       {

@@ -76,7 +76,7 @@ export async function POST(
         where: { reference: booking.id, type: "EARNED" },
       });
       if (!existingPoints) {
-        const pointsEarned = Math.floor(updated.totalPrice / 10);
+        const pointsEarned = Math.floor(Number(updated.totalPrice) / 10);
         if (pointsEarned > 0) {
           await Promise.all([
             prisma.customer.update({

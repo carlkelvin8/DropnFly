@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 const geminiCache = new Map<string, { data: unknown; expiresAt: number }>();
@@ -116,7 +118,7 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 Keep predictions realistic based on the data. Values must be numbers.`;
 
   try {
-    const cacheKey = `predictions:${JSON.stringify(analyticsData).slice(0, 500)}`;
+    const cacheKey = `predictions:${crypto.createHash("sha256").update(JSON.stringify(analyticsData)).digest("hex")}`;
     const cached = getCached<PredictionResponse>(cacheKey);
     if (cached) return cached;
 
@@ -210,7 +212,7 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
   };
 
   try {
-    const cacheKey = `report:${type}:${JSON.stringify(analyticsData).slice(0, 500)}`;
+    const cacheKey = `report:${type}:${crypto.createHash("sha256").update(JSON.stringify(analyticsData)).digest("hex")}`;
     const cached = getCached<{ title: string; summary: string; sections: { heading: string; content: string }[]; generatedAt: string }>(cacheKey);
     if (cached) return cached;
 

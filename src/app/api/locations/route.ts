@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { locationSchema } from "@/lib/validations";
 import { hasStaffRole } from "@/lib/staff-access";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function GET() {
   const session = await auth();
@@ -14,7 +15,7 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(locations);
+  return NextResponse.json(decimalsToNumbers(locations));
 }
 
 export async function POST(req: Request) {
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json(location, { status: 201 });
+    return NextResponse.json(decimalsToNumbers(location), { status: 201 });
   } catch {
     return NextResponse.json(
       { error: "Failed to create location" },

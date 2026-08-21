@@ -2,9 +2,19 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { signCustomerToken, setCustomerCookie } from "@/lib/customer-auth";
+import { rateLimit, requestKey } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   try {
+    const key = requestKey(req);
+    const { allowed, retryAfter } = await rateLimit(`customer-login:${key}`, 10, 15 * 60 * 1000);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Too many login attempts. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } }
+      );
+    }
+
     const { email, password } = await req.json();
 
     if (!email || !password) {

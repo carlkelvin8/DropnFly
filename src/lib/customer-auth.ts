@@ -2,14 +2,16 @@ import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { cookies } from "next/headers";
 
 function getSecret() {
-  const configured = process.env.CUSTOMER_JWT_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-  if (!configured) {
-    throw new Error(
-      "CUSTOMER_JWT_SECRET, AUTH_SECRET, or NEXTAUTH_SECRET environment variable is required. " +
-      "Generate one with: openssl rand -base64 32"
+  const secret = process.env.CUSTOMER_JWT_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("CUSTOMER_JWT_SECRET must be set in production");
+    }
+    return new TextEncoder().encode(
+      process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dev-only-customer-secret"
     );
   }
-  return new TextEncoder().encode(configured);
+  return new TextEncoder().encode(secret);
 }
 
 const COOKIE_NAME = "customer_token";

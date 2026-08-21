@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
     await prisma.$transaction([
       prisma.passwordResetToken.deleteMany({ where: { email: normalizedEmail } }),
-      prisma.passwordResetToken.create({ data: { email: normalizedEmail, token: tokenHash, expiresAt } }),
+      prisma.passwordResetToken.create({ data: { email: normalizedEmail, tokenHash, expiresAt } }),
     ]);
     await sendPasswordResetEmail({ to: normalizedEmail, token }).catch((error) => {
       if (process.env.NODE_ENV === "development") {

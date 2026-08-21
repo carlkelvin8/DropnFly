@@ -1,8 +1,12 @@
 import { prisma } from "@/lib/prisma";
 
-export function requestKey(req: Request) {
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || req.headers.get("x-real-ip") || "unknown";
+export function requestKey(req: Request, secondary?: string): string {
+  // Use the most reliable IP source - prefer platform-provided headers
+  const realIp = req.headers.get("x-real-ip");
+  const forwarded = req.headers.get("x-forwarded-for");
+  const ip = realIp || (forwarded ? forwarded.split(",")[0].trim() : "unknown");
+  // Combine with secondary key (e.g., email) for additional security
+  return secondary ? `${ip}:${secondary}` : ip;
 }
 
 export async function rateLimit(key: string, limit: number, windowMs: number) {

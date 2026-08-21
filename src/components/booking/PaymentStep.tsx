@@ -244,7 +244,7 @@ export function PaymentStep({
             setPromoError(""); setPromoDiscount(0); setPromoApplied("");
             if (!promoCode) return;
             try {
-              const res = await fetch("/api/promo-codes/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode }) });
+              const res = await fetch("/api/promo-codes/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode, amount: grandTotal }) });
               const data = await res.json();
               if (data.valid) { setPromoDiscount(data.discount); setPromoApplied(promoCode); setPromoCode(""); }
               else setPromoError("Invalid promo code");

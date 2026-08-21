@@ -68,12 +68,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
+    if (!Array.isArray(history) || history.length > 20) {
+      return NextResponse.json({ error: "Invalid history" }, { status: 400 });
+    }
+    const sanitizedHistory = history.slice(-20).map((h: { role: string; content: string }) => ({
+      role: h.role === "user" ? "user" : "model",
+      parts: [{ text: String(h.content || "").slice(0, 4000) }],
+    }));
+
     const contents = [
       { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
       { role: "model", parts: [{ text: "Understood. I am the Dropnfly AI assistant ready to help customers with their luggage storage and delivery needs." }] },
-      ...(history || []).flatMap((h: { role: string; content: string }) => [
-        { role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.content }] },
-      ]),
+      ...sanitizedHistory,
       { role: "user", parts: [{ text: message }] },
     ];
 

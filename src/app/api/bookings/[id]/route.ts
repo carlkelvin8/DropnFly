@@ -6,6 +6,7 @@ import { notifyBookingStatusChanged } from "@/lib/notifications";
 import type { BookingStatus } from "@/generated/prisma/client";
 import { canReadBooking, hasStaffRole } from "@/lib/staff-access";
 import { awardDeliveryPoints } from "@/lib/loyalty";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 const VALID_STATUS = [
   "PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE",
@@ -55,7 +56,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(booking);
+  return NextResponse.json(decimalsToNumbers(booking));
 }
 
 export async function PUT(
@@ -178,7 +179,7 @@ export async function PUT(
       if (body.status === "DELIVERED") await awardDeliveryPoints(booking);
     }
 
-    return NextResponse.json(booking);
+    return NextResponse.json(decimalsToNumbers(booking));
   } catch {
     return NextResponse.json(
       { error: "Failed to update booking" },

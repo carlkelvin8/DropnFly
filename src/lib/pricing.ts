@@ -102,15 +102,22 @@ export function parseLuggageDetails(raw: string): {
   return { luggageLines, services };
 }
 
+function parseFeeSetting(value: string | undefined, defaultValue: number): number {
+  if (value === undefined) return defaultValue;
+  const fee = parseInt(value);
+  if (!Number.isFinite(fee) || fee < 0) return defaultValue;
+  return fee;
+}
+
 export async function getBookingPriceSettings(): Promise<BookingPriceSettings> {
   const { prisma } = await import("./prisma");
   const settings = await prisma.systemSetting.findMany();
   const map = Object.fromEntries(settings.map((s) => [s.key, s.value]));
 
   return {
-    pickupFee: parseInt(map.pickup_fee || String(DEFAULT_PRICE_SETTINGS.pickupFee)),
-    deliveryFee: parseInt(map.delivery_fee || String(DEFAULT_PRICE_SETTINGS.deliveryFee)),
-    excessBagFee: parseInt(map.excess_bag_fee || String(DEFAULT_PRICE_SETTINGS.excessBagFee)),
-    excessBagThreshold: parseInt(map.excess_bag_threshold || String(DEFAULT_PRICE_SETTINGS.excessBagThreshold)),
+    pickupFee: parseFeeSetting(map.pickup_fee, DEFAULT_PRICE_SETTINGS.pickupFee),
+    deliveryFee: parseFeeSetting(map.delivery_fee, DEFAULT_PRICE_SETTINGS.deliveryFee),
+    excessBagFee: parseFeeSetting(map.excess_bag_fee, DEFAULT_PRICE_SETTINGS.excessBagFee),
+    excessBagThreshold: parseFeeSetting(map.excess_bag_threshold, DEFAULT_PRICE_SETTINGS.excessBagThreshold),
   };
 }

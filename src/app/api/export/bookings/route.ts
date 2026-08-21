@@ -81,8 +81,8 @@ export async function GET(req: Request) {
   const rows = bookings.map((b) => {
     const totalPaid = b.payments
       .filter((p) => p.status === "PAID")
-      .reduce((sum, p) => sum + p.amount, 0);
-    const balance = b.totalPrice - totalPaid;
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    const balance = Number(b.totalPrice) - totalPaid;
     const rider = b.assignments[0]?.user || null;
     const qrScanned = ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"].includes(b.status);
 
@@ -93,7 +93,7 @@ export async function GET(req: Request) {
       b.pickupLocation,
       b.dropOffLocation,
       b.numberOfBags,
-      b.totalPrice,
+      Number(b.totalPrice),
       totalPaid,
       balance,
       balance === 0 ? "Full" : totalPaid > 0 ? "DP" : "Unpaid",

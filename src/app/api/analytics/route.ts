@@ -98,7 +98,7 @@ export async function GET(req: Request) {
     `,
   ]);
 
-  const totalRevenue = paidPayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalRevenue = paidPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
   const totalCapacity = storageLocations.reduce(
     (acc, loc) => acc + loc.capacity,
@@ -126,13 +126,13 @@ export async function GET(req: Request) {
   for (const p of paidPayments) {
     if (!p.paidAt) continue;
     const day = toLocalDayKey(p.paidAt);
-    revenuePerDay[day] = (revenuePerDay[day] || 0) + p.amount;
+    revenuePerDay[day] = (revenuePerDay[day] || 0) + Number(p.amount);
   }
 
   const revenueByStatusMap: Record<string, number> = {};
   for (const p of paidPayments) {
     const status = p.booking.status;
-    revenueByStatusMap[status] = (revenueByStatusMap[status] || 0) + p.amount;
+    revenueByStatusMap[status] = (revenueByStatusMap[status] || 0) + Number(p.amount);
   }
 
   const hourlyDistribution: Record<number, number> = {};

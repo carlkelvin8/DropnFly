@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateReferenceNumber } from "@/lib/reference";
+import { decimalsToNumbers } from "@/lib/serialize";
 import type { BookingStatus } from "@/generated/prisma/client";
 
 export async function GET(req: Request) {
@@ -91,10 +92,10 @@ export async function GET(req: Request) {
   const mapped = bookings.map((b) => {
     const totalPaid = b.payments
       .filter((p) => p.status === "PAID")
-      .reduce((sum, p) => sum + p.amount, 0);
+      .reduce((sum, p) => sum + Number(p.amount), 0);
 
     let paymentStatus: "full" | "dp" | "unpaid" = "unpaid";
-    if (totalPaid >= b.totalPrice && b.totalPrice > 0) paymentStatus = "full";
+    if (totalPaid >= Number(b.totalPrice) && Number(b.totalPrice) > 0) paymentStatus = "full";
     else if (totalPaid > 0) paymentStatus = "dp";
 
     const qrScanned = ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"].includes(b.status);
@@ -109,7 +110,7 @@ export async function GET(req: Request) {
       pickupLocation: b.pickupLocation,
       dropOffLocation: b.dropOffLocation,
       numberOfBags: b.numberOfBags,
-      totalPrice: b.totalPrice,
+      totalPrice: Number(b.totalPrice),
       status: b.status,
       createdAt: b.createdAt,
       checkIn: b.checkIn,
@@ -191,7 +192,7 @@ export async function POST(req: Request) {
       }
       const diffMs = checkOutDate.getTime() - checkInDate.getTime();
       const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-      totalPrice = Math.max(1, diffDays) * location.pricePerDay * numberOfBags;
+      totalPrice = Math.max(1, diffDays) * Number(location.pricePerDay) * numberOfBags;
     } else {
       totalPrice = 0;
     }
@@ -203,12 +204,12 @@ export async function POST(req: Request) {
       const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.toUpperCase() } });
       if (promo && promo.isActive && promo.usedCount < promo.maxUsage && (!promo.expiresAt || new Date() <= promo.expiresAt)) {
         const orderAmount = clientTotalPrice ? parseFloat(clientTotalPrice) : 0;
-        if (orderAmount >= promo.minAmount) {
+        if (orderAmount >= Number(promo.minAmount)) {
           if (promo.type === "PERCENTAGE") {
-            discount = orderAmount * (promo.value / 100);
-            if (promo.maxDiscount) discount = Math.min(discount, promo.maxDiscount);
+            discount = orderAmount * (Number(promo.value) / 100);
+            if (promo.maxDiscount) discount = Math.min(discount, Number(promo.maxDiscount));
           } else {
-            discount = promo.value;
+            discount = Number(promo.value);
           }
           promoCodeId = promo.id;
           await prisma.promoCode.update({
@@ -258,7 +259,7 @@ export async function POST(req: Request) {
       details: `Created booking ${booking.referenceNumber}`,
     });
 
-    return NextResponse.json(booking, { status: 201 });
+    return NextResponse.json(decimalsToNumbers(booking), { status: 201 });
   } catch {
     return NextResponse.json({ error: "Failed to create booking" }, { status: 500 });
   }

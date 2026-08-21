@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasStaffRole } from "@/lib/staff-access";
 import { customerSchema } from "@/lib/validations";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function GET(
   _req: Request,
@@ -31,7 +32,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(customer);
+  return NextResponse.json(decimalsToNumbers(customer));
 }
 
 export async function PUT(

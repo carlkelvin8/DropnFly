@@ -215,21 +215,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Cannot update a cancelled or no-show booking" }, { status: 400 });
     }
 
-    // === Drop-off ownership enforcement ===
-    if (session.user.role === "EMPLOYEE" && ["OUT_FOR_DELIVERY", "DELIVERED"].includes(status)) {
+    // === Assignment enforcement: employees may only scan bookings they are assigned to ===
+    if (session.user.role === "EMPLOYEE") {
       const dropoffAssignments = booking.assignments.filter((a) => a.phase === "DROPOFF");
+      const pickupAssignments = booking.assignments.filter((a) => a.phase === "PICKUP");
       const anyAssignment = booking.assignments.some((a) => a.userId === session.user.id);
       const isDropoffRider = dropoffAssignments.some((a) => a.userId === session.user.id);
-      if (dropoffAssignments.length === 0) {
-        if (!anyAssignment) {
+      const isPickupRider = pickupAssignments.some((a) => a.userId === session.user.id);
+
+      if (["OUT_FOR_DELIVERY", "DELIVERED"].includes(status)) {
+        if (dropoffAssignments.length > 0 && !isDropoffRider) {
           return NextResponse.json(
-            { error: "You are not assigned to this booking. Only the assigned employee can update it." },
+            { error: "Only the assigned drop-off employee can update this booking." },
             { status: 403 }
           );
         }
-      } else if (!isDropoffRider) {
+      } else if (pickupAssignments.length > 0 && !isPickupRider) {
         return NextResponse.json(
-          { error: "Only the assigned drop-off employee can update this booking." },
+          { error: "Only the assigned pick-up employee can update this booking." },
+          { status: 403 }
+        );
+      }
+
+      if (!anyAssignment) {
+        return NextResponse.json(
+          { error: "You are not assigned to this booking. Only the assigned employee can update it." },
           { status: 403 }
         );
       }
@@ -358,7 +368,7 @@ export async function POST(req: Request) {
         where: { reference: booking.id, type: "EARNED" },
       });
       if (!existingPoints) {
-        const pointsEarned = Math.floor(updatedBooking.totalPrice / 10);
+        const pointsEarned = Math.floor(Number(updatedBooking.totalPrice) / 10);
         if (pointsEarned > 0) {
           await Promise.all([
             prisma.customer.update({
