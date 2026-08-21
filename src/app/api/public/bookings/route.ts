@@ -217,7 +217,8 @@ export async function POST(req: Request) {
     const qrBase64 = qrCode.replace(/^data:image\/png;base64,/, "");
 
     const minDpPercent = parseInt(setting(settings, "min_dp_percentage", "0"));
-    const requiredDownPayment = isPaymongoConfigured() && minDpPercent > 0 ? Math.ceil(pricing.totalPrice * (minDpPercent / 100)) : 0;
+    const paymentsEnabled = isPaymongoConfigured() && process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
+    const requiredDownPayment = paymentsEnabled && minDpPercent > 0 ? Math.ceil(pricing.totalPrice * (minDpPercent / 100)) : 0;
     const downPaymentAmount = downPayment == null || downPayment === "" ? 0 : Number(downPayment);
 
     if (!Number.isFinite(downPaymentAmount) || downPaymentAmount < 0 || downPaymentAmount > pricing.totalPrice) {
@@ -293,7 +294,9 @@ export async function POST(req: Request) {
         }),
       });
     } catch {
-      console.warn("Email sending failed, booking still created");
+      if (process.env.NODE_ENV === "development") {
+        console.warn("Email sending failed, booking still created");
+      }
     }
 
     if (customer.password) {
@@ -328,7 +331,9 @@ export async function POST(req: Request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("Booking creation error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Booking creation error:", error);
+    }
     return NextResponse.json({ error: "Failed to create booking" }, { status: 500 });
   }
 }

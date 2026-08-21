@@ -3,6 +3,10 @@ import { rateLimit, requestKey } from "@/lib/rate-limit";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
+// Booking references look like PREFIX-YYMMDD-XXXXXX (e.g., DROPFLY-250815-K7M3XQ).
+// The random suffix never contains 0 or 1 (see src/lib/reference.ts).
+const BOOKING_REFERENCE_PATTERN = /\b[A-Z]{2,12}-\d{6}-[A-Z2-9]{6}\b/g;
+
 const SYSTEM_PROMPT = `You are an AI assistant for Dropnfly, an on-demand luggage storage and delivery service based in Metro Manila, Philippines. Your role is to help potential customers understand the service, answer questions, and guide them through booking.
 
 KEY INFORMATION:
@@ -31,6 +35,7 @@ CONVERSATION RULES:
 - Never make promises about specific delivery times — say it depends on location and availability
 - Always use natural, conversational Filipino-English (Taglish) tone — warm and approachable
 - Use "po" when appropriate for politeness
+- Booking references follow the format PREFIX-YYMMDD-XXXXXX (e.g., DROPFLY-250815-K7M3XQ). If a customer shares one, direct them to /track/<reference> for live status and tracking.
 - For complex inquiries, direct users to contact hello@dropnfly.ph or call +63 (2) 8123 4567`;
 
 export async function POST(req: Request) {
@@ -47,7 +52,9 @@ export async function POST(req: Request) {
     const { message = "" } = await req.json();
     const text = String(message).toLowerCase();
     let reply = "I can help with booking, tracking, luggage storage, and delivery. For a live conversation, share your DROPFLY booking reference or open the chat inside My Account.";
-    if (text.includes("book")) reply = "You can create a test booking at /book. Online payment is optional in demo mode, so you can complete the full booking flow without PayMongo.";
+    const reference = String(message).toUpperCase().match(BOOKING_REFERENCE_PATTERN)?.[0];
+    if (reference) reply = `Thanks! I found your booking reference ${reference}. You can track it anytime at /track/${reference} — the live map and status timeline work even in demo mode.`;
+    else if (text.includes("book")) reply = "You can create a test booking at /book. Online payment is optional in demo mode, so you can complete the full booking flow without PayMongo.";
     else if (text.includes("track") || text.includes("where")) reply = "Open /track and enter your DROPFLY reference. The demo map and status timeline work even when Mapbox is not configured.";
     else if (text.includes("price") || text.includes("cost")) reply = "Pricing depends on luggage size, storage duration, and pickup or delivery services. The booking form calculates the exact total before confirmation.";
     else if (text.includes("human") || text.includes("agent") || text.includes("staff")) reply = "Enter your booking reference and I’ll direct you to the booking chat monitored by the assigned employee and administrators.";

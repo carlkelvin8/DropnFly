@@ -44,7 +44,9 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ logs, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (error) {
-    console.error("Activity logs error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Activity logs error:", error);
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

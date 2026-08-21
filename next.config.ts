@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   serverExternalPackages: ["pg", "@prisma/adapter-pg", "prisma", "@prisma/client"],
   poweredByHeader: false,
+  output: "standalone",
   async headers() {
     const csp = [
       "default-src 'self'",
@@ -14,7 +15,7 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline' https://api.mapbox.com",
       "img-src 'self' data: blob: https://*.mapbox.com https://fastly.picsum.photos",
       "font-src 'self' data:",
-      "connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://api.paymongo.com wss:",
+      "connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://api.paymongo.com https://restcountries.com https://countriesnow.space wss:",
       "worker-src 'self' blob:",
       "frame-src 'self' https://checkout.paymongo.com",
       "upgrade-insecure-requests",

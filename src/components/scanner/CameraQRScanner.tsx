@@ -93,7 +93,9 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
       })
       .catch((e) => {
         if (!mountedRef.current) return;
-        console.error("Camera error:", e);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Camera error:", e);
+        }
         const msg = e instanceof Error ? e.message : String(e);
         if (msg.includes("NotAllowedError") || msg.includes("Permission")) {
           setError("Camera permission denied. Please allow camera access in your browser settings.");

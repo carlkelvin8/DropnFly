@@ -56,7 +56,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error("PayMongo webhook processing failed", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("PayMongo webhook processing failed", error);
+    }
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 }

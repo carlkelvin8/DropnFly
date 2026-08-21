@@ -39,7 +39,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ bookings });
   } catch (e) {
-    console.error("Calendar API error:", e);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Calendar API error:", e);
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

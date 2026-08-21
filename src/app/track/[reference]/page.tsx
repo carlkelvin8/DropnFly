@@ -239,7 +239,7 @@ export default function TrackResultPage() {
         <PublicHeader showBackToHome />
         <div className="flex flex-col items-center justify-center gap-4 py-24">
           <h1 className="text-2xl font-bold">Booking Not Found</h1>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             No booking found with reference &quot;{params.reference}&quot;
           </p>
           <div className="flex gap-3">
@@ -259,7 +259,7 @@ export default function TrackResultPage() {
   if (!booking) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     );
   }
@@ -544,7 +544,7 @@ export default function TrackResultPage() {
 
             {currentStep >= 0 && (
               <div className="relative">
-                <div className="absolute left-[23px] top-2 h-[calc(100%-16px)] w-0.5 bg-gradient-to-b from-blue-500 to-gray-200" />
+                <div className="absolute left-[23px] top-2 h-[calc(100%-16px)] w-0.5 bg-gradient-to-b from-blue-500 to-border" />
                 <div className="space-y-0">
                   {steps.map((step, i) => {
                     const Icon = step.icon;
@@ -560,7 +560,7 @@ export default function TrackResultPage() {
                             className={`flex h-12 w-12 items-center justify-center rounded-full border-2 shadow-sm transition-all ${
                               isActive
                                 ? "border-blue-600 bg-orange-500 text-white shadow-md shadow-blue-200"
-                                : "border-gray-300 bg-white text-gray-400"
+                                : "border-border bg-card text-muted-foreground/60"
                             } ${isCurrent ? "ring-4 ring-blue-200" : ""}`}
                           >
                             <Icon className="h-5 w-5" />
@@ -569,7 +569,7 @@ export default function TrackResultPage() {
                         <div className="flex flex-col justify-center pt-2.5 min-w-0 flex-1">
                           <p
                             className={`text-sm font-semibold ${
-                              isActive ? "text-blue-800" : "text-gray-400"
+                              isActive ? "text-blue-800" : "text-muted-foreground/60"
                             }`}
                           >
                             {step.label}
@@ -585,7 +585,7 @@ export default function TrackResultPage() {
                           {scan && (
                             <div className="mt-1 space-y-1">
                               {scan.scannedAt && (
-                                <p className="text-[10px] text-gray-400">
+                                <p className="text-[10px] text-muted-foreground/60">
                                   {new Date(scan.scannedAt).toLocaleString("en-PH")}
                                   {scan.user && ` · ${scan.user.name}`}
                                 </p>
@@ -601,7 +601,7 @@ export default function TrackResultPage() {
                                   </button>
                                 )}
                                 {scan.note && (
-                                  <p className="text-[10px] text-gray-500 italic w-full">{scan.note}</p>
+                                  <p className="text-[10px] text-muted-foreground italic w-full">{scan.note}</p>
                                 )}
                               </div>
                             </div>
@@ -628,24 +628,24 @@ export default function TrackResultPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 text-sm md:grid-cols-2">
-              <div className="flex items-start gap-3 rounded-lg border bg-gray-50/50 p-3">
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
                 <MapPin className="mt-0.5 h-4 w-4 text-blue-500" />
                 <div>
-                  <p className="text-gray-500">Pickup Location</p>
+                  <p className="text-muted-foreground">Pickup Location</p>
                   <p className="font-medium">{booking.pickupLocation}</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 rounded-lg border bg-gray-50/50 p-3">
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
                 <MapPin className="mt-0.5 h-4 w-4 text-indigo-500" />
                 <div>
-                  <p className="text-gray-500">Drop-off Location</p>
+                  <p className="text-muted-foreground">Drop-off Location</p>
                   <p className="font-medium">{booking.dropOffLocation}</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 rounded-lg border bg-gray-50/50 p-3">
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
                 <Calendar className="mt-0.5 h-4 w-4 text-blue-500" />
                 <div>
-                  <p className="text-gray-500">Scheduled Date</p>
+                  <p className="text-muted-foreground">Scheduled Date</p>
                   <p className="font-medium">
                     {new Date(booking.checkIn).toLocaleDateString("en-PH", {
                       weekday: "long",
@@ -658,10 +658,10 @@ export default function TrackResultPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 rounded-lg border bg-gray-50/50 p-3">
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
                 <Luggage className="mt-0.5 h-4 w-4 text-indigo-500" />
                 <div>
-                  <p className="text-gray-500">Number of Luggage</p>
+                  <p className="text-muted-foreground">Number of Luggage</p>
                   <p className="font-medium">{booking.numberOfBags}</p>
                 </div>
               </div>
@@ -682,7 +682,7 @@ export default function TrackResultPage() {
               );
               return (
                 <div className="mt-4 border-t pt-4">
-                  <p className="text-sm text-gray-500">Luggage Details</p>
+                  <p className="text-sm text-muted-foreground">Luggage Details</p>
                   {luggageItems.length > 0 ? (
                     <div className="mt-1 space-y-1">
                       {luggageItems.map((item, i) => (
@@ -718,7 +718,7 @@ export default function TrackResultPage() {
               <Button asChild variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
                 <Link href="/book">Book Another Pickup</Link>
               </Button>
-              <Button asChild variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+              <Button asChild variant="outline" className="border-border text-foreground hover:bg-muted">
                 <Link href="/"><Home className="mr-2 h-4 w-4" /> Back to Home</Link>
               </Button>
             </div>
@@ -733,7 +733,7 @@ export default function TrackResultPage() {
           <div className="relative max-w-lg max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
             <Image unoptimized width={1000} height={1000} src={showPhotoModal} alt="Photo proof" className="max-h-[80vh] w-auto rounded-lg shadow-2xl" />
             <button onClick={() => setShowPhotoModal(null)}
-              className="absolute -top-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-700 shadow-lg hover:bg-gray-100">
+              className="absolute -top-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-background text-foreground shadow-lg hover:bg-muted">
               <X className="h-4 w-4" />
             </button>
           </div>

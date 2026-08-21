@@ -11,6 +11,10 @@ interface EmailConfig {
   from: string;
 }
 
+function sanitizeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
 async function getEmailConfig(): Promise<EmailConfig> {
   const map = await getSystemSettings();
   const enabled = setting(map, "email_notifications_enabled", "true") !== "false";
@@ -107,17 +111,17 @@ export async function sendConfirmationEmail({
         <p style="margin: 8px 0 0; opacity: 0.9;">Reference: <strong>${referenceNumber}</strong></p>
       </div>
       <div style="background: #f8fafc; padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
-        <p>Hi <strong>${customerName}</strong>,</p>
+        <p>Hi <strong>${sanitizeHtml(customerName)}</strong>,</p>
         <p>Your luggage pickup has been scheduled successfully.</p>
 
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
           <tr>
             <td style="padding: 8px; color: #9ca3af;">Pickup Location</td>
-            <td style="padding: 8px; font-weight: 600;">${pickupLocation}</td>
+            <td style="padding: 8px; font-weight: 600;">${sanitizeHtml(pickupLocation)}</td>
           </tr>
           <tr style="background: #f1f5f9;">
             <td style="padding: 8px; color: #9ca3af;">Drop-off Location</td>
-            <td style="padding: 8px; font-weight: 600;">${dropOffLocation}</td>
+            <td style="padding: 8px; font-weight: 600;">${sanitizeHtml(dropOffLocation)}</td>
           </tr>
           <tr>
             <td style="padding: 8px; color: #9ca3af;">Scheduled Date</td>
@@ -177,6 +181,10 @@ export async function sendRiderAssignedEmail({
     }
     return;
   }
+  const profilePicUrl =
+    riderProfilePic && (riderProfilePic.startsWith("https://") || riderProfilePic.startsWith("data:image/"))
+      ? riderProfilePic
+      : null;
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #ea7d3d; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
@@ -184,17 +192,17 @@ export async function sendRiderAssignedEmail({
         <p style="margin: 8px 0 0; opacity: 0.9;">Reference: <strong>${referenceNumber}</strong></p>
       </div>
       <div style="background: #f8fafc; padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
-        <p>Hi <strong>${customerName}</strong>,</p>
+        <p>Hi <strong>${sanitizeHtml(customerName)}</strong>,</p>
         <p>A rider has been assigned to your booking. Here are the details:</p>
 
         <div style="text-align: center; margin: 24px 0;">
-          ${riderProfilePic ? `<img src="${riderProfilePic}" alt="${riderName}" style="width: 96px; height: 96px; border-radius: 50%; object-fit: cover; border: 3px solid #ea7d3d;" />` : `<div style="width: 96px; height: 96px; border-radius: 50%; background: #ea7d3d; color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; border: 3px solid #e3f0fb;">${riderName.charAt(0)}</div>`}
-          <h3 style="margin: 12px 0 4px;">${riderName}</h3>
+          ${profilePicUrl ? `<img src="${profilePicUrl}" alt="${sanitizeHtml(riderName)}" style="width: 96px; height: 96px; border-radius: 50%; object-fit: cover; border: 3px solid #ea7d3d;" />` : `<div style="width: 96px; height: 96px; border-radius: 50%; background: #ea7d3d; color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; border: 3px solid #e3f0fb;">${sanitizeHtml(riderName.charAt(0))}</div>`}
+          <h3 style="margin: 12px 0 4px;">${sanitizeHtml(riderName)}</h3>
         </div>
 
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-          ${vehicleType ? `<tr><td style="padding: 8px; color: #9ca3af;">Vehicle</td><td style="padding: 8px; font-weight: 600;">${vehicleType}</td></tr>` : ""}
-          ${plateNumber ? `<tr style="background: #f1f5f9;"><td style="padding: 8px; color: #9ca3af;">Plate Number</td><td style="padding: 8px; font-weight: 600;">${plateNumber}</td></tr>` : ""}
+          ${vehicleType ? `<tr><td style="padding: 8px; color: #9ca3af;">Vehicle</td><td style="padding: 8px; font-weight: 600;">${sanitizeHtml(vehicleType)}</td></tr>` : ""}
+          ${plateNumber ? `<tr style="background: #f1f5f9;"><td style="padding: 8px; color: #9ca3af;">Plate Number</td><td style="padding: 8px; font-weight: 600;">${sanitizeHtml(plateNumber)}</td></tr>` : ""}
         </table>
 
         <p style="text-align: center; margin-top: 24px;">
@@ -259,7 +267,7 @@ export async function sendIncidentEmail({  to,
       <p>Your report has been <strong style="color: #16a34a;">resolved</strong>.</p>
       ${resolution ? `<div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;">
         <p style="margin: 0; color: #166534;"><strong>Resolution:</strong></p>
-        <p style="margin: 8px 0 0; color: #166534;">${resolution}</p>
+        <p style="margin: 8px 0 0; color: #166534;">${sanitizeHtml(resolution)}</p>
       </div>` : ""}
     `;
   } else if (status === "CLOSED") {
@@ -273,7 +281,7 @@ export async function sendIncidentEmail({  to,
         <p style="margin: 8px 0 0; opacity: 0.9;">Reference: <strong>${referenceNumber}</strong></p>
       </div>
       <div style="background: #f8fafc; padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
-        <p>Hi <strong>${customerName}</strong>,</p>
+        <p>Hi <strong>${sanitizeHtml(customerName)}</strong>,</p>
         <p>There has been an update on your <strong>${typeLabel}</strong> report.</p>
 
         <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0;">
@@ -331,7 +339,7 @@ export async function sendPaymentConfirmationEmail({
         <p style="margin: 8px 0 0; opacity: 0.9;">Reference: <strong>${referenceNumber}</strong></p>
       </div>
       <div style="background: #f8fafc; padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
-        <p>Hi <strong>${customerName}</strong>,</p>
+        <p>Hi <strong>${sanitizeHtml(customerName)}</strong>,</p>
         <p>We have received your payment of <strong style="color: #16a34a;">₱${amount.toFixed(2)}</strong> for booking <strong>${referenceNumber}</strong>. Thank you!</p>
         <p style="text-align: center; margin-top: 24px;">
           <a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}/track/${referenceNumber}"

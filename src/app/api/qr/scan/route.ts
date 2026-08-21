@@ -390,7 +390,9 @@ export async function POST(req: Request) {
           : `Booking ${booking.referenceNumber} updated to ${status}`,
     });
   } catch (error) {
-    console.error("QR scan error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("QR scan error:", error);
+    }
     return NextResponse.json({ error: "Failed to process QR scan" }, { status: 500 });
   }
 }

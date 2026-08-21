@@ -84,17 +84,17 @@ export function FloatingElements() {
       <motion.div
         animate={{ y: [-8, 8, -8] }}
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute left-[15%] top-[30%] h-16 w-16 rounded-2xl border bg-gradient-to-br from-blue-500/10 to-blue-500/5 shadow-lg"
+        className="absolute left-[15%] top-[30%] h-16 w-16 rounded-2xl border bg-blue-500/10 shadow-lg"
       />
       <motion.div
         animate={{ y: [6, -6, 6] }}
         transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-        className="absolute right-[20%] top-[25%] h-12 w-12 rounded-xl border bg-gradient-to-br from-violet-500/10 to-violet-500/5 shadow-lg"
+        className="absolute right-[20%] top-[25%] h-12 w-12 rounded-xl border bg-orange-500/10 shadow-lg"
       />
       <motion.div
         animate={{ y: [-10, 10, -10] }}
         transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-        className="absolute bottom-[30%] left-[25%] h-20 w-20 rounded-2xl border bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 shadow-lg"
+        className="absolute bottom-[30%] left-[25%] h-20 w-20 rounded-2xl border bg-blue-500/10 shadow-lg"
       />
       <motion.div
         animate={{ rotate: [0, 360] }}

@@ -29,7 +29,9 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ notifications, unreadCount });
   } catch (error) {
-    console.error("Notifications error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Notifications error:", error);
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -48,7 +50,9 @@ export async function PATCH() {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Notifications error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Notifications error:", error);
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

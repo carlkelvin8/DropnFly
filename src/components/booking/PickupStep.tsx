@@ -3,9 +3,9 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, ArrowLeft, ArrowRight, Building2, Clock, MapPin, Navigation, Package, Plane } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Building2, Clock, MapPin, Package, Plane } from "lucide-react";
 import { motion } from "framer-motion";
-import { NAIA_TERMINALS, today } from "./constants";
+import { AIRLINES, NAIA_TERMINALS, today } from "./constants";
 
 interface TimeSlot {
   start: string;
@@ -19,10 +19,6 @@ interface PickupStepProps {
   setPickupTerminal: (v: string) => void;
   setPickupAirline: (v: string) => void;
   pickupAirline: string;
-  pickupLat: number | null;
-  pickupLng: number | null;
-  setPickupLat: (v: number | null) => void;
-  setPickupLng: (v: number | null) => void;
   pickupDate: string;
   setPickupDate: (v: string) => void;
   setPickupSlotsLoading: (v: boolean) => void;
@@ -45,23 +41,8 @@ interface PickupStepProps {
   onPrev: () => void;
 }
 
-const AIRLINES = [
-  "Philippine Airlines", "PAL Express", "Cebu Pacific", "AirAsia Philippines", "AirSWIFT",
-  "Emirates", "Qatar Airways", "Singapore Airlines", "Cathay Pacific", "Korean Air",
-  "Japan Airlines", "Turkish Airlines", "Etihad Airways", "Thai Airways", "EVA Air",
-  "China Airlines", "Delta Air Lines", "United Airlines",
-];
-
-const NAIA_TERMINAL_COORDS: Record<string, { lat: number; lng: number }> = {
-  "NAIA Terminal 1": { lat: 14.5106, lng: 121.0197 },
-  "NAIA Terminal 2": { lat: 14.5118, lng: 121.0143 },
-  "NAIA Terminal 3": { lat: 14.5186, lng: 121.0188 },
-  "NAIA Terminal 4": { lat: 14.5081, lng: 121.0147 },
-};
-
 export function PickupStep({
   pickupTerminal, setPickupTerminal, setPickupAirline, pickupAirline,
-  pickupLat, pickupLng, setPickupLat, setPickupLng,
   pickupDate, setPickupDate, setPickupSlotsLoading,
   pickupSlots, pickupSlotsLoading, pickupSlot, setPickupSlot,
   deliveryTerminal, setDeliveryTerminal,
@@ -86,11 +67,6 @@ export function PickupStep({
           onChange={(e) => {
             setPickupTerminal(e.target.value);
             setPickupAirline("");
-            const coords = NAIA_TERMINAL_COORDS[e.target.value];
-            if (coords) {
-              setPickupLat(coords.lat);
-              setPickupLng(coords.lng);
-            }
           }}
           className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           required
@@ -119,13 +95,6 @@ export function PickupStep({
               <option key={a} value={a}>{a}</option>
             ))}
           </select>
-        </div>
-      )}
-
-      {pickupLat && pickupLng && (
-        <div className="mt-4 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
-          <Navigation className="h-3.5 w-3.5 shrink-0" />
-          <span>Current location detected for rider reference</span>
         </div>
       )}
 

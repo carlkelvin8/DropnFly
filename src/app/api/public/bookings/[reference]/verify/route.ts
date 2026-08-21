@@ -97,7 +97,9 @@ export async function POST(
       message: `Drop-off verified — ${booking.referenceNumber} is now In Storage`,
     });
   } catch (error) {
-    console.error("Passenger verification error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Passenger verification error:", error);
+    }
     return NextResponse.json({ error: "Failed to verify drop-off" }, { status: 500 });
   }
 }

@@ -275,7 +275,7 @@ export default function DashboardPage() {
                     className={`relative flex h-9 w-full items-center justify-center rounded-lg text-xs font-medium transition-all ${
                       isSelected
                         ? "bg-orange-500 text-white shadow-md"
-                        : "text-gray-600 hover:bg-muted"
+                        : "text-muted-foreground hover:bg-muted"
                     } ${isToday(day) && !isSelected ? "ring-2 ring-blue-400" : ""}`}
                   >
                     {day}
@@ -352,7 +352,7 @@ export default function DashboardPage() {
                           `Duration: ${props?.payload ? durationLabelMap[props.payload.name] || props.payload.name : ""}`,
                         ]}
                         labelFormatter={(label) => `Storage: ${durationLabelMap[label as string] || label}`}
-                        contentStyle={{ borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "12px" }}
+                        contentStyle={{ borderRadius: "8px", border: "1px solid var(--border)", fontSize: "12px" }}
                       />
                       <Bar dataKey="value" fill="#ea7d3d" radius={[4, 4, 0, 0]} />
                     </BarChart>
@@ -392,7 +392,7 @@ export default function DashboardPage() {
                           `${value} bag${Number(value) !== 1 ? "s" : ""}`,
                           `Type: ${props?.payload?.name || ""}`,
                         ]}
-                        contentStyle={{ borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "12px" }}
+                        contentStyle={{ borderRadius: "8px", border: "1px solid var(--border)", fontSize: "12px" }}
                       />
                       <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                         {bagData.map((entry, i) => (

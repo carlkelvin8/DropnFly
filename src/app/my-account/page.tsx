@@ -60,7 +60,7 @@ function StatCard({ icon: Icon, label, value, sublabel, href, gradient }: {
   gradient: string;
 }) {
   const content = (
-    <div className="group relative overflow-hidden rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
+    <div className="group relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
       <div className={`absolute -right-4 -top-4 h-20 w-20 rounded-full opacity-10 blur-xl ${gradient}`} />
       <div className="relative">
         <div className={`mb-3 inline-flex rounded-xl p-2.5 ${gradient}`}>
@@ -142,7 +142,7 @@ export default function CustomerDashboardPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/50">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-gray-100/80 bg-white/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-border/80 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-blue-500 shadow-lg shadow-orange-500/20">
@@ -226,7 +226,7 @@ export default function CustomerDashboardPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               {activeBookings.map((booking) => (
                 <Link key={booking.id} href={`/my-account/bookings/${booking.id}`}>
-                  <div className="group relative overflow-hidden rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-blue-100 hover:-translate-y-0.5">
+                  <div className="group relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md hover:border-blue-100 hover:-translate-y-0.5">
                     <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-orange-500 to-blue-500 opacity-0 transition-opacity group-hover:opacity-100" />
                     <div className="flex items-start justify-between">
                       <div className="space-y-2">
@@ -268,7 +268,7 @@ export default function CustomerDashboardPage() {
           </div>
 
           {bookings.length === 0 ? (
-            <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-white p-12 text-center">
+            <div className="rounded-2xl border-2 border-dashed border-border bg-card p-12 text-center">
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-50 to-violet-50">
                 <Sparkles className="h-8 w-8 text-blue-400" />
               </div>
@@ -287,7 +287,7 @@ export default function CustomerDashboardPage() {
             <div className="space-y-2">
               {bookings.map((booking) => (
                 <Link key={booking.id} href={`/my-account/bookings/${booking.id}`}>
-                  <div className="group flex items-center justify-between rounded-xl border border-gray-100 bg-white px-5 py-4 transition-all hover:shadow-sm hover:border-gray-200">
+                  <div className="group flex items-center justify-between rounded-xl border border-border bg-card px-5 py-4 transition-all hover:shadow-sm hover:border-border">
                     <div className="flex items-center gap-4">
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-50 group-hover:bg-blue-50 transition-colors">
                         <Package className="h-5 w-5 text-gray-400 group-hover:text-blue-500 transition-colors" />

@@ -12,7 +12,9 @@ export async function GET() {
     const promos = await prisma.promoCode.findMany({ orderBy: { createdAt: "desc" } });
     return NextResponse.json(promos);
   } catch (error) {
-    console.error("Promo codes error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Promo codes error:", error);
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

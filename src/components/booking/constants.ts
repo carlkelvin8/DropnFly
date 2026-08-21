@@ -48,6 +48,19 @@ export const FALLBACK_CITIES: Record<string, string[]> = {
   "France": ["Paris", "Nice"],
   "Germany": ["Berlin", "Frankfurt", "Munich"],
   "Saudi Arabia": ["Riyadh", "Jeddah", "Dammam"],
+  "New Zealand": ["Auckland", "Wellington", "Christchurch", "Queenstown"],
+  "Italy": ["Rome", "Milan", "Florence", "Venice", "Naples"],
+  "Spain": ["Madrid", "Barcelona", "Valencia", "Seville"],
+  "Netherlands": ["Amsterdam", "Rotterdam", "The Hague", "Utrecht"],
+  "Switzerland": ["Zurich", "Geneva", "Basel", "Bern"],
+  "Kuwait": ["Kuwait City"],
+  "Bahrain": ["Manama"],
+  "Oman": ["Muscat"],
+  "India": ["Mumbai", "New Delhi", "Bangalore", "Chennai", "Kolkata"],
+  "Bangladesh": ["Dhaka", "Chittagong"],
+  "Pakistan": ["Karachi", "Lahore", "Islamabad"],
+  "Sri Lanka": ["Colombo", "Kandy"],
+  "Nepal": ["Kathmandu", "Pokhara"],
 };
 
 export const BOOKING_STEPS = [

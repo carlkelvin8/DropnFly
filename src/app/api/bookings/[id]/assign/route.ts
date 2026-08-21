@@ -73,7 +73,9 @@ export async function POST(
         plateNumber: assignment.user.plateNumber,
       });
     } catch {
-      console.warn("Failed to send rider assigned email");
+      if (process.env.NODE_ENV === "development") {
+        console.warn("Failed to send rider assigned email");
+      }
     }
 
     return NextResponse.json(assignment, { status: 201 });

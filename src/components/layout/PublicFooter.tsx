@@ -6,7 +6,7 @@ export function PublicFooter() {
       <div className="mx-auto max-w-5xl px-4 py-8">
         <div className="grid gap-8 text-sm md:grid-cols-3">
           <div>
-            <p className="mb-2 font-bold">Drop<span className="text-blue-600">nfly</span></p>
+            <p className="mb-2 font-bold"><span className="text-blue-600">Drop</span><span className="text-orange-500">nfly</span></p>
             <p className="text-muted-foreground">Luggage storage and delivery at NAIA Terminals 1–4.</p>
           </div>
           <div>

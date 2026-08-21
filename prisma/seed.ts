@@ -1,10 +1,13 @@
 import "dotenv/config";
+import { randomBytes } from "crypto";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
 const adapter = new PrismaPg({ connectionString: process.env.SUPABASE_URL });
 const prisma = new PrismaClient({ adapter });
+
+const seedPassword = process.env.SEED_PASSWORD || randomBytes(16).toString("base64url");
 
 function randomDate(daysAgo: number, daysRange: number): Date {
   const d = new Date();
@@ -20,7 +23,8 @@ function addDays(date: Date, days: number): Date {
 }
 
 async function main() {
-  const hashedPassword = await bcrypt.hash("password123", 12);
+  console.log(`Seed password: ${seedPassword}`);
+  const hashedPassword = await bcrypt.hash(seedPassword, 12);
 
   // ── Users ──
   const userData = [
@@ -43,7 +47,7 @@ async function main() {
     }
     const user = await prisma.user.create({ data: { ...u, password: hashedPassword } });
     createdUsers.push({ email: user.email, id: user.id });
-    console.log(`Created user: ${u.email} / password123`);
+    console.log(`Created user: ${u.email}`);
   }
 
   // ── Storage Location: Villamor, Pasay City (single location) ──
@@ -89,7 +93,7 @@ async function main() {
     }
     const customer = await prisma.customer.create({ data: { ...c, password: hashedPassword } });
     createdCustomers.push({ email: customer.email, id: customer.id });
-    console.log(`Created customer: ${c.name} / password123`);
+    console.log(`Created customer: ${c.name}`);
   }
 
   // ── Bookings with realistic data ──

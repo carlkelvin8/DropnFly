@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,16 @@ export function ContactStep({
   countriesLoading, citiesLoading,
   setCities, error, onNext,
 }: ContactStepProps) {
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  function markTouched(field: string) {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+  }
+
+  function isInvalid(field: string, value: string) {
+    return touched[field] && !value.trim();
+  }
+
   return (
     <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
       <div className="mb-4 flex items-center gap-2">
@@ -45,15 +56,15 @@ export function ContactStep({
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="name">Full Name <span className="text-red-500">*</span></Label>
-          <Input id="name" name="name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Juan Dela Cruz" required />
+          <Input id="name" name="name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} onBlur={() => markTouched("name")} aria-invalid={isInvalid("name", customerName) || undefined} className={isInvalid("name", customerName) ? "border-red-500 focus-visible:ring-red-500" : ""} placeholder="Juan Dela Cruz" required />
         </div>
         <div className="space-y-2">
           <Label htmlFor="email">Email Address <span className="text-red-500">*</span></Label>
-          <Input id="email" name="email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="juan@email.com" required />
+          <Input id="email" name="email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} onBlur={() => markTouched("email")} aria-invalid={isInvalid("email", customerEmail) || undefined} className={isInvalid("email", customerEmail) ? "border-red-500 focus-visible:ring-red-500" : ""} placeholder="juan@email.com" required />
         </div>
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="phone">Phone Number <span className="text-red-500">*</span></Label>
-          <Input id="phone" name="phone" type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="+63 912 345 6789" required />
+          <Input id="phone" name="phone" type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} onBlur={() => markTouched("phone")} aria-invalid={isInvalid("phone", customerPhone) || undefined} className={isInvalid("phone", customerPhone) ? "border-red-500 focus-visible:ring-red-500" : ""} placeholder="+63 912 345 6789" required />
         </div>
         <div className="space-y-2">
           <Label htmlFor="countryOfOrigin">Country of Origin <span className="text-red-500">*</span></Label>
@@ -62,6 +73,9 @@ export function ContactStep({
             list="country-options"
             value={selectedCountry}
             onChange={(e) => { setSelectedCountry(e.target.value); setCities([]); setSelectedCity(""); }}
+            onBlur={() => markTouched("country")}
+            aria-invalid={isInvalid("country", selectedCountry) || undefined}
+            className={isInvalid("country", selectedCountry) ? "border-red-500 focus-visible:ring-red-500" : ""}
             required
             placeholder={countriesLoading ? "Loading countries..." : "Type or select a country"}
           />
@@ -74,6 +88,9 @@ export function ContactStep({
             list="city-options"
             value={selectedCity}
             onChange={(e) => setSelectedCity(e.target.value)}
+            onBlur={() => markTouched("city")}
+            aria-invalid={isInvalid("city", selectedCity) || undefined}
+            className={isInvalid("city", selectedCity) ? "border-red-500 focus-visible:ring-red-500" : ""}
             disabled={!selectedCountry}
             required
             placeholder={!selectedCountry ? "Enter a country first" : citiesLoading ? "Loading cities..." : "Type or select a city"}

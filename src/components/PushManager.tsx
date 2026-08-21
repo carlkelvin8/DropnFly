@@ -10,6 +10,7 @@ interface PushManagerProps {
 
 export function PushManager({ subscribeUrl, unsubscribeUrl, vapidKeyUrl }: PushManagerProps) {
   const [subscribed, setSubscribed] = useState(false);
+  const [error, setError] = useState(false);
   const [supported] = useState(() =>
     typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window
   );
@@ -33,6 +34,7 @@ export function PushManager({ subscribeUrl, unsubscribeUrl, vapidKeyUrl }: PushM
   return (
     <button
       onClick={async () => {
+        setError(false);
         if (subscribed) {
           try {
             const reg = await navigator.serviceWorker.ready;
@@ -47,6 +49,7 @@ export function PushManager({ subscribeUrl, unsubscribeUrl, vapidKeyUrl }: PushM
             }
             setSubscribed(false);
           } catch {
+            setError(true);
             if (process.env.NODE_ENV === "development") {
               console.warn("Push unsubscription failed");
             }
@@ -55,18 +58,24 @@ export function PushManager({ subscribeUrl, unsubscribeUrl, vapidKeyUrl }: PushM
           try {
             const reg = await navigator.serviceWorker.ready;
             const res = await fetch(vapidKeyUrl);
+            if (!res.ok) throw new Error(`Failed to fetch VAPID key (${res.status})`);
             const { publicKey } = await res.json();
             const sub = await reg.pushManager.subscribe({
               userVisibleOnly: true,
               applicationServerKey: urlBase64ToUint8Array(publicKey),
             });
-            await fetch(subscribeUrl, {
+            const saveRes = await fetch(subscribeUrl, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(sub.toJSON()),
             });
+            if (!saveRes.ok) {
+              await sub.unsubscribe().catch(() => {});
+              throw new Error(`Failed to save subscription (${saveRes.status})`);
+            }
             setSubscribed(true);
           } catch {
+            setError(true);
             if (process.env.NODE_ENV === "development") {
               console.warn("Push subscription failed");
             }
@@ -74,9 +83,13 @@ export function PushManager({ subscribeUrl, unsubscribeUrl, vapidKeyUrl }: PushM
         }
       }}
       className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      title={subscribed ? "Disable push notifications" : "Enable push notifications"}
+      title={error
+        ? "Push notifications failed. Click to retry."
+        : subscribed ? "Disable push notifications" : "Enable push notifications"}
     >
-      <span className={`h-2 w-2 rounded-full ${subscribed ? "bg-green-500" : "bg-gray-300"}`} />
+      <span className={`h-2 w-2 rounded-full ${
+        error ? "bg-red-500" : subscribed ? "bg-green-500" : "bg-muted-foreground/40"
+      }`} />
       {subscribed ? "Notifications On" : "Enable Notifications"}
     </button>
   );

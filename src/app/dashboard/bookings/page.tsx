@@ -319,7 +319,7 @@ export default function BookingsPage() {
                       <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
                         booking.qrScanned
                           ? "bg-green-100 text-green-700"
-                          : "bg-gray-100 text-gray-500"
+                          : "bg-muted text-muted-foreground"
                       }`}>
                         <QrCode className="h-3 w-3" />
                         {booking.qrScanned ? "Scanned" : "Unscanned"}
@@ -350,7 +350,7 @@ export default function BookingsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge[booking.status] || "bg-gray-100 text-gray-700"}`}>
+                      <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge[booking.status] || "bg-muted text-muted-foreground"}`}>
                         {booking.status === "OUT_FOR_DELIVERY" ? "Out for Delivery" :
                          booking.status === "IN_STORAGE" ? "In Storage" :
                          booking.status === "NO_SHOW" ? "No Show" :
@@ -421,7 +421,7 @@ function PaymentBadge({ status, total, paid }: { status: string; total: number; 
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-500">
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-muted-foreground">
       Unpaid
     </span>
   );

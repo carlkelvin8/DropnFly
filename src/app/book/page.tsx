@@ -38,7 +38,8 @@ function calcStorageDays(pickupDate: string, pickupSlot: string, deliveryDate: s
 }
 
 export default function BookPage() {
-  const paymentDemoMode = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED !== "true";
+  const paymentsEnabled = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
+  const paymentDemoMode = !paymentsEnabled;
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -56,8 +57,6 @@ export default function BookPage() {
   const [pickupSlotsLoading, setPickupSlotsLoading] = useState(false);
   const [pickupTerminal, setPickupTerminal] = useState("");
   const [pickupAirline, setPickupAirline] = useState("");
-  const [pickupLat, setPickupLat] = useState<number | null>(null);
-  const [pickupLng, setPickupLng] = useState<number | null>(null);
   const [deliveryDate, setDeliveryDate] = useState("");
   const [deliverySlot, setDeliverySlot] = useState("");
   const [deliverySlots, setDeliverySlots] = useState<TimeSlot[]>([]);
@@ -89,7 +88,9 @@ export default function BookPage() {
   function prevStep() { setStep((s) => Math.max(s - 1, 1)); }
 
   useEffect(() => {
-    fetch("https://restcountries.com/v3.1/all?fields=name,cca2")
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    fetch("https://restcountries.com/v3.1/all?fields=name,cca2", { signal: controller.signal })
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
@@ -99,15 +100,19 @@ export default function BookPage() {
         }
       })
       .catch(() => setCountries(FALLBACK_COUNTRIES.map((name) => ({ name, code: name }))))
-      .finally(() => setCountriesLoading(false));
+      .finally(() => { clearTimeout(timeout); setCountriesLoading(false); });
+    return () => { clearTimeout(timeout); controller.abort(); };
   }, []);
 
   useEffect(() => {
     if (!selectedCountry) return;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
     fetch("https://countriesnow.space/api/v0.1/countries/cities", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ country: selectedCountry }),
+      signal: controller.signal,
     })
       .then((res) => res.json())
       .then((data) => {
@@ -115,7 +120,8 @@ export default function BookPage() {
         else setCities(FALLBACK_CITIES[selectedCountry] || []);
       })
       .catch(() => setCities(FALLBACK_CITIES[selectedCountry] || []))
-      .finally(() => setCitiesLoading(false));
+      .finally(() => { clearTimeout(timeout); setCitiesLoading(false); });
+    return () => { clearTimeout(timeout); controller.abort(); };
   }, [selectedCountry]);
 
   useEffect(() => {
@@ -137,16 +143,6 @@ export default function BookPage() {
         }
       })
       .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => { setPickupLat(pos.coords.latitude); setPickupLng(pos.coords.longitude); },
-        () => {},
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    }
   }, []);
 
   const fetchSlots = useCallback(async (date: string, type: "pickup" | "delivery"): Promise<TimeSlot[]> => {
@@ -200,7 +196,7 @@ export default function BookPage() {
     const extraFee = numBags > fees.excessBagThreshold ? (numBags - fees.excessBagThreshold) * fees.excessBagFee : 0;
     const servicesCost = servicesList.filter((s) => selectedServices[s.id]).reduce((sum, s) => sum + s.price, 0);
     const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
-    const downPayment = paymentDemoMode ? 0 : Math.ceil(grandTotal * (paymentPercent / 100));
+    const downPayment = paymentsEnabled ? Math.ceil(grandTotal * (paymentPercent / 100)) : 0;
 
     const data = {
       name: customerName.trim(),
@@ -345,8 +341,6 @@ export default function BookPage() {
                   <PickupStep
                     pickupTerminal={pickupTerminal} setPickupTerminal={setPickupTerminal}
                     setPickupAirline={setPickupAirline} pickupAirline={pickupAirline}
-                    pickupLat={pickupLat} pickupLng={pickupLng}
-                    setPickupLat={setPickupLat} setPickupLng={setPickupLng}
                     pickupDate={pickupDate} setPickupDate={setPickupDate}
                     setPickupSlotsLoading={setPickupSlotsLoading}
                     pickupSlots={pickupSlots} pickupSlotsLoading={pickupSlotsLoading}

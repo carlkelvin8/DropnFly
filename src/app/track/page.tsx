@@ -72,7 +72,7 @@ export default function TrackPage() {
           <h1 className="text-3xl font-bold text-blue-700">
             Track My Luggage
           </h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-muted-foreground">
             Verify your booking reference and email to check your luggage status
           </p>
         </div>
@@ -123,13 +123,13 @@ export default function TrackPage() {
               <button
                 type="button"
                 onClick={() => setScanning(true)}
-                className="w-full rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 p-6 text-center transition-all hover:border-blue-400 hover:bg-blue-50"
+                className="w-full rounded-xl border-2 border-dashed border-border bg-muted/30 p-6 text-center transition-all hover:border-blue-400 hover:bg-blue-50"
               >
                 <Camera className="mx-auto mb-2 h-8 w-8 text-blue-500" />
-                <p className="text-sm font-medium text-gray-700">
+                <p className="text-sm font-medium text-foreground">
                   Scan QR Code from your confirmation email
                 </p>
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-muted-foreground/60">
                   Use your camera to scan — we&apos;ll look up the booking instantly
                 </p>
               </button>

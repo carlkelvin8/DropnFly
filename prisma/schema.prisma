@@ -141,6 +141,8 @@ model Booking {
   @@index([createdAt])
   @@index([status, createdAt])
   @@index([customerId, status])
+  @@index([checkIn])
+  @@index([checkOut])
 }
 
 model ScanEvent {
@@ -171,6 +173,9 @@ model BookingAssignment {
 
   booking Booking @relation(fields: [bookingId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
+
+  @@index([bookingId])
+  @@index([userId])
 }
 
 model ActivityLog {
@@ -228,6 +233,8 @@ model PasswordResetToken {
   token     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  @@index([email])
 }
 
 model CustomerActivationToken {
@@ -484,6 +491,7 @@ model IncidentReport {
   timeline IncidentTimeline[]
 
   @@index([bookingId])
+  @@index([customerId])
   @@index([status])
   @@index([priority])
 }

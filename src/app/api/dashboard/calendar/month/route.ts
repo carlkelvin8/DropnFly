@@ -51,7 +51,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ activeDates: dateMap });
   } catch (e) {
-    console.error("Calendar month API error:", e);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Calendar month API error:", e);
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

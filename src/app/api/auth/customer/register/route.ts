@@ -47,7 +47,9 @@ export async function POST(req: Request) {
     await sendCustomerActivationEmail({ to: normalizedEmail, customerName: String(name), token: rawToken });
     return NextResponse.json({ success: true, requiresVerification: true }, { status: 202 });
   } catch (error) {
-    console.error("Customer register error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Customer register error:", error);
+    }
     return NextResponse.json({ error: "Failed to register" }, { status: 500 });
   }
 }

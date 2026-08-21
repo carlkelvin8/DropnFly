@@ -179,7 +179,7 @@ export function PaymentStep({
           </svg>
           <h3 className="text-base font-semibold">Payment Option</h3>
         </div>
-        <p className="mb-3 text-xs text-blue-700">{paymentDemoMode ? "Online payment is temporarily suspended. No payment is required while testing the complete booking workflow." : <>Slide to choose how much to pay now. Minimum of <strong>{dpMin}%</strong> is required to reserve your slot.</>}</p>
+        <p className="mb-3 text-xs text-blue-700">{paymentDemoMode ? "Online payment is not configured. No payment is required at this time." : <>Slide to choose how much to pay now. Minimum of <strong>{dpMin}%</strong> is required to reserve your slot.</>}</p>
         <div className="mb-3 flex items-center gap-4">
           <div
             className="relative w-full"
@@ -211,7 +211,7 @@ export function PaymentStep({
             )}
           </div>
           <span className="shrink-0 rounded-lg border border-blue-200 bg-blue-100 px-3 py-1 text-sm font-bold text-blue-700 tabular-nums">
-            {paymentDemoMode ? "Demo" : `${paymentPercent}%`}
+            {paymentPercent}%
           </span>
         </div>
         <div className="mb-1 flex justify-between text-[10px] font-medium text-blue-500">
@@ -220,11 +220,11 @@ export function PaymentStep({
         </div>
         <div className="space-y-1.5">
           <div className="flex justify-between text-blue-800">
-            <span>{paymentDemoMode ? "Due now (demo mode)" : "Pay now"}</span>
+            <span>{paymentDemoMode ? "Due now" : "Pay now"}</span>
             <span className="font-bold">&#x20B1;{downPayment.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-blue-600">
-            <span>{paymentDemoMode ? "Balance for staff recording" : "Collect later (remaining)"}</span>
+            <span>{paymentDemoMode ? "Remaining balance" : "Collect later (remaining)"}</span>
             <span className="font-medium">&#x20B1;{remainingBalance.toFixed(2)}</span>
           </div>
         </div>
@@ -293,7 +293,7 @@ export function PaymentStep({
           {loading ? (
             <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Processing...</span>
           ) : (
-            <span className="flex items-center justify-center gap-2">{paymentDemoMode ? "Confirm Demo Booking" : `Pay ₱${downPayment.toFixed(2)} now`} <ChevronRight className="h-5 w-5" /></span>
+            <span className="flex items-center justify-center gap-2">{paymentDemoMode ? "Confirm Booking" : `Pay ₱${downPayment.toFixed(2)} now`} <ChevronRight className="h-5 w-5" /></span>
           )}
         </Button>
       </div>

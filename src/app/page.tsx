@@ -46,9 +46,19 @@ const stats = [
   { label: "On-Time Rate", value: 98, suffix: "%" },
 ];
 
+function maskName(name: string): string {
+  return name
+    .split(" ")
+    .map((part) => {
+      if (part.length <= 2) return part[0] + "*";
+      return part[0] + "*".repeat(part.length - 2) + part[part.length - 1];
+    })
+    .join(" ");
+}
+
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col overflow-x-hidden">
+    <div className="scroll-smooth flex min-h-screen flex-col overflow-x-hidden">
       <LandingNavbar />
 
       <a
@@ -83,7 +93,7 @@ export default function Home() {
 
             <h1 className="max-w-4xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
               Travel Light.{" "}
-              <span className="bg-gradient-to-r from-orange-500 via-blue-500 to-blue-400 bg-clip-text text-transparent">
+              <span className="text-orange-500">
                 We Carry the Load.
               </span>
             </h1>
@@ -97,7 +107,7 @@ export default function Home() {
             <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row">
               <Link
                 href="/book"
-                className="group inline-flex h-12 items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-blue-500 px-8 text-sm font-semibold text-white shadow-xl shadow-orange-500/30 transition-all hover:shadow-2xl hover:shadow-orange-500/40 hover:brightness-110"
+                className="group inline-flex h-12 items-center gap-2 rounded-xl bg-orange-500 px-8 text-sm font-semibold text-white shadow-xl shadow-orange-500/30 transition-all hover:bg-orange-600 hover:shadow-2xl hover:shadow-orange-500/40"
               >
                 Book Now
                 <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -151,11 +161,11 @@ export default function Home() {
             </FadeIn>
 
             <div className="relative mt-16 grid gap-8 md:grid-cols-3">
-              <div className="absolute left-[15%] right-[15%] top-12 hidden h-0.5 bg-gradient-to-r from-orange-500 via-blue-500 to-blue-400 md:block" />
+              <div className="absolute left-[15%] right-[15%] top-12 hidden h-0.5 bg-orange-500 md:block" />
               {steps.map((step, i) => (
                 <FadeIn key={step.num} delay={i * 0.15}>
                   <div className="group relative flex flex-col items-center text-center">
-                    <div className="relative z-10 flex h-24 w-24 items-center justify-center rounded-2xl border bg-gradient-to-br from-orange-500 to-blue-500 shadow-xl shadow-orange-500/20 transition-all group-hover:shadow-2xl group-hover:shadow-orange-500/30 group-hover:scale-105">
+                    <div className="relative z-10 flex h-24 w-24 items-center justify-center rounded-2xl border bg-orange-500 shadow-xl shadow-orange-500/20 transition-all group-hover:shadow-2xl group-hover:shadow-orange-500/30 group-hover:scale-105">
                       <span className="text-2xl font-bold text-white">{step.num}</span>
                     </div>
                     <h3 className="mt-6 text-lg font-semibold">{step.title}</h3>
@@ -190,7 +200,7 @@ export default function Home() {
                 return (
                   <FadeIn key={feature.title} delay={i * 0.08}>
                     <div className="group rounded-xl border bg-card p-6 transition-all hover:border-blue-200 hover:shadow-lg hover:shadow-blue-500/5 dark:hover:border-blue-800">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-500/10 text-blue-600 transition-all group-hover:from-orange-500 group-hover:to-blue-500 group-hover:text-white">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 transition-all group-hover:bg-orange-500 group-hover:text-white">
                         <Icon className="h-6 w-6" />
                       </div>
                       <h3 className="mt-4 font-semibold">{feature.title}</h3>
@@ -229,11 +239,11 @@ export default function Home() {
                       &ldquo;{t.content}&rdquo;
                     </p>
                     <div className="mt-6 flex items-center gap-3 border-t pt-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-blue-500 text-xs font-bold text-white">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
                         {t.name.split(" ").map((n) => n[0]).join("")}
                       </div>
                       <div>
-                        <p className="text-sm font-medium">{t.name}</p>
+                        <p className="text-sm font-medium">{maskName(t.name)}</p>
                         <p className="text-xs text-muted-foreground">{t.role}</p>
                       </div>
                     </div>
@@ -246,7 +256,7 @@ export default function Home() {
 
         {/* CTA Section */}
         <section className="relative overflow-hidden py-20 md:py-28">
-          <div className="absolute inset-0 bg-gradient-to-br from-orange-600 via-orange-500 to-blue-600" />
+          <div className="absolute inset-0 bg-orange-500" />
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE4YzEuNjU3IDAgMy0xLjM0MyAzLTNzLTEuMzQzLTMtMy0zLTMgMS4zNDMtMyAzIDEuMzQzIDMgMyAzek0yNyAyNWMxLjY1NyAwIDMtMS4zNDMgMy0zcy0xLjM0My0zLTMtMy0zIDEuMzQzLTMgMyAxLjM0MyAzIDMgM3oiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-30" />
 
           <div className="container relative mx-auto px-4 text-center">
@@ -277,6 +287,32 @@ export default function Home() {
             <CTAFloatingDots />
           </div>
         </section>
+
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "LocalBusiness",
+              name: "Dropnfly",
+              description: "On-demand luggage pickup, storage, and delivery service at NAIA Terminals 1-4",
+              url: "https://dropnfly.ph",
+              telephone: "+63-2-8123-4567",
+              address: {
+                "@type": "PostalAddress",
+                addressLocality: "Pasay City",
+                addressRegion: "Metro Manila",
+                addressCountry: "PH",
+              },
+              geo: {
+                "@type": "GeoCoordinates",
+                latitude: 14.5086,
+                longitude: 121.0194,
+              },
+              priceRange: "₱150-₱300",
+            }),
+          }}
+        />
       </main>
 
       {/* Footer */}
@@ -285,11 +321,11 @@ export default function Home() {
           <div className="grid gap-8 md:grid-cols-4">
             <div className="md:col-span-1">
               <Link href="/" className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-blue-500">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500">
                   <Luggage className="h-4 w-4 text-white" />
                 </div>
                 <span className="text-base font-bold">
-                  Drop<span className="text-blue-600">nfly</span>
+                  <span className="text-blue-600">Drop</span><span className="text-orange-500">nfly</span>
                 </span>
               </Link>
               <p className="mt-3 text-sm text-muted-foreground">
@@ -318,7 +354,9 @@ export default function Home() {
               <ul className="mt-4 space-y-2.5">
                 {features.slice(0, 4).map((f) => (
                   <li key={f.title}>
-                    <span className="text-sm text-muted-foreground">{f.title}</span>
+                    <a href="#why-choose-us" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+                      {f.title}
+                    </a>
                   </li>
                 ))}
               </ul>

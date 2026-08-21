@@ -6,10 +6,19 @@ import { canReadBooking, hasStaffRole } from "@/lib/staff-access";
 
 const COOKIE_NAME = "booking_access";
 
+function getSecret(): string {
+  const secret = process.env.CUSTOMER_JWT_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("CUSTOMER_JWT_SECRET must be set in production");
+    }
+    return "dropnfly-local-development-only-secret";
+  }
+  return secret;
+}
+
 function secret() {
-  const value = process.env.CUSTOMER_JWT_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-  if (!value && process.env.NODE_ENV === "production") throw new Error("CUSTOMER_JWT_SECRET is required in production");
-  return new TextEncoder().encode(value || "dropnfly-local-development-only-secret");
+  return new TextEncoder().encode(getSecret());
 }
 
 export async function grantBookingAccess(bookingId: string, customerId: string) {

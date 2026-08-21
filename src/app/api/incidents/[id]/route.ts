@@ -263,7 +263,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           incidentId: id,
         });
       } catch (emailErr) {
-        console.warn("[EMAIL] Failed to send incident email:", emailErr);
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[EMAIL] Failed to send incident email:", emailErr);
+        }
       }
     }
 

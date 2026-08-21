@@ -37,7 +37,9 @@ export async function POST(req: Request) {
       customer: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone },
     });
   } catch (error) {
-    console.error("Customer login error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Customer login error:", error);
+    }
     return NextResponse.json({ error: "Failed to login" }, { status: 500 });
   }
 }

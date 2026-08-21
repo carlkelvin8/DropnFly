@@ -17,7 +17,9 @@ export async function GET() {
 
     return NextResponse.json(riders);
   } catch (error) {
-    console.error("Riders error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Riders error:", error);
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

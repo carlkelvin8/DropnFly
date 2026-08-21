@@ -28,7 +28,9 @@ export async function POST(req: Request) {
       prisma.passwordResetToken.create({ data: { email: normalizedEmail, token: tokenHash, expiresAt } }),
     ]);
     await sendPasswordResetEmail({ to: normalizedEmail, token }).catch((error) => {
-      console.error("Password reset email delivery failed", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Password reset email delivery failed", error);
+      }
     });
     return NextResponse.json({ message: "If that email exists, a reset link has been sent" });
   } catch {

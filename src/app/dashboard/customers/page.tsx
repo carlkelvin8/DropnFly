@@ -181,7 +181,7 @@ export default function CustomersPage() {
                           <Link href={`/dashboard/bookings/${b.id}`} className="font-mono text-sm font-bold text-primary hover:underline">
                             {b.referenceNumber}
                           </Link>
-                          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadge[b.status] || "bg-gray-100 text-gray-700"}`}>
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadge[b.status] || "bg-muted text-muted-foreground"}`}>
                             {b.status.replace("_", " ")}
                           </span>
                         </div>

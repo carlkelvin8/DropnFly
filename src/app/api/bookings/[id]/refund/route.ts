@@ -92,7 +92,9 @@ export async function POST(
 
     return NextResponse.json(refund, { status: 201 });
   } catch (error) {
-    console.error("Refund error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Refund error:", error);
+    }
     return NextResponse.json({ error: "Failed to issue refund" }, { status: 500 });
   }
 }

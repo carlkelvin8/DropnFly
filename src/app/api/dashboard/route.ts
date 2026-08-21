@@ -129,7 +129,9 @@ export async function GET() {
       bagDistribution,
     });
   } catch (e) {
-    console.error("Dashboard API error:", e);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Dashboard API error:", e);
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
