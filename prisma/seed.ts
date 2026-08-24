@@ -40,7 +40,7 @@ async function main() {
   for (const u of userData) {
     const existing = await prisma.user.findUnique({ where: { email: u.email } });
     if (existing) {
-      await prisma.user.update({ where: { id: existing.id }, data: u });
+      await prisma.user.update({ where: { id: existing.id }, data: { ...u, password: hashedPassword } });
       createdUsers.push({ email: u.email, id: existing.id });
       console.log(`User ${u.email} already exists, updated`);
       continue;
