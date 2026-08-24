@@ -5,7 +5,7 @@ import { signIn, getSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Luggage, Eye, EyeOff, LogIn, ShieldCheck, ExternalLink } from "lucide-react";
+import { Luggage, Eye, EyeOff, LogIn, ShieldCheck, ExternalLink, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -379,6 +379,13 @@ function LoginForm() {
             >
               Employee accounts are created by your administrator.
             </motion.p>
+            <Link
+              href="/my-account/login"
+              className="mt-3 flex items-center justify-center gap-1.5 text-sm font-medium text-blue-300 transition-colors hover:text-blue-200"
+            >
+              <UserRound className="h-4 w-4" />
+              Customer? Sign in to your account
+            </Link>
             {alternateOrigin && (
               <a href={alternateOrigin} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-1.5 text-xs text-blue-300 hover:text-blue-200">
                 <ExternalLink className="h-3.5 w-3.5" /> Open an independent login tab

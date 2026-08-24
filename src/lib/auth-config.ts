@@ -34,6 +34,10 @@ export function checkLoginAttempts(
   return { allowed: true };
 }
 
+export function clearLoginAttempts(identifier: string): void {
+  loginAttempts.delete(identifier.trim().toLowerCase());
+}
+
 function isPasswordExpired(user: { role: string; passwordChangedAt?: Date | null; createdAt: Date }): boolean {
   if (user.role !== "ADMIN") return false;
   const changed = user.passwordChangedAt ?? user.createdAt;
@@ -82,6 +86,11 @@ export const config = {
             return null;
           }
         }
+
+        // A completed login starts a fresh attempt window. Without this,
+        // successful logins also counted toward the limit and users could be
+        // rejected later despite providing valid credentials.
+        clearLoginAttempts(identifier);
 
         return {
           id: user.id,
