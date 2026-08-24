@@ -61,7 +61,7 @@ export const config = {
         if (!attempt.allowed) return null;
 
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
+          where: { email: String(credentials.email).trim().toLowerCase() },
         });
 
         if (!user) return null;
