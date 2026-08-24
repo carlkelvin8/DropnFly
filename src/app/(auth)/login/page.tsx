@@ -89,6 +89,7 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showTotp, setShowTotp] = useState(false);
+  const [accountType, setAccountType] = useState<"STAFF" | "ADMIN">("STAFF");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
@@ -111,6 +112,7 @@ function LoginForm() {
     const result = await signIn("credentials", {
       email,
       password,
+      accountType,
       ...(showTotp ? { totpCode } : {}),
       redirect: false,
     });
@@ -212,8 +214,51 @@ function LoginForm() {
               className="mb-6 text-center"
             >
               <h1 className="text-xl font-semibold text-white">Welcome back</h1>
-              <p className="mt-1 text-sm text-white/60">Sign in to your account</p>
+              <p className="mt-1 text-sm text-white/60">
+                Sign in to the {accountType === "ADMIN" ? "admin" : "staff"} portal
+              </p>
             </motion.div>
+
+            <div
+              className="mb-6 grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-white/5 p-1"
+              role="group"
+              aria-label="Select account type"
+            >
+              <button
+                type="button"
+                aria-pressed={accountType === "STAFF"}
+                onClick={() => {
+                  setAccountType("STAFF");
+                  setError("");
+                  setShowTotp(false);
+                }}
+                className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  accountType === "STAFF"
+                    ? "bg-blue-500 text-white shadow-lg shadow-blue-500/20"
+                    : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                }`}
+              >
+                <UserRound className="h-4 w-4" />
+                Staff Login
+              </button>
+              <button
+                type="button"
+                aria-pressed={accountType === "ADMIN"}
+                onClick={() => {
+                  setAccountType("ADMIN");
+                  setError("");
+                  setShowTotp(false);
+                }}
+                className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  accountType === "ADMIN"
+                    ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20"
+                    : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                }`}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Admin Login
+              </button>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <motion.div
@@ -363,7 +408,7 @@ function LoginForm() {
                     ) : (
                       <span className="flex items-center gap-2">
                         <LogIn className="h-4 w-4" />
-                        Sign In
+                        {accountType === "ADMIN" ? "Admin Sign In" : "Staff Sign In"}
                       </span>
                     )}
                   </Button>

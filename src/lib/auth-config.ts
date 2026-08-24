@@ -56,6 +56,7 @@ export const config = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
         totpCode: { label: "2FA Code", type: "text" },
+        accountType: { label: "Account Type", type: "text" },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
@@ -79,6 +80,10 @@ export const config = {
 
         if (!user.isApproved) return null;
         if (!user.isActive) return null;
+
+        const accountType = credentials.accountType as string | undefined;
+        if (accountType === "ADMIN" && user.role !== "ADMIN") return null;
+        if (accountType === "STAFF" && !["STAFF", "EMPLOYEE"].includes(user.role)) return null;
 
         if (user.totpEnabled) {
           const code = credentials.totpCode as string | undefined;
