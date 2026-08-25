@@ -30,6 +30,7 @@ const ADMIN_ONLY_ITEMS = new Set([
   "/dashboard/settings",
   "/dashboard/employees",
   "/dashboard/activity-logs",
+  "/dashboard/analytics",
 ]);
 
 const STAFF_AND_ABOVE_ITEMS = new Set([

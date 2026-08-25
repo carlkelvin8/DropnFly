@@ -25,6 +25,7 @@ import {
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { signOut, useSession } from "next-auth/react";
 
 interface Employee {
   id: string;
@@ -49,6 +50,7 @@ interface Employee {
 
 export default function EmployeeDetailPage() {
   const params = useParams();
+  const { data: session } = useSession();
 
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [saving, setSaving] = useState(false);
@@ -75,12 +77,18 @@ export default function EmployeeDetailPage() {
     });
     if (res.ok) {
       const updated = await res.json();
+      if (updated.sessionInvalidated) {
+        toast.success("Account role updated. Please sign in again.");
+        await signOut({ callbackUrl: `${window.location.origin}/login` });
+        return;
+      }
       setEmployee((prev) => prev ? { ...prev, ...updated } : prev);
       setEditing(false);
       setEditPassword("");
       toast.success("Employee updated successfully");
     } else {
-      toast.error("Failed to update employee");
+      const body = await res.json().catch(() => null);
+      toast.error(body?.error || "Failed to update employee");
     }
     setSaving(false);
   }
@@ -177,7 +185,7 @@ export default function EmployeeDetailPage() {
             <Button
               variant={employee.isApproved ? "secondary" : "default"}
               className="w-full"
-              disabled={saving}
+              disabled={saving || (session?.user?.id === employee.id && employee.isActive)}
               onClick={() => updateEmployee({ isApproved: !employee.isApproved })}
             >
               {employee.isApproved ? "Unapprove Account" : "Approve Account"}
@@ -185,7 +193,8 @@ export default function EmployeeDetailPage() {
             <Button
               variant={employee.isActive ? "destructive" : "default"}
               className="w-full"
-              disabled={saving}
+              disabled={saving || (session?.user?.id === employee.id && employee.isActive)}
+              title={session?.user?.id === employee.id ? "You cannot deactivate your own account" : undefined}
               onClick={() => updateEmployee({ isActive: !employee.isActive })}
             >
               {employee.isActive ? "Deactivate Account" : "Activate Account"}

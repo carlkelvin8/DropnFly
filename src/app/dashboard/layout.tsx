@@ -67,11 +67,14 @@ export default function DashboardLayout({
             <Sidebar onNavigate={() => setSidebarOpen(false)} />
           </div>
 
-          <div className="flex flex-1 flex-col">
+          <div className="flex min-w-0 flex-1 flex-col bg-muted/10">
             <Navbar onMenuClick={() => setSidebarOpen(true)} />
             <main className="flex-1 p-4 lg:p-6">
               <ErrorBoundary>{children}</ErrorBoundary>
             </main>
+            <footer className="border-t bg-background px-4 py-3 text-center text-xs text-muted-foreground lg:px-6">
+              Dropnfly Operations Portal · Secure luggage storage and delivery management
+            </footer>
           </div>
         </div>
       </PasswordExpiryGuard>

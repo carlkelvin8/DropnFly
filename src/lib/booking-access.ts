@@ -6,6 +6,12 @@ import { canReadBooking, hasStaffRole } from "@/lib/staff-access";
 
 const COOKIE_NAME = "booking_access";
 
+export const LOCKED_BOOKING_STATUSES = ["CANCELLED", "NO_SHOW"] as const;
+
+export function isBookingLocked(status: string): boolean {
+  return (LOCKED_BOOKING_STATUSES as readonly string[]).includes(status);
+}
+
 function getSecret(): string {
   const secret = process.env.CUSTOMER_JWT_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
   if (!secret) {

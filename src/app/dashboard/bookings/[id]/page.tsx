@@ -85,6 +85,12 @@ interface LuggageItem {
   checkOutAt: string | null;
 }
 
+interface AvailableTag {
+  id: string;
+  tagNumber: string;
+  isUsed: boolean;
+}
+
 const statusOptions = [
   { value: "PENDING", label: "Pending" },
   { value: "CONFIRMED", label: "Confirmed" },
@@ -132,7 +138,8 @@ export default function BookingDetailPage() {
   const [logs, setLogs] = useState<{ id: string; action: string; entity: string; details: string | null; createdAt: string; user: { name: string } | null }[]>([]);
   const [showLog, setShowLog] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
-  const [tagRequestCount, setTagRequestCount] = useState(1);
+  const [availableTags, setAvailableTags] = useState<AvailableTag[]>([]);
+  const [selectedTagNumbers, setSelectedTagNumbers] = useState<Set<string>>(new Set());
   const [requestingTags, setRequestingTags] = useState(false);
   const [flaggableItem, setFlaggableItem] = useState<string | null>(null);
 
@@ -143,12 +150,14 @@ export default function BookingDetailPage() {
       fetch("/api/employees", { signal: abort.signal }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/extensions`, { signal: abort.signal }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/luggage`, { signal: abort.signal }).then((r) => r.json()),
-    ]).then(([bookingData, empData, extData, luggageData]) => {
+      fetch("/api/baggage-tags/available", { signal: abort.signal }).then((r) => r.json()),
+    ]).then(([bookingData, empData, extData, luggageData, tagData]) => {
       if (!abort.signal.aborted) {
         setBooking(bookingData);
-        setEmployees(empData || []);
-        setExtensions(extData || []);
-        setLuggageItems(luggageData || []);
+        setEmployees(Array.isArray(empData) ? empData : []);
+        setExtensions(Array.isArray(extData) ? extData : []);
+        setLuggageItems(Array.isArray(luggageData) ? luggageData : []);
+        setAvailableTags(Array.isArray(tagData?.tags) ? tagData.tags : []);
         const paid = (bookingData?.payments || [])
           .filter((p: { status: string }) => p.status === "PAID")
           .reduce((s: number, p: { amount: number }) => s + p.amount, 0);
@@ -174,6 +183,7 @@ export default function BookingDetailPage() {
   const paymentStatus = !booking ? "unpaid" :
     totalPaid >= booking.totalPrice && booking.totalPrice > 0 ? "full" :
     totalPaid > 0 ? "dp" : "unpaid";
+  const bookingLocked = booking ? ["CANCELLED", "NO_SHOW"].includes(booking.status) : false;
 
   function reloadBooking() {
     fetch(`/api/bookings/${params.id}`)
@@ -189,14 +199,19 @@ export default function BookingDetailPage() {
   }
 
   async function handleAddLuggage() {
+    if (!booking) return;
     setAddingLuggage(true);
     try {
-      const res = await fetch(`/api/bookings/${params.id}/luggage`, { method: "POST" });
-      if (!res.ok) throw new Error();
-      const item = await res.json();
-      setLuggageItems((prev) => [...prev, item]);
-      toast.success(`Added luggage ${item.tagNumber}`);
-    } catch { toast.error("Failed to add luggage"); }
+      const res = await fetch(`/api/bookings/${params.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numberOfBags: booking.numberOfBags + 1, totalPrice: booking.totalPrice + 100 }),
+      });
+      const result = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(result?.error || "Failed to add baggage");
+      reloadBooking();
+      toast.success("Additional baggage added. Select an available physical tag below.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to add luggage"); }
     setAddingLuggage(false);
   }
 
@@ -207,11 +222,14 @@ export default function BookingDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to update luggage status");
+      }
       const updated = await res.json();
       setLuggageItems((prev) => prev.map((i) => i.id === itemId ? { ...i, ...updated } : i));
       toast.success(`Luggage status updated to ${status.replace("_", " ")}`);
-    } catch { toast.error("Failed to update luggage status"); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to update luggage status"); }
   }
 
   async function handleReviewExtension(extId: string, status: string) {
@@ -242,13 +260,16 @@ export default function BookingDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: e.target.value }),
       });
-      if (!res.ok) throw new Error("Failed to update status");
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to update status");
+      }
       const getRes = await fetch(`/api/bookings/${params.id}`);
       if (!getRes.ok) throw new Error("Failed to reload booking");
       const updated = await getRes.json();
       setBooking(updated);
       toast.success("Status updated successfully");
-    } catch { toast.error("Failed to update status"); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to update status"); }
     setSaving(false);
   }
 
@@ -265,13 +286,16 @@ export default function BookingDetailPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId, phase }),
         });
-        if (!res.ok) throw new Error("Failed to assign employee");
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}));
+          throw new Error(error.error || "Failed to assign employee");
+        }
         const getRes = await fetch(`/api/bookings/${params.id}`);
         if (!getRes.ok) throw new Error("Failed to reload booking");
         const updated = await getRes.json();
         setBooking(updated);
         toast.success("Employee assigned successfully");
-      } catch { toast.error("Failed to assign employee"); }
+      } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to assign employee"); }
     }
     setSaving(false);
   }
@@ -462,12 +486,15 @@ export default function BookingDetailPage() {
           totalPrice: (booking?.totalPrice || 0) + total,
         }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to add services");
+      }
       reloadBooking();
       setSelectedServices(new Set());
       setServiceNote("");
       toast.success(`Added services (${serviceNames.join(", ")}) — total adjusted`);
-    } catch { toast.error("Failed to add services"); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to add services"); }
   }
 
   async function handleRefund() {
@@ -505,10 +532,10 @@ export default function BookingDetailPage() {
   }
 
   async function handleRequestTags() {
-    if (tagRequestCount < 1) return toast.error("Invalid count");
+    if (selectedTagNumbers.size < 1) return toast.error("Select at least one available tag");
     const maxBags = booking?.numberOfBags || 3;
     if (luggageItems.length >= maxBags) return toast.error(`Maximum ${maxBags} baggage tag(s) per booking`);
-    if (luggageItems.length + tagRequestCount > maxBags) {
+    if (luggageItems.length + selectedTagNumbers.size > maxBags) {
       return toast.error(`Can only assign ${maxBags - luggageItems.length} more tag(s). Maximum is ${maxBags}.`);
     }
     setRequestingTags(true);
@@ -516,13 +543,14 @@ export default function BookingDetailPage() {
       const res = await fetch("/api/baggage-tags/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: params.id, count: tagRequestCount }),
+        body: JSON.stringify({ bookingId: params.id, tagNumbers: [...selectedTagNumbers] }),
       });
       if (res.ok) {
         const items = await res.json();
         setLuggageItems((prev) => [...prev, ...items]);
         toast.success(`Assigned ${items.length} baggage tag(s)`);
-        setTagRequestCount(1);
+        setAvailableTags((prev) => prev.map((tag) => selectedTagNumbers.has(tag.tagNumber) ? { ...tag, isUsed: true } : tag));
+        setSelectedTagNumbers(new Set());
       } else {
         const err = await res.json();
         toast.error(err.error || "Failed to request tags");
@@ -899,7 +927,7 @@ export default function BookingDetailPage() {
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                 value={booking.status}
                 onChange={handleStatusChange}
-                disabled={saving}
+                disabled={saving || bookingLocked}
               >
                 {statusOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -928,12 +956,12 @@ export default function BookingDetailPage() {
                   <option value="PICKUP">Pickup</option>
                   <option value="DROPOFF">Drop-off</option>
                 </select>
-                <Button type="submit" disabled={saving}>Assign</Button>
+                <Button type="submit" disabled={saving || bookingLocked}>Assign / Replace</Button>
               </div>
             </form>
 
             <div className="space-y-2">
-              <Button variant="outline" className="w-full justify-start" onClick={() => setShowEditModal(true)}>
+              <Button variant="outline" className="w-full justify-start" onClick={() => setShowEditModal(true)} disabled={bookingLocked}>
                 <Edit3 className="mr-2 h-4 w-4" /> Edit Booking
               </Button>
               <Button variant="outline" className="w-full justify-start" asChild>
@@ -1059,7 +1087,7 @@ export default function BookingDetailPage() {
                 className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
               />
             </div>
-            <Button onClick={handleAddServices} disabled={selectedServices.size === 0} className="bg-orange-500 hover:bg-orange-600">
+            <Button onClick={handleAddServices} disabled={selectedServices.size === 0 || bookingLocked} className="bg-orange-500 hover:bg-orange-600">
               <ShoppingBag className="mr-2 h-4 w-4" /> Add & Process
             </Button>
           </div>
@@ -1156,7 +1184,7 @@ export default function BookingDetailPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div><CardTitle>Additional Baggage</CardTitle><CardDescription>Register baggage added after the original booking.</CardDescription></div>
-            <Button variant="outline" size="sm" onClick={handleAddLuggage} disabled={addingLuggage}>
+            <Button variant="outline" size="sm" onClick={handleAddLuggage} disabled={addingLuggage || bookingLocked}>
               <Plus className="mr-1 h-4 w-4" /> Add Additional Bag
             </Button>
           </div>
@@ -1227,48 +1255,50 @@ export default function BookingDetailPage() {
           )}
         </CardHeader>
         <CardContent>
-          {/* Tag Request Controls */}
+          {/* Physical tag selection */}
           <div className="mb-4 rounded-lg border bg-muted/30 p-3">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground">
-                Request baggage tags (max {booking?.numberOfBags || 3} for this booking)
+                Select available physical tags (max {booking?.numberOfBags || 3} for this booking)
               </p>
               {booking && luggageItems.length >= booking.numberOfBags && (
                 <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded">Limit reached</span>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center rounded-lg border">
-                <button
-                  type="button"
-                  onClick={() => setTagRequestCount(Math.max(1, tagRequestCount - 1))}
-                  className="flex h-8 w-8 items-center justify-center text-sm font-medium hover:bg-muted transition-colors rounded-l-lg"
-                  disabled={tagRequestCount <= 1}
-                >
-                  −
-                </button>
-                <span className="flex h-8 w-10 items-center justify-center border-x text-sm font-bold">
-                  {tagRequestCount}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setTagRequestCount(Math.min((booking?.numberOfBags || 3) - luggageItems.length, tagRequestCount + 1))}
-                  className="flex h-8 w-8 items-center justify-center text-sm font-medium hover:bg-muted transition-colors rounded-r-lg"
-                  disabled={tagRequestCount >= ((booking?.numberOfBags || 3) - luggageItems.length)}
-                >
-                  +
-                </button>
-              </div>
+            <div className="mb-3 grid max-h-40 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+              {availableTags.filter((tag) => !tag.isUsed).map((tag) => {
+                const selected = selectedTagNumbers.has(tag.tagNumber);
+                const remaining = (booking?.numberOfBags || 3) - luggageItems.length;
+                return (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => setSelectedTagNumbers((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(tag.tagNumber)) next.delete(tag.tagNumber);
+                      else if (next.size < remaining) next.add(tag.tagNumber);
+                      return next;
+                    })}
+                    className={`rounded-lg border px-2 py-2 text-xs font-mono font-semibold transition-colors ${selected ? "border-teal-600 bg-teal-600 text-white" : "bg-background hover:border-teal-400"}`}
+                  >
+                    {selected ? "✓ " : ""}{tag.tagNumber}
+                  </button>
+                );
+              })}
+              {availableTags.every((tag) => tag.isUsed) && <p className="col-span-full text-xs text-muted-foreground">No physical tags are currently available.</p>}
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">{selectedTagNumbers.size} selected</span>
               <Button
                 size="sm"
                 onClick={handleRequestTags}
-                disabled={requestingTags || (booking ? luggageItems.length >= booking.numberOfBags : luggageItems.length >= 3) || tagRequestCount < 1}
+                disabled={bookingLocked || requestingTags || (booking ? luggageItems.length >= booking.numberOfBags : luggageItems.length >= 3) || selectedTagNumbers.size < 1}
                 className="bg-teal-600 hover:bg-teal-700"
               >
                 {requestingTags ? (
                   <><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent mr-1" /> Requesting...</>
                 ) : (
-                  <><Plus className="mr-1 h-3 w-3" /> Assign {tagRequestCount} Tag{tagRequestCount > 1 ? "s" : ""}</>
+                  <><Plus className="mr-1 h-3 w-3" /> Assign {selectedTagNumbers.size} Tag{selectedTagNumbers.size > 1 ? "s" : ""}</>
                 )}
               </Button>
             </div>

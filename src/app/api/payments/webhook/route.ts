@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyWebhookSignature, type PayMongoWebhookPayload } from "@/lib/paymongo";
+import { sendConfirmationEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
   const rawBody = await req.text();
@@ -49,10 +50,31 @@ export async function POST(req: Request) {
 
         const booking = await prisma.booking.findUnique({ where: { id: payment.bookingId } });
         if (booking && booking.status === "PENDING") {
-          await prisma.booking.update({
+          const confirmed = await prisma.booking.update({
             where: { id: booking.id },
             data: { status: "CONFIRMED", checkoutLockedUntil: null },
+            include: { customer: { select: { name: true, email: true } } },
           });
+          try {
+            await sendConfirmationEmail({
+              to: confirmed.customer.email,
+              customerName: confirmed.customer.name,
+              referenceNumber: confirmed.referenceNumber,
+              qrCodeBase64: confirmed.qrCode,
+              pickupLocation: confirmed.pickupLocation,
+              dropOffLocation: confirmed.dropOffLocation,
+              scheduledDate: confirmed.checkIn.toLocaleDateString("en-PH", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            });
+          } catch (error) {
+            console.error("Paid booking confirmation email failed:", error);
+          }
         } else if (booking) {
           await prisma.booking.update({ where: { id: booking.id }, data: { checkoutLockedUntil: null } });
         }

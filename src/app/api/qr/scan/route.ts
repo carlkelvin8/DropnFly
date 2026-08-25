@@ -276,14 +276,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Duplicate tag numbers entered" }, { status: 400 });
       }
 
-      const duplicate = await prisma.luggageItem.findFirst({
-        where: {
-          tagNumber: { in: tagList },
-          status: { notIn: ["DELIVERED", "CANCELLED"] },
-        },
+      const physicalTags = await prisma.baggageTag.findMany({
+        where: { tagNumber: { in: tagList }, status: "AVAILABLE", bookingId: null, luggageItemId: null },
       });
-      if (duplicate) {
-        return NextResponse.json({ error: `Tag number ${duplicate.tagNumber} is already assigned to another booking` }, { status: 400 });
+      if (physicalTags.length !== tagList.length) {
+        const available = new Set(physicalTags.map((tag) => tag.tagNumber));
+        const invalid = tagList.filter((tag) => !available.has(tag));
+        return NextResponse.json({ error: `Tag number(s) unavailable or not in inventory: ${invalid.join(", ")}` }, { status: 400 });
       }
 
       for (const tag of tagList) {
@@ -297,28 +296,15 @@ export async function POST(req: Request) {
         });
         createdItems.push({ id: item.id, tagNumber: item.tagNumber, bookingId: item.bookingId });
 
-        const physicalTag = await prisma.baggageTag.findUnique({ where: { tagNumber: tag } });
-        if (physicalTag) {
-          await prisma.baggageTag.update({
-            where: { id: physicalTag.id },
-            data: {
-              status: "ASSIGNED",
-              bookingId: booking.id,
-              luggageItemId: item.id,
-              assignedAt: new Date(),
-            },
-          });
-        } else {
-          await prisma.baggageTag.create({
-            data: {
-              tagNumber: tag,
-              status: "ASSIGNED",
-              bookingId: booking.id,
-              luggageItemId: item.id,
-              assignedAt: new Date(),
-            },
-          });
-        }
+        await prisma.baggageTag.update({
+          where: { tagNumber: tag },
+          data: {
+            status: "ASSIGNED",
+            bookingId: booking.id,
+            luggageItemId: item.id,
+            assignedAt: new Date(),
+          },
+        });
       }
     }
 

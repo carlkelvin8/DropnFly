@@ -34,10 +34,8 @@ async function getEmailConfig(): Promise<EmailConfig> {
 
 async function getTransporter() {
   const config = await getEmailConfig();
-  if (!config.user) {
-    if (process.env.NODE_ENV === "development") {
-      console.warn("[EMAIL] SMTP not configured — emails will not be sent. Set SMTP_HOST, SMTP_USER, and SMTP_PASS in .env");
-    }
+  if (!config.user || !config.pass) {
+    throw new Error("SMTP is not configured. Set SMTP_USER and SMTP_PASS.");
   }
   return nodemailer.createTransport({
     host: config.host,
@@ -93,16 +91,10 @@ export async function sendConfirmationEmail({
   pickupLocation: string;
   dropOffLocation: string;
   scheduledDate: string;
-}) {
-  const qrDataUri = `data:image/png;base64,${qrCodeBase64}`;
-
+}): Promise<boolean> {
   const config = await getEmailConfig();
-  if (!config.enabled) {
-    if (process.env.NODE_ENV === "development") {
-      console.warn("[EMAIL] Email notifications are disabled in settings");
-    }
-    return;
-  }
+  const settings = await getSystemSettings();
+  if (!config.enabled || setting(settings, "booking_confirmation_email", "true") === "false") return false;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -125,17 +117,17 @@ export async function sendConfirmationEmail({
           </tr>
           <tr>
             <td style="padding: 8px; color: #9ca3af;">Scheduled Date</td>
-            <td style="padding: 8px; font-weight: 600;">${scheduledDate}</td>
+            <td style="padding: 8px; font-weight: 600;">${sanitizeHtml(scheduledDate)}</td>
           </tr>
         </table>
 
         <div style="text-align: center; margin: 24px 0;">
           <p style="color: #9ca3af; margin-bottom: 12px;">Scan this QR code to track your luggage:</p>
-          <img src="${qrDataUri}" alt="QR Code" style="width: 180px; height: 180px;" />
+          <img src="cid:booking-qr" alt="QR Code" style="width: 180px; height: 180px;" />
         </div>
 
         <p style="text-align: center;">
-          <a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}/track/${referenceNumber}"
+          <a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}/track"
              style="display: inline-block; background: #ea7d3d; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
             Track Your Luggage
           </a>
@@ -154,7 +146,13 @@ export async function sendConfirmationEmail({
     to,
     subject: `Booking Confirmed - ${referenceNumber}`,
     html,
+    attachments: [{
+      filename: `${referenceNumber}-qr.png`,
+      content: Buffer.from(qrCodeBase64, "base64"),
+      cid: "booking-qr",
+    }],
   });
+  return true;
 }
 
 export async function sendRiderAssignedEmail({

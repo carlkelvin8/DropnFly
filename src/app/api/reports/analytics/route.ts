@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 
 export async function GET(req: Request) {
   const session = await auth();
-  if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
+  if (!session?.user || session.user.role !== "ADMIN") return new NextResponse("Forbidden", { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const from = searchParams.get("from");

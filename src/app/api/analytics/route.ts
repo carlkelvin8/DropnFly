@@ -11,8 +11,8 @@ function toLocalDayKey(d: Date): string {
 
 export async function GET(req: Request) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -119,6 +119,11 @@ export async function GET(req: Request) {
 
   const bookingsPerDay: Record<string, number> = {};
   const revenuePerDay: Record<string, number> = {};
+  const lastDay = until || new Date();
+  for (let cursor = new Date(since); cursor <= lastDay; cursor.setDate(cursor.getDate() + 1)) {
+    bookingsPerDay[toLocalDayKey(cursor)] = 0;
+    revenuePerDay[toLocalDayKey(cursor)] = 0;
+  }
   for (const b of bookingsByDay) {
     const day = toLocalDayKey(b.createdAt);
     bookingsPerDay[day] = (bookingsPerDay[day] || 0) + 1;

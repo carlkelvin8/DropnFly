@@ -14,7 +14,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
   const { data: session } = useSession();
 
   return (
-    <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/95 px-4 shadow-sm backdrop-blur lg:px-6">
       <Button
         variant="ghost"
         size="icon"
@@ -30,7 +30,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
         vapidKeyUrl="/api/notifications/vapid-key"
       />
       <NotificationDropdown />
-      <div className="flex items-center gap-2 text-sm">
+      <div className="hidden items-center gap-2 text-sm sm:flex">
         <span className="text-muted-foreground">Welcome,</span>
         <span className="font-medium">{session?.user?.name}</span>
       </div>

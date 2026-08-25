@@ -35,7 +35,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const booking = await prisma.booking.findUnique({ where: { id } });
   if (!booking) return new NextResponse("Booking not found", { status: 404 });
   if (booking.customerId !== customer.id) return new NextResponse("Forbidden", { status: 403 });
-  if (booking.status === "CANCELLED" || booking.status === "DELIVERED")
+  if (["CANCELLED", "NO_SHOW", "DELIVERED"].includes(booking.status))
     return new NextResponse("Cannot extend this booking", { status: 400 });
 
   const body = await req.json();

@@ -65,6 +65,9 @@ export function PaymentStep({
   const downPayment = paymentDemoMode ? 0 : Math.ceil(grandTotal * (paymentPercent / 100));
   const remainingBalance = grandTotal - downPayment;
   const dpMin = Math.max(50, Math.min(100, minDpPercent || 50));
+  const sliderRange = Math.max(1, 100 - dpMin);
+  const sliderProgress = ((paymentPercent - dpMin) / sliderRange) * 100;
+  const paymentChoices = Array.from(new Set([dpMin, 75, 100])).filter((value) => value >= dpMin);
 
   function getPickupLocationText() {
     let text = pickupTerminal;
@@ -180,44 +183,63 @@ export function PaymentStep({
           <h3 className="text-base font-semibold">Payment Option</h3>
         </div>
         <p className="mb-3 text-xs text-blue-700">{paymentDemoMode ? "Online payment is not configured. No payment is required at this time." : <>Slide to choose how much to pay now. Minimum of <strong>{dpMin}%</strong> is required to reserve your slot.</>}</p>
-        <div className="mb-3 flex items-center gap-4">
-          <div
-            className="relative w-full"
-            onPointerMove={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-              setPaymentHover(Math.round((dpMin + ratio * (100 - dpMin)) / 5) * 5);
-            }}
-            onPointerLeave={() => setPaymentHover(null)}
-          >
-            <input
-              type="range"
-              min={dpMin}
-              max={100}
-              step={5}
-              value={paymentPercent}
-              onChange={(e) => setPaymentPercent(Number(e.target.value))}
-              className="w-full accent-blue-600"
-              aria-label="Down payment percentage"
-              disabled={paymentDemoMode}
-            />
-            {paymentHover !== null && (
-              <div
-                className="pointer-events-none absolute -top-9 -translate-x-1/2 rounded-md bg-blue-700 px-2 py-1 text-[11px] font-bold text-white shadow-lg whitespace-nowrap"
-                style={{ left: `${((paymentHover - dpMin) / (100 - dpMin)) * 100}%` }}
+        {!paymentDemoMode && (
+          <div className="mb-4 grid grid-flow-col auto-cols-fr gap-2" aria-label="Quick payment percentage choices">
+            {paymentChoices.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setPaymentPercent(value)}
+                className={`rounded-lg border px-2 py-2 text-xs font-bold transition-colors ${paymentPercent === value ? "border-blue-600 bg-blue-600 text-white" : "border-blue-200 bg-white text-blue-700 hover:border-blue-400"}`}
               >
-                ₱{Math.ceil(grandTotal * (paymentHover / 100)).toLocaleString()} ({paymentHover}%)
-              </div>
-            )}
+                {value === dpMin ? `${value}% minimum` : `${value}%`}
+              </button>
+            ))}
           </div>
-          <span className="shrink-0 rounded-lg border border-blue-200 bg-blue-100 px-3 py-1 text-sm font-bold text-blue-700 tabular-nums">
-            {paymentPercent}%
-          </span>
-        </div>
-        <div className="mb-1 flex justify-between text-[10px] font-medium text-blue-500">
-          <span>{dpMin}% (minimum)</span>
-          <span>100%</span>
-        </div>
+        )}
+        {!paymentDemoMode && (
+          <>
+            <div className="mb-3 flex items-center gap-4">
+              <div
+                className="relative w-full"
+                onPointerMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                  setPaymentHover(Math.min(100, Math.max(dpMin, Math.round((dpMin + ratio * (100 - dpMin)) / 5) * 5)));
+                }}
+                onPointerLeave={() => setPaymentHover(null)}
+              >
+                <input
+                  type="range"
+                  min={dpMin}
+                  max={100}
+                  step={5}
+                  value={paymentPercent}
+                  onChange={(e) => setPaymentPercent(Number(e.target.value))}
+                  onInput={(e) => setPaymentPercent(Number(e.currentTarget.value))}
+                  className="h-2 w-full cursor-pointer appearance-none rounded-full accent-blue-600"
+                  style={{ touchAction: "pan-y", background: `linear-gradient(to right, #2563eb ${sliderProgress}%, #bfdbfe ${sliderProgress}%)` }}
+                  aria-label="Down payment percentage"
+                />
+                {paymentHover !== null && (
+                  <div
+                    className="pointer-events-none absolute -top-9 -translate-x-1/2 rounded-md bg-blue-700 px-2 py-1 text-[11px] font-bold text-white shadow-lg whitespace-nowrap"
+                    style={{ left: `${((paymentHover - dpMin) / sliderRange) * 100}%` }}
+                  >
+                    ₱{Math.ceil(grandTotal * (paymentHover / 100)).toLocaleString()} ({paymentHover}%)
+                  </div>
+                )}
+              </div>
+              <span className="shrink-0 rounded-lg border border-blue-200 bg-blue-100 px-3 py-1 text-sm font-bold text-blue-700 tabular-nums">
+                {paymentPercent}%
+              </span>
+            </div>
+            <div className="mb-1 flex justify-between text-[10px] font-medium text-blue-500">
+              <span>{dpMin}% (minimum)</span>
+              <span>100%</span>
+            </div>
+          </>
+        )}
         <div className="space-y-1.5">
           <div className="flex justify-between text-blue-800">
             <span>{paymentDemoMode ? "Due now" : "Pay now"}</span>

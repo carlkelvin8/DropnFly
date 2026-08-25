@@ -26,6 +26,12 @@ export async function PATCH(req: Request) {
     }
 
     const cappedIds = ids.slice(0, 50);
+    const lockedCount = await prisma.booking.count({
+      where: { id: { in: cappedIds }, status: { in: ["CANCELLED", "NO_SHOW"] } },
+    });
+    if (lockedCount > 0) {
+      return NextResponse.json({ error: `${lockedCount} cancelled or no-show booking(s) are locked; remove them from the selection` }, { status: 409 });
+    }
 
     if (action === "delete") {
       await prisma.$transaction([

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { hasStaffRole } from "@/lib/staff-access";
 import { decimalsToNumbers } from "@/lib/serialize";
+import { isBookingLocked } from "@/lib/booking-access";
 
 export async function GET() {
   const session = await auth();
@@ -39,11 +40,14 @@ export async function POST(req: Request) {
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { customerId: true, referenceNumber: true, totalPrice: true },
+      select: { customerId: true, referenceNumber: true, totalPrice: true, status: true },
     });
 
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
+    if (isBookingLocked(booking.status)) {
+      return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
     }
     const payment = await prisma.$transaction(async (tx) => {
       // Serialize manual payments per booking so concurrent requests cannot

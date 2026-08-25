@@ -5,7 +5,7 @@ import { hasStaffRole } from "@/lib/staff-access";
 
 export async function GET(req: Request) {
   const session = await auth();
-  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN"])) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 

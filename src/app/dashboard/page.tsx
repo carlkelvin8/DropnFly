@@ -72,6 +72,7 @@ export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState("");
   const [dayActivity, setDayActivity] = useState<DayActivity | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [activeDates, setActiveDates] = useState<Record<string, number>>({});
 
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
@@ -84,6 +85,15 @@ export default function DashboardPage() {
       .catch(() => toast.error("Failed to load dashboard"))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/dashboard/calendar/month?year=${calYear}&month=${calMonth}`, { signal: controller.signal })
+      .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
+      .then((result) => setActiveDates(result.activeDates || {}))
+      .catch((error) => { if (error.name !== "AbortError") setActiveDates({}); });
+    return () => controller.abort();
+  }, [calYear, calMonth]);
 
   function openDay(date: string) {
     if (!date) return;
@@ -205,7 +215,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Secondary KPIs - 2 columns */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+      <div className={`grid gap-4 ${isAdmin ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
         <Card className="border-t-2 border-t-indigo-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Completion Rate (This Week)</CardTitle>
@@ -239,7 +249,7 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Calendar */}
-        <Card>
+        <Card className="self-start">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <CalendarDays className="h-4 w-4" />
@@ -279,13 +289,19 @@ export default function DashboardPage() {
                     } ${isToday(day) && !isSelected ? "ring-2 ring-blue-400" : ""}`}
                   >
                     {day}
+                    {activeDates[key] > 0 && (
+                      <span
+                        className={`absolute bottom-1 h-1.5 w-1.5 rounded-full ${isSelected ? "bg-white" : "bg-orange-500"}`}
+                        aria-label={`${activeDates[key]} scheduled item${activeDates[key] === 1 ? "" : "s"}`}
+                      />
+                    )}
                     <span className="sr-only">Open day details</span>
                   </button>
                 );
               })}
             </div>
             <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground">
-              <span>Details remain hidden until a date is intentionally opened.</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-orange-500" /> Has schedule</span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-2 w-2 rounded ring-2 ring-blue-400" /> Today
               </span>

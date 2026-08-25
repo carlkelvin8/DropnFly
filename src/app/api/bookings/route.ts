@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { generateReferenceNumber } from "@/lib/reference";
 import { decimalsToNumbers } from "@/lib/serialize";
 import type { BookingStatus } from "@/generated/prisma/client";
+import { normalizeReference } from "@/lib/utils";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -19,6 +20,7 @@ export async function GET(req: Request) {
   const dateParam = searchParams.get("date");
   const dateFrom = searchParams.get("dateFrom");
   const dateTo = searchParams.get("dateTo");
+  const reference = searchParams.get("ref");
 
   const statusGroups: Record<string, string[]> = {
     upcoming: ["PENDING"],
@@ -43,6 +45,7 @@ export async function GET(req: Request) {
   if (session.user.role === "EMPLOYEE") {
     where.assignments = { some: { userId: session.user.id } };
   }
+  if (reference) where.referenceNumber = normalizeReference(reference);
   if (statusFilter) {
     where.status = { in: statusFilter };
   }
@@ -123,7 +126,10 @@ export async function GET(req: Request) {
       rider,
       pickupRider,
       dropoffRider,
-      ...(include === "chat" ? { lastMessage: b.chatMessages?.[0] || null } : {}),
+      ...(include === "chat" ? {
+        _count: b._count,
+        lastMessage: b.chatMessages?.[0] || null,
+      } : {}),
     };
   });
 

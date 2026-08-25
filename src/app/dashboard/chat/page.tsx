@@ -24,9 +24,9 @@ export default function ChatListPage() {
 
   useEffect(() => {
     fetch("/api/bookings?include=chat")
-      .then((r) => r.json())
-      .then((data) => setBookings(data.filter((b: ChatBooking) => b._count.chatMessages > 0)))
-      .catch(() => {})
+      .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
+      .then((data) => setBookings(Array.isArray(data) ? data.filter((b: ChatBooking) => b._count?.chatMessages > 0) : []))
+      .catch(() => setBookings([]))
       .finally(() => setLoading(false));
   }, []);
 

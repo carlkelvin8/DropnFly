@@ -7,6 +7,7 @@ import type { BookingStatus } from "@/generated/prisma/client";
 import { canReadBooking, hasStaffRole } from "@/lib/staff-access";
 import { awardDeliveryPoints } from "@/lib/loyalty";
 import { decimalsToNumbers } from "@/lib/serialize";
+import { isBookingLocked } from "@/lib/booking-access";
 
 const VALID_STATUS = [
   "PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE",
@@ -76,6 +77,10 @@ export async function PUT(
     const body = await req.json();
     const existingBooking = await prisma.booking.findUnique({ where: { id }, select: { status: true, checkIn: true, checkOut: true } });
     if (!existingBooking) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+
+    if (isBookingLocked(existingBooking.status)) {
+      return NextResponse.json({ error: "Cancelled and no-show bookings are locked and cannot be changed" }, { status: 409 });
+    }
 
     if (body.status && ["NO_SHOW", "CANCELLED"].includes(body.status) && session.user.role !== "ADMIN") {
       return NextResponse.json(

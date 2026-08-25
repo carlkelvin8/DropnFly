@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -141,11 +142,30 @@ export function LuggageStep({
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <div className="space-y-1">
               <p className="font-semibold">Important Notice</p>
-              <p className="text-xs leading-relaxed text-amber-700">
-                Do not include prohibited items such as hazardous materials, perishables, firearms, or valuables (cash, jewelry, electronics).
-                Dropnfly is not liable for prohibited or valuable items packed inside your luggage.
-                Each bag must fit within the selected size category.
-              </p>
+              <ul className="list-disc space-y-1 pl-4 text-xs leading-relaxed text-amber-700">
+                <li>Do not pack hazardous materials, perishables, firearms, illegal items, cash, jewelry, or electronics.</li>
+                <li>Dropnfly is not liable for prohibited, undeclared, or valuable items packed inside luggage.</li>
+                <li>Select the category that matches your bag&apos;s actual dimensions. Oversized bags may be reclassified and charged accordingly.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="mb-5 overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4">
+            <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
+              <div>
+                <p className="text-sm font-semibold text-blue-900">Luggage picture reference</p>
+                <p className="mt-1 text-xs leading-relaxed text-blue-700">
+                  Use these examples only as a visual guide. Always confirm the measurements shown on each category below before selecting.
+                </p>
+              </div>
+              <Image
+                src="/images/booking/luggage-size-reference.png"
+                alt="Examples of extra-small, small, standard, and large luggage"
+                width={320}
+                height={320}
+                className="mx-auto h-36 w-36 object-contain sm:h-40 sm:w-40"
+                priority
+              />
             </div>
           </div>
 

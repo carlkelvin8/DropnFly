@@ -174,7 +174,7 @@ export default function QrScannerPage() {
         luggageItems: booking.luggageItems || [],
       });
       setTagNumbers(
-        Array.from({ length: slots }, (_, i) => `TAG-${cleanRef}-${existingCount + i + 1}`)
+        Array.from({ length: slots }, () => "")
       );
       setCustomerVerified(false);
       setCustomerScanMode(false);
@@ -447,14 +447,14 @@ export default function QrScannerPage() {
           <>
             <Card>
               <CardHeader><CardTitle className="text-base">Waiting to be stored</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="max-h-72 space-y-2 overflow-y-auto">
                 {intakeQueue.filter((b) => b.status === "RECEIVED").map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · Received</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); }}>Update</Button></div>)}
                 {intakeQueue.every((b) => b.status !== "RECEIVED") && <p className="py-4 text-center text-sm text-muted-foreground">No luggage waiting for storage</p>}
               </CardContent>
             </Card>
             <Card>
               <CardHeader><CardTitle className="text-base">Waiting to be delivered</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="max-h-72 space-y-2 overflow-y-auto">
                 {intakeQueue.filter((b) => b.status === "IN_STORAGE").map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · In storage</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); }}>Update</Button></div>)}
                 {intakeQueue.every((b) => b.status !== "IN_STORAGE") && <p className="py-4 text-center text-sm text-muted-foreground">No luggage waiting for delivery</p>}
               </CardContent>

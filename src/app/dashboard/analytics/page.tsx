@@ -453,10 +453,10 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
       <Card className="border-t-2 border-t-orange-500">
         <CardHeader><CardTitle className="text-sm font-medium">Booking Activity Heatmap</CardTitle><CardDescription>Darker cells indicate busier booking days.</CardDescription></CardHeader>
         <CardContent>
-          <div className="grid grid-cols-10 gap-1 sm:grid-cols-15">
+          <div className="grid grid-cols-7 gap-1 sm:grid-cols-10 md:grid-cols-12 lg:grid-cols-15">
             {bookingsByDay.slice(-60).map((day) => {
               const opacity = day.count === 0 ? 0.08 : 0.2 + (day.count / maxDailyCount) * 0.8;
-              return <div key={day.date} className="aspect-square rounded-sm bg-orange-500" style={{ opacity }} title={`${day.date}: ${day.count} bookings`} aria-label={`${day.date}: ${day.count} bookings`} />;
+              return <div key={day.date} className="aspect-square min-h-3 rounded-sm bg-orange-500 ring-1 ring-orange-600/10" style={{ opacity }} title={`${new Date(`${day.date}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}: ${day.count} bookings`} aria-label={`${day.date}: ${day.count} bookings`} />;
             })}
           </div>
         </CardContent>
@@ -701,6 +701,7 @@ function AiReportsSection() {
   const [report, setReport] = useState<{ title: string; summary: string; sections: { heading: string; content: string }[]; generatedAt: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   async function generateReport() {
     setLoading(true);
@@ -719,6 +720,30 @@ function AiReportsSection() {
       setError(e instanceof Error ? e.message : "Report generation failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function downloadPdf() {
+    if (!report) return;
+    setPdfLoading(true);
+    try {
+      const res = await fetch("/api/analytics/reports/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(report),
+      });
+      if (!res.ok) throw new Error();
+      const url = URL.createObjectURL(await res.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `dropnfly-${reportType}-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success("PDF report downloaded");
+    } catch {
+      toast.error("Failed to download PDF report");
+    } finally {
+      setPdfLoading(false);
     }
   }
 
@@ -787,14 +812,17 @@ function AiReportsSection() {
       {report && (
         <Card className="border-t-2 border-t-primary shadow-md">
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <FileText className="h-4 w-4 text-primary" />
                 {report.title}
               </CardTitle>
-              <span className="text-[10px] text-muted-foreground">
-                Generated {new Date(report.generatedAt).toLocaleString()}
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-muted-foreground">Generated {new Date(report.generatedAt).toLocaleString()}</span>
+                <Button size="sm" variant="outline" onClick={downloadPdf} disabled={pdfLoading}>
+                  <Download className="mr-2 h-4 w-4" />{pdfLoading ? "Preparing..." : "Download PDF"}
+                </Button>
+              </div>
             </div>
             <CardDescription className="text-sm leading-relaxed">
               {report.summary}

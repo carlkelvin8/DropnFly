@@ -29,6 +29,7 @@ interface BookingData {
 
 export default function ConfirmPage() {
   const params = useParams();
+  const [emailState] = useState(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("email"));
   const [booking, setBooking] = useState<BookingData | null>(null);
   const [error, setError] = useState<"not-found" | "access-denied" | "network" | "generic" | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -130,10 +131,15 @@ export default function ConfirmPage() {
           <h1 className="text-3xl font-bold text-green-700">
             Booking Confirmed!
           </h1>
-          <p className="mt-2 text-muted-foreground">
-            A confirmation email has been sent to{" "}
-            <strong>{booking.customer.email}</strong>
-          </p>
+          {emailState === "failed" ? (
+            <p className="mt-2 text-amber-700">
+              Your booking is confirmed, but the confirmation email could not be delivered. Save the reference number below.
+            </p>
+          ) : (
+            <p className="mt-2 text-muted-foreground">
+              A confirmation email has been sent to <strong>{booking.customer.email}</strong>
+            </p>
+          )}
         </div>
 
         <Card className="border-t-4 border-green-500 shadow-lg">
@@ -155,7 +161,7 @@ export default function ConfirmPage() {
               </div>
               <div className="rounded-lg border bg-muted/50 p-3">
                 <p className="text-muted-foreground">Status</p>
-                <p className="font-medium capitalize text-yellow-600">
+                <p className={`font-medium capitalize ${booking.status === "CONFIRMED" ? "text-green-600" : "text-yellow-600"}`}>
                   {booking.status.replace("_", " ")}
                 </p>
               </div>

@@ -110,13 +110,27 @@ export default function LogisticsPage() {
       const body: Record<string, unknown> = { action };
       if (actionNote) body.note = actionNote;
       if (photoProof) body.photo = photoProof;
+      if (navigator.geolocation) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 8000 })
+          );
+          body.latitude = position.coords.latitude;
+          body.longitude = position.coords.longitude;
+        } catch {
+          toast.warning("Location permission was unavailable; the task action will continue without a map point.");
+        }
+      }
 
       const res = await fetch(`/api/logistics/tasks/${taskId}/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error("Action failed");
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Action failed");
+      }
       const data = await res.json();
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: data.status, pickupStartedAt: data.pickupStartedAt ?? t.pickupStartedAt } : t));
       toast.success(`Action completed — ${action}`);
@@ -124,8 +138,8 @@ export default function LogisticsPage() {
       setActiveAction(null);
       setPhotoProof(null);
       setActionNote("");
-    } catch {
-      toast.error("Failed to process action");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to process action");
     }
     setProcessingAction(false);
   }
@@ -151,14 +165,14 @@ export default function LogisticsPage() {
 
       {/* Tabs: Tasks | Route Playback */}
       <div className="flex gap-1 rounded-xl border bg-muted/40 p-1">
-        <button
+        {isAdmin && <button
           onClick={() => setActiveTab("tasks")}
           className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
             activeTab === "tasks" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Activity className="h-4 w-4" /> Active Tasks
-        </button>
+        </button>}
         <button
           onClick={() => setActiveTab("playback")}
           className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${

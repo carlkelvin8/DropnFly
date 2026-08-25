@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { isBookingLocked } from "@/lib/booking-access";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -17,6 +18,15 @@ export async function POST(req: Request) {
 
     const status = action === "APPROVED" ? "CHECKED_IN" : "CANCELLED";
     const bookingIds = new Set<string>();
+
+    const items = await prisma.luggageItem.findMany({
+      where: { id: { in: itemIds } },
+      select: { id: true, booking: { select: { status: true } } },
+    });
+    if (items.length !== itemIds.length) return NextResponse.json({ error: "One or more luggage items were not found" }, { status: 404 });
+    if (items.some((item) => isBookingLocked(item.booking.status))) {
+      return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
+    }
 
     for (const id of itemIds) {
       const item = await prisma.luggageItem.update({

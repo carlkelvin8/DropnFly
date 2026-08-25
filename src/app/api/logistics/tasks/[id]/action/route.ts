@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import type { BookingStatus } from "@/generated/prisma/client";
+import { isBookingLocked } from "@/lib/booking-access";
 
 // actions: start-pickup, arrive-pickup, complete-pickup, start-delivery, arrive-delivery, complete-delivery
 const ACTION_MAP: Record<string, string> = {
@@ -33,11 +34,27 @@ export async function POST(
 
     const booking = await prisma.booking.findUnique({
       where: { id },
-      select: { id: true, referenceNumber: true, customerId: true, totalPrice: true },
+      select: {
+        id: true,
+        referenceNumber: true,
+        customerId: true,
+        totalPrice: true,
+        status: true,
+        assignments: { select: { userId: true, phase: true } },
+      },
     });
 
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
+    if (isBookingLocked(booking.status)) {
+      return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
+    }
+
+    if (session.user.role === "EMPLOYEE") {
+      const phase = action.includes("delivery") ? "DROPOFF" : "PICKUP";
+      const assigned = booking.assignments.some((assignment) => assignment.userId === session.user.id && assignment.phase === phase);
+      if (!assigned) return NextResponse.json({ error: `Only the assigned ${phase.toLowerCase()} employee can perform this action` }, { status: 403 });
     }
 
     const newStatus = ACTION_MAP[action];

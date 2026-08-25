@@ -29,6 +29,9 @@ export async function GET(req: NextRequest) {
 
     const bookings = await prisma.booking.findMany({
       where: {
+        ...(session.user.role === "EMPLOYEE"
+          ? { assignments: { some: { userId: session.user.id } } }
+          : {}),
         OR: [
           { checkIn: { gte: startOfMonth, lt: startOfNextMonth } },
           { checkOut: { gte: startOfMonth, lt: startOfNextMonth } },

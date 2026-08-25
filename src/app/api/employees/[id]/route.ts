@@ -83,6 +83,13 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
 
+    if (id === session.user.id && (body.isActive === false || body.isApproved === false)) {
+      return NextResponse.json(
+        { error: "You cannot deactivate or unapprove your own account. Ask another administrator." },
+        { status: 400 }
+      );
+    }
+
     if (body.password && String(body.password).length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
     }
@@ -131,7 +138,8 @@ export async function PATCH(
       details: `Updated employee ${employee.name}: ${changes.join(", ")}`,
     });
 
-    return NextResponse.json(employee);
+    const sessionInvalidated = id === session.user.id && Boolean(body.password || body.role || body.email);
+    return NextResponse.json({ ...employee, sessionInvalidated });
   } catch {
     return NextResponse.json({ error: "Failed to update employee" }, { status: 500 });
   }

@@ -219,6 +219,7 @@ export async function POST(req: Request) {
 
     const minDpPercent = parseInt(setting(settings, "min_dp_percentage", "0"));
     const paymentsEnabled = isPaymongoConfigured() && process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
+    const initialStatus = paymentsEnabled ? "PENDING" : "CONFIRMED";
     const requiredDownPayment = paymentsEnabled && minDpPercent > 0 ? Math.ceil(pricing.totalPrice * (minDpPercent / 100)) : 0;
     const downPaymentAmount = downPayment == null || downPayment === "" ? 0 : Number(downPayment);
 
@@ -284,7 +285,7 @@ export async function POST(req: Request) {
             totalPrice: pricing.totalPrice,
             discount: pricing.discount,
             promoCodeId,
-            status: "PENDING",
+            status: initialStatus,
             },
           });
         });
@@ -300,26 +301,27 @@ export async function POST(req: Request) {
 
     await grantBookingAccess(booking.id, booking.customerId);
 
-    try {
-      await sendConfirmationEmail({
-        to: normalizedEmail,
-        customerName: name,
-        referenceNumber,
-        qrCodeBase64: qrBase64,
-        pickupLocation,
-        dropOffLocation,
-        scheduledDate: checkInDate.toLocaleDateString("en-PH", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      });
-    } catch {
-      if (process.env.NODE_ENV === "development") {
-        console.warn("Email sending failed, booking still created");
+    let confirmationEmailSent = false;
+    if (initialStatus === "CONFIRMED") {
+      try {
+        confirmationEmailSent = await sendConfirmationEmail({
+          to: normalizedEmail,
+          customerName: name,
+          referenceNumber,
+          qrCodeBase64: qrBase64,
+          pickupLocation,
+          dropOffLocation,
+          scheduledDate: checkInDate.toLocaleDateString("en-PH", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        });
+      } catch (error) {
+        console.error("Booking confirmation email failed:", error);
       }
     }
 
@@ -359,6 +361,8 @@ export async function POST(req: Request) {
         bookingId: booking.id,
         paymentAmount: downPaymentAmount,
         qrCode: qrCode,
+        status: booking.status,
+        confirmationEmailSent,
       },
       { status: 201 }
     );

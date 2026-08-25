@@ -35,7 +35,7 @@ export async function GET(req: Request) {
       prisma.user.count({ where: { role: "EMPLOYEE", isActive: true } }),
       prisma.storageLocation.aggregate({ _sum: { capacity: true } }),
       prisma.customer.count(),
-      prisma.payment.aggregate({ _sum: { amount: true } }),
+      prisma.payment.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }),
       prisma.luggageItem.count(),
     ]);
 

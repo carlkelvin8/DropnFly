@@ -263,7 +263,8 @@ export default function BookPage() {
       submittingRef.current = false;
       return;
     }
-    router.push(`/book/confirm/${result.referenceNumber}`);
+    const emailState = result.confirmationEmailSent ? "sent" : "failed";
+    router.push(`/book/confirm/${result.referenceNumber}?email=${emailState}`);
   }
 
   function handleNextStep() {
