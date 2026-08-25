@@ -247,7 +247,7 @@ export default function AnalyticsPage() {
         />
       )}
 
-      {tab === "reports" && <ReportsTab />}
+      {tab === "reports" && <ReportsTab period={period} dateFrom={dateFrom} dateTo={dateTo} />}
     </div>
   );
 }
@@ -687,16 +687,16 @@ function FinancialTab({
   );
 }
 
-function ReportsTab() {
+function ReportsTab({ period, dateFrom, dateTo }: { period: string; dateFrom: string; dateTo: string }) {
   return (
     <div className="space-y-8">
-      <AiReportsSection />
-      <CsvReportsSection />
+      <AiReportsSection period={period} dateFrom={dateFrom} dateTo={dateTo} />
+      <CsvReportsSection period={period} dateFrom={dateFrom} dateTo={dateTo} />
     </div>
   );
 }
 
-function AiReportsSection() {
+function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFrom: string; dateTo: string }) {
   const [reportType, setReportType] = useState<"descriptive" | "predictive" | "financial">("descriptive");
   const [report, setReport] = useState<{ title: string; summary: string; sections: { heading: string; content: string }[]; generatedAt: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -708,7 +708,10 @@ function AiReportsSection() {
     setError("");
     setReport(null);
     try {
-      const res = await fetch(`/api/analytics/reports?type=${reportType}`);
+      const params = new URLSearchParams({ type: reportType, period });
+      if (period === "custom" && dateFrom) params.set("from", dateFrom);
+      if (period === "custom" && dateTo) params.set("to", dateTo);
+      const res = await fetch(`/api/analytics/reports?${params}`);
       if (!res.ok) {
         const err = await res.json();
         setError(err.error || "Failed to generate report");
@@ -847,10 +850,11 @@ function AiReportsSection() {
   );
 }
 
-function CsvReportsSection() {
+function CsvReportsSection({ period, dateFrom, dateTo }: { period: string; dateFrom: string; dateTo: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [reportAnchor] = useState(() => Date.now());
 
   const reports = [
     { id: "bookings", label: "Bookings Report", description: "All bookings with customer and payment details", icon: Package, endpoint: "/api/reports/bookings", filename: "bookings" },
@@ -861,8 +865,11 @@ function CsvReportsSection() {
   async function downloadReport(report: typeof reports[0]) {
     setDownloading(report.id);
     const params = new URLSearchParams();
-    if (from) params.set("from", from);
-    if (to) params.set("to", to);
+    const periodDays = period === "week" ? 7 : period === "year" ? 365 : 30;
+    const effectiveFrom = from || (period === "custom" ? dateFrom : new Date(reportAnchor - periodDays * 86400000).toISOString().slice(0, 10));
+    const effectiveTo = to || (period === "custom" ? dateTo : new Date(reportAnchor).toISOString().slice(0, 10));
+    if (effectiveFrom) params.set("from", effectiveFrom);
+    if (effectiveTo) params.set("to", effectiveTo);
     try {
       const res = await fetch(`${report.endpoint}?${params}`);
       if (!res.ok) throw new Error("Failed");

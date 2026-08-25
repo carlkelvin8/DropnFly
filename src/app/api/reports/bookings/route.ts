@@ -29,11 +29,12 @@ export async function GET(req: Request) {
       customer: { select: { name: true, email: true, phone: true } },
       location: { select: { name: true } },
       promoCode: { select: { code: true } },
+      payments: { where: { status: "PAID" }, select: { amount: true } },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  const header = "Reference,Customer,Email,Phone,Status,Location,Bags,Price,Discount,Promo,Check In,Check Out,Created\n";
+  const header = "Reference,Customer,Email,Phone,Status,Location,Bags,Price,Total Paid,Balance,Discount,Promo,Check In,Check Out,Created\n";
   const rows = bookings.map((b) =>
     [
       b.referenceNumber,
@@ -44,6 +45,8 @@ export async function GET(req: Request) {
       b.location?.name || "",
       b.numberOfBags,
       b.totalPrice,
+      b.payments.reduce((sum, payment) => sum + Number(payment.amount), 0),
+      Math.max(0, Number(b.totalPrice) - b.payments.reduce((sum, payment) => sum + Number(payment.amount), 0)),
       b.discount,
       b.promoCode?.code || "",
       b.checkIn.toISOString(),

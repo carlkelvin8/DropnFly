@@ -607,7 +607,7 @@ export default function BookingDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex items-center gap-4">
         <Button variant="ghost" asChild>
           <Link href="/dashboard/bookings">
@@ -633,7 +633,7 @@ export default function BookingDetailPage() {
         </span>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card className="border-t-2 border-t-blue-500">
           <CardHeader>
             <CardTitle>Customer Info</CardTitle>
@@ -666,7 +666,7 @@ export default function BookingDetailPage() {
               <CardTitle>Pickup & Drop-off</CardTitle>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3">
             <div className="rounded-lg border bg-muted/30 p-3">
               <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Pickup Location</p>
               <p className="font-medium">{booking.pickupLocation}</p>

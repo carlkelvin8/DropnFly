@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +74,10 @@ export default function LogisticsPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmpId, setSelectedEmpId] = useState<string>("");
   const [now, setNow] = useState(() => Date.now());
+  const [taskSearch, setTaskSearch] = useState("");
+  const [taskTypeFilter, setTaskTypeFilter] = useState("all");
+  const [locationStatus, setLocationStatus] = useState<"requesting" | "active" | "denied" | "error" | "idle">("idle");
+  const handleLocationStatus = useCallback((status: "requesting" | "active" | "denied" | "error") => setLocationStatus(status), []);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30000);
@@ -144,11 +148,21 @@ export default function LogisticsPage() {
     setProcessingAction(false);
   }
 
-  const filteredTasks = isAdmin ? tasks : tasks.filter((t) => t.isAssignedToMe);
+  const roleTasks = isAdmin ? tasks : tasks.filter((t) => t.isAssignedToMe);
+  const filteredTasks = roleTasks.filter((task) => {
+    const query = taskSearch.toLowerCase();
+    const matchesSearch = !query || `${task.referenceNumber} ${task.customer.name} ${task.rider?.name || ""}`.toLowerCase().includes(query);
+    return matchesSearch && (taskTypeFilter === "all" || task.taskType === taskTypeFilter);
+  });
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      {filteredTasks.some((task) => task.isAssignedToMe && !!task.pickupStartedAt) && <LocationUpdater enabled />}
+      {roleTasks.some((task) => task.isAssignedToMe && !!task.pickupStartedAt) && <LocationUpdater enabled onStatusChange={handleLocationStatus} />}
+      {locationStatus !== "idle" && (
+        <div className={`rounded-lg border px-3 py-2 text-sm ${locationStatus === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : locationStatus === "requesting" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+          {locationStatus === "active" ? "Live geolocation is active and updating the customer map." : locationStatus === "requesting" ? "Requesting location access…" : "Live map needs browser location permission. Enable Location for this site and refresh."}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Logistics & Routes</h1>
@@ -165,25 +179,25 @@ export default function LogisticsPage() {
 
       {/* Tabs: Tasks | Route Playback */}
       <div className="flex gap-1 rounded-xl border bg-muted/40 p-1">
-        {isAdmin && <button
+        <button
           onClick={() => setActiveTab("tasks")}
           className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
             activeTab === "tasks" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Activity className="h-4 w-4" /> Active Tasks
-        </button>}
-        <button
+        </button>
+        {isAdmin && <button
           onClick={() => setActiveTab("playback")}
           className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
             activeTab === "playback" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <History className="h-4 w-4" /> Route Playback
-        </button>
+        </button>}
       </div>
 
-      {activeTab === "playback" ? (
+      {activeTab === "playback" && isAdmin ? (
         <div className="space-y-4">
           <Card>
             <CardHeader className="pb-3">
@@ -235,7 +249,12 @@ export default function LogisticsPage() {
             </div></CardContent></Card>
           ))}
         </div>
-      ) : filteredTasks.length === 0 ? (
+      ) : <>
+        <div className="grid gap-2 sm:grid-cols-[1fr_180px]">
+          <input value={taskSearch} onChange={(e) => setTaskSearch(e.target.value)} placeholder="Filter by reference, customer, or rider" className="h-10 rounded-lg border bg-background px-3 text-sm" />
+          <select value={taskTypeFilter} onChange={(e) => setTaskTypeFilter(e.target.value)} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="all">All task types</option><option value="pickup">Pickup</option><option value="delivery">Delivery</option></select>
+        </div>
+      {filteredTasks.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             <Package className="mx-auto h-8 w-8 mb-2 opacity-50" />
@@ -359,7 +378,7 @@ export default function LogisticsPage() {
             </Card>
           ))}
         </div>
-      )}
+      )}</>}
     </div>
   );
 }

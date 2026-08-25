@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { generateReferenceNumber } from "@/lib/reference";
 import { sendConfirmationEmail } from "@/lib/email";
 import { notifyBookingCreated, sendCustomerNotification } from "@/lib/notifications";
-import { getCustomerSession } from "@/lib/customer-auth";
 import { getSystemSettings, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
 import { isPaymongoConfigured } from "@/lib/paymongo";
@@ -194,7 +193,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: e instanceof Error ? e.message : "Slot unavailable" }, { status: 409 });
     }
 
-    const customerSession = await getCustomerSession();
 
     let customer = await prisma.customer.findUnique({ where: { email: normalizedEmail } });
 
@@ -203,15 +201,13 @@ export async function POST(req: Request) {
         data: { name: String(name).trim(), email: normalizedEmail, phone: String(phone).trim(), countryOfOrigin: safeCountry || null, cityOfOrigin: safeCity || null },
       });
     } else {
-      if (customerSession?.id === customer.id) {
-        const updateData: Record<string, string> = { name, phone };
-        if (safeCountry) updateData.countryOfOrigin = safeCountry;
-        if (safeCity) updateData.cityOfOrigin = safeCity;
-        customer = await prisma.customer.update({
-          where: { email: normalizedEmail },
-          data: updateData,
-        });
-      }
+      const updateData: Record<string, string> = { name: String(name).trim(), phone: String(phone).trim() };
+      if (safeCountry) updateData.countryOfOrigin = safeCountry;
+      if (safeCity) updateData.cityOfOrigin = safeCity;
+      customer = await prisma.customer.update({
+        where: { email: normalizedEmail },
+        data: updateData,
+      });
     }
 
     const txPrefix = setting(settings, "tx_prefix", "DROPFLY");
@@ -219,7 +215,9 @@ export async function POST(req: Request) {
 
     const minDpPercent = parseInt(setting(settings, "min_dp_percentage", "0"));
     const paymentsEnabled = isPaymongoConfigured() && process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
-    const initialStatus = paymentsEnabled ? "PENDING" : "CONFIRMED";
+    // The booking itself is confirmed once its schedule is reserved. Payment
+    // state is tracked independently by Payment records and checkout status.
+    const initialStatus = "CONFIRMED";
     const requiredDownPayment = paymentsEnabled && minDpPercent > 0 ? Math.ceil(pricing.totalPrice * (minDpPercent / 100)) : 0;
     const downPaymentAmount = downPayment == null || downPayment === "" ? 0 : Number(downPayment);
 

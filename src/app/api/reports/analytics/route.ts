@@ -11,18 +11,22 @@ export async function GET(req: Request) {
   const to = searchParams.get("to");
 
   const dateFilter: Record<string, unknown> = {};
+  const paidAtFilter: Record<string, unknown> = {};
   if (from || to) {
     dateFilter.createdAt = {};
     if (from) (dateFilter.createdAt as Record<string, unknown>).gte = new Date(from);
     if (to) (dateFilter.createdAt as Record<string, unknown>).lte = new Date(to + "T23:59:59.999Z");
+    paidAtFilter.paidAt = {};
+    if (from) (paidAtFilter.paidAt as Record<string, unknown>).gte = new Date(from + "T00:00:00.000Z");
+    if (to) (paidAtFilter.paidAt as Record<string, unknown>).lte = new Date(to + "T23:59:59.999Z");
   }
 
   const totalBookings = await prisma.booking.count({ where: dateFilter });
   const completedBookings = await prisma.booking.count({ where: { ...dateFilter, status: "DELIVERED" } });
   const cancelledBookings = await prisma.booking.count({ where: { ...dateFilter, status: "CANCELLED" } });
-  const totalRevenue = await prisma.payment.aggregate({ where: { ...dateFilter, status: "PAID" }, _sum: { amount: true } });
-  const avgRating = await prisma.bookingReview.aggregate({ _avg: { rating: true } });
-  const customers = await prisma.customer.count();
+  const totalRevenue = await prisma.payment.aggregate({ where: { ...paidAtFilter, status: "PAID" }, _sum: { amount: true } });
+  const avgRating = await prisma.bookingReview.aggregate({ where: dateFilter, _avg: { rating: true } });
+  const customers = await prisma.customer.count({ where: dateFilter });
 
   const header = "Metric,Value\n";
   const rows = [

@@ -11,6 +11,12 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") || "descriptive";
+  const period = searchParams.get("period") || "month";
+  const days = period === "week" ? 7 : period === "year" ? 365 : 30;
+  const since = searchParams.get("from") ? new Date(`${searchParams.get("from")}T00:00:00`) : new Date(Date.now() - days * 86400000);
+  const until = searchParams.get("to") ? new Date(`${searchParams.get("to")}T23:59:59.999`) : new Date();
+  const bookingWhere = { createdAt: { gte: since, lte: until } };
+  const paymentWhere = { status: "PAID" as const, paidAt: { gte: since, lte: until } };
 
   try {
     const [
@@ -24,24 +30,24 @@ export async function GET(req: Request) {
       payments,
       luggageCount,
     ] = await Promise.all([
-      prisma.booking.count(),
-      prisma.booking.aggregate({ _sum: { totalPrice: true } }),
-      prisma.booking.groupBy({ by: ["status"], _count: true }),
+      prisma.booking.count({ where: bookingWhere }),
+      prisma.booking.aggregate({ where: bookingWhere, _sum: { totalPrice: true } }),
+      prisma.booking.groupBy({ by: ["status"], where: bookingWhere, _count: true }),
       prisma.booking.findMany({
-        where: { createdAt: { gte: new Date(Date.now() - 90 * 86400000) } },
+        where: bookingWhere,
         select: { createdAt: true, totalPrice: true, checkIn: true, checkOut: true },
         orderBy: { createdAt: "asc" },
       }),
       prisma.user.count({ where: { role: "EMPLOYEE", isActive: true } }),
       prisma.storageLocation.aggregate({ _sum: { capacity: true } }),
-      prisma.customer.count(),
-      prisma.payment.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }),
-      prisma.luggageItem.count(),
+      prisma.customer.count({ where: { createdAt: { gte: since, lte: until } } }),
+      prisma.payment.aggregate({ where: paymentWhere, _sum: { amount: true } }),
+      prisma.luggageItem.count({ where: { booking: bookingWhere } }),
     ]);
 
     const totalCapacity = locationCapacity._sum.capacity || 0;
     const activeBookings = await prisma.booking.count({
-      where: { status: { notIn: ["DELIVERED", "CANCELLED"] } },
+      where: { ...bookingWhere, status: { notIn: ["DELIVERED", "CANCELLED"] } },
     });
 
     const analyticsData = {
@@ -58,6 +64,7 @@ export async function GET(req: Request) {
       totalCustomers: customerCount,
       totalLuggageItems: luggageCount,
       avgBookingValue: totalBookings > 0 ? Math.round(Number(revenueAgg._sum.totalPrice || 0) / totalBookings) : 0,
+      reportPeriod: { from: since.toISOString(), to: until.toISOString() },
     };
 
     const result = await generateReport(type as "descriptive" | "predictive" | "financial", analyticsData as Record<string, unknown>);

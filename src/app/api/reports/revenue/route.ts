@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   }
 
   const payments = await prisma.payment.findMany({
-    where: { ...where, status: { in: ["PAID", "REFUNDED"] } },
+    where: { ...where, status: "PAID" },
     include: { booking: { select: { referenceNumber: true } }, customer: { select: { name: true, email: true } } },
     orderBy: { paidAt: "desc" },
   });
