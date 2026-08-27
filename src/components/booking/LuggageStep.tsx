@@ -15,6 +15,8 @@ interface LuggageStepProps {
   selectedServices: Record<string, boolean>;
   setSelectedServices: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   fees: { pickupFee: number; deliveryFee: number; excessBagFee: number; excessBagThreshold: number };
+  luggagePrices: Record<string, number>;
+  maxBags: number;
   storageDays: number;
   onNext: () => void;
   onPrev: () => void;
@@ -104,10 +106,10 @@ function LuggageIllustration({ type, qty }: { type: LuggageType; qty: number }) 
 export function LuggageStep({
   luggageQty, setLuggageQty,
   selectedServices, setSelectedServices,
-  fees, storageDays, onNext, onPrev,
+  fees, luggagePrices, maxBags, storageDays, onNext, onPrev,
 }: LuggageStepProps) {
   const totalBags = calcTotalBags(luggageQty);
-  const subtotal = calcSubtotal(luggageQty);
+  const subtotal = calcSubtotal(luggageQty, luggagePrices) * Math.max(1, storageDays);
   const extraFee = totalBags > fees.excessBagThreshold ? (totalBags - fees.excessBagThreshold) * fees.excessBagFee : 0;
   const servicesList = [
     { id: "pick-up-from-customer", name: "Pick-up from Customer", description: "Rider picks up luggage from your location", price: fees.pickupFee },
@@ -138,11 +140,11 @@ export function LuggageStep({
           </Label>
           <p className="mb-4 text-xs text-muted-foreground">Choose the type and quantity of each luggage you want to store.</p>
 
-          <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <div className="mb-5 flex items-start gap-3 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-950 shadow-sm">
+            <Info className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
             <div className="space-y-1">
               <p className="font-semibold">Important Notice</p>
-              <ul className="list-disc space-y-1 pl-4 text-xs leading-relaxed text-amber-700">
+              <ul className="list-disc space-y-1.5 pl-4 text-sm leading-relaxed text-amber-900">
                 <li>Do not pack hazardous materials, perishables, firearms, illegal items, cash, jewelry, or electronics.</li>
                 <li>Dropnfly is not liable for prohibited, undeclared, or valuable items packed inside luggage.</li>
                 <li>Select the category that matches your bag&apos;s actual dimensions. Oversized bags may be reclassified and charged accordingly.</li>
@@ -151,27 +153,24 @@ export function LuggageStep({
           </div>
 
           <div className="mb-5 overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4">
-            <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
-              <div>
-                <p className="text-sm font-semibold text-blue-900">Luggage picture reference</p>
-                <p className="mt-1 text-xs leading-relaxed text-blue-700">
-                  Use these examples only as a visual guide. Always confirm the measurements shown on each category below before selecting.
-                </p>
-              </div>
-              <Image
-                src="/images/booking/luggage-size-reference.png"
-                alt="Examples of extra-small, small, standard, and large luggage"
-                width={320}
-                height={320}
-                className="mx-auto h-36 w-36 object-contain sm:h-40 sm:w-40"
-                priority
-              />
+            <p className="text-sm font-semibold text-blue-900">Official size and pricing references</p>
+            <p className="mt-1 text-xs leading-relaxed text-blue-700">Tap any image to view the full-size guide. The limits shown below follow these references.</p>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {[...LUGGAGE_TYPES.map((type) => ({ src: type.referenceImage, alt: `${type.name} size reference`, label: type.name })), { src: "/images/booking/references/pricing.png", alt: "DropnFly luggage pricing and limits", label: "Pricing" }].map((reference) => (
+                <a key={reference.src} href={reference.src} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-lg border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                  <div className="flex h-36 items-center justify-center bg-white p-2">
+                    <Image src={reference.src} alt={reference.alt} width={940} height={788} className="max-h-full w-full object-contain" />
+                  </div>
+                  <p className="px-2 py-1.5 text-center text-xs font-semibold text-blue-800">{reference.label}</p>
+                </a>
+              ))}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {LUGGAGE_TYPES.map((lt) => {
               const qty = luggageQty[lt.id] || 0;
+              const price = luggagePrices[lt.id] ?? lt.price;
               return (
                 <div key={lt.id} className={`relative overflow-hidden rounded-xl border-2 p-4 transition-all ${qty > 0 ? `${lt.color} shadow-md` : "border-border bg-card hover:border-border"}`}>
                   <div className="mb-3 flex justify-center">
@@ -181,7 +180,8 @@ export function LuggageStep({
                     <p className="text-sm font-bold">{lt.name}</p>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">{lt.description}</p>
                     <p className="mt-1 text-[11px] leading-tight text-muted-foreground/60">{lt.dimensions}</p>
-                    <p className="mt-1 text-sm font-extrabold text-foreground">&#x20B1;{lt.price}</p>
+                    <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">Max weight: {lt.maxWeight}</p>
+                    <p className="mt-1 text-sm font-extrabold text-foreground">&#x20B1;{price}/day</p>
                   </div>
                   <div className="mt-3 flex items-center justify-center gap-1.5">
                     <button
@@ -194,8 +194,9 @@ export function LuggageStep({
                     <span className="w-7 text-center text-sm font-bold tabular-nums">{qty}</span>
                     <button
                       type="button"
+                      disabled={maxBags > 0 && totalBags >= maxBags}
                       onClick={() => setLuggageQty((prev) => ({ ...prev, [lt.id]: (prev[lt.id] || 0) + 1 }))}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-foreground/80 transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600"
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-foreground/80 transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <Plus className="h-3.5 w-3.5" />
                     </button>
@@ -212,7 +213,7 @@ export function LuggageStep({
                 <span className="font-bold">{totalBags} bag{totalBags > 1 ? "s" : ""}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal:</span>
+                <span className="text-muted-foreground">Storage subtotal ({Math.max(1, storageDays)} day{Math.max(1, storageDays) > 1 ? "s" : ""}):</span>
                 <span className="font-bold">&#x20B1;{subtotal.toFixed(2)}</span>
               </div>
               {totalBags > fees.excessBagThreshold && (
@@ -248,7 +249,7 @@ export function LuggageStep({
                 key={svc.id}
                 className={`flex items-center justify-between rounded-xl border-2 p-4 transition-all cursor-pointer ${
                   selectedServices[svc.id]
-                    ? "border-violet-400 bg-violet-50 shadow-md"
+                    ? "border-violet-500 bg-violet-600 text-white shadow-md"
                     : "border-border bg-card hover:border-border"
                 }`}
               >
@@ -259,10 +260,10 @@ export function LuggageStep({
                   />
                   <div>
                     <p className="text-sm font-semibold">{svc.name}</p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">{svc.description}</p>
+                    <p className={`mt-0.5 text-[11px] ${selectedServices[svc.id] ? "text-violet-100" : "text-muted-foreground"}`}>{svc.description}</p>
                   </div>
                 </div>
-                <span className="ml-3 shrink-0 text-sm font-bold text-violet-700">+&#x20B1;{svc.price}</span>
+                <span className={`ml-3 shrink-0 text-sm font-bold ${selectedServices[svc.id] ? "text-white" : "text-violet-700"}`}>+&#x20B1;{svc.price}</span>
               </label>
             ))}
           </div>

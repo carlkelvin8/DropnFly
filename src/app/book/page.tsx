@@ -21,6 +21,7 @@ interface TimeSlot {
   end: string;
   booked: number;
   available: boolean;
+  unavailableReason?: "past" | "full" | null;
 }
 
 const steps = [
@@ -73,12 +74,17 @@ export default function BookPage() {
   const [fees, setFees] = useState({ pickupFee: 180, deliveryFee: 180, excessBagFee: 100, excessBagThreshold: 3 });
   const [minDpPercent, setMinDpPercent] = useState(50);
   const [maintenance, setMaintenance] = useState<{ enabled: boolean; message: string } | null>(null);
+  const [onlineBookingEnabled, setOnlineBookingEnabled] = useState(true);
+  const [discountCodesEnabled, setDiscountCodesEnabled] = useState(true);
+  const [luggagePrices, setLuggagePrices] = useState<Record<string, number>>({ "extra-small": 50, small: 150, standard: 175, large: 250 });
+  const [maxBags, setMaxBags] = useState(10);
   const [countries, setCountries] = useState<{ name: string; code: string }[]>([]);
   const [cities, setCities] = useState<string[]>([]);
   const [selectedCountry, setSelectedCountry] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
   const [countriesLoading, setCountriesLoading] = useState(true);
   const [citiesLoading, setCitiesLoading] = useState(false);
+  const [slotRefreshTick, setSlotRefreshTick] = useState(0);
 
   const totalBags = luggageQty ? Object.values(luggageQty).reduce((s, n) => s + (n || 0), 0) : 0;
   const storageDays = calcStorageDays(pickupDate, pickupSlot, deliveryDate, deliverySlot);
@@ -105,12 +111,18 @@ export default function BookPage() {
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
-          setCountries(data.map((c: { name: { common: string }; cca2: string }) => ({ name: c.name.common, code: c.cca2 })).sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name)));
+          const countriesByName = new Map(
+            FALLBACK_COUNTRIES.map((name) => [name.toLocaleLowerCase(), { name, code: name }])
+          );
+          for (const country of data as { name: { common: string }; cca2: string }[]) {
+            countriesByName.set(country.name.common.toLocaleLowerCase(), { name: country.name.common, code: country.cca2 });
+          }
+          setCountries([...countriesByName.values()].sort((a, b) => a.name.localeCompare(b.name)));
         } else {
-          setCountries(FALLBACK_COUNTRIES.map((name) => ({ name, code: name })));
+          setCountries(FALLBACK_COUNTRIES.map((name) => ({ name, code: name })).sort((a, b) => a.name.localeCompare(b.name)));
         }
       })
-      .catch(() => setCountries(FALLBACK_COUNTRIES.map((name) => ({ name, code: name }))))
+      .catch(() => setCountries(FALLBACK_COUNTRIES.map((name) => ({ name, code: name })).sort((a, b) => a.name.localeCompare(b.name))))
       .finally(() => { clearTimeout(timeout); setCountriesLoading(false); });
     return () => { clearTimeout(timeout); controller.abort(); };
   }, []);
@@ -140,6 +152,10 @@ export default function BookPage() {
       .then((r) => r.json())
       .then((data) => {
         setMaintenance(data.maintenance || { enabled: false, message: "" });
+        setOnlineBookingEnabled(data.features?.online_booking_enabled !== false);
+        setDiscountCodesEnabled(data.features?.discount_codes_enabled !== false);
+        if (data.luggage_prices) setLuggagePrices(data.luggage_prices);
+        if (data.booking_limits?.max_bags_per_booking > 0) setMaxBags(data.booking_limits.max_bags_per_booking);
         if (data.pricing) {
           setFees({
             pickupFee: data.pricing.pickup_fee || 180,
@@ -167,14 +183,27 @@ export default function BookPage() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setSlotRefreshTick((tick) => tick + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     if (!pickupDate) return;
-    fetchSlots(pickupDate, "pickup").then((slots) => { setPickupSlots(slots); setPickupSlotsLoading(false); });
-  }, [pickupDate, fetchSlots]);
+    fetchSlots(pickupDate, "pickup").then((slots) => {
+      setPickupSlots(slots);
+      setPickupSlot((selected) => selected && !slots.some((slot) => slot.start === selected && slot.available) ? "" : selected);
+      setPickupSlotsLoading(false);
+    });
+  }, [pickupDate, fetchSlots, slotRefreshTick]);
 
   useEffect(() => {
     if (!deliveryDate) return;
-    fetchSlots(deliveryDate, "delivery").then((slots) => { setDeliverySlots(slots); setDeliverySlotsLoading(false); });
-  }, [deliveryDate, fetchSlots]);
+    fetchSlots(deliveryDate, "delivery").then((slots) => {
+      setDeliverySlots(slots);
+      setDeliverySlot((selected) => selected && !slots.some((slot) => slot.start === selected && slot.available) ? "" : selected);
+      setDeliverySlotsLoading(false);
+    });
+  }, [deliveryDate, fetchSlots, slotRefreshTick]);
 
   function getPickupLocationText() {
     let text = pickupTerminal;
@@ -190,11 +219,11 @@ export default function BookPage() {
     setLoading(true);
     setError("");
 
-    const pickupDateTime = `${pickupDate}T${pickupSlot}:00`;
-    const deliveryDateTime = deliveryDate && deliverySlot ? `${deliveryDate}T${deliverySlot}:00` : "";
+    const pickupDateTime = `${pickupDate}T${pickupSlot}:00+08:00`;
+    const deliveryDateTime = deliveryDate && deliverySlot ? `${deliveryDate}T${deliverySlot}:00+08:00` : "";
 
     const { calcSubtotal, calcTotalBags, buildLuggageDetails } = await import("@/lib/luggage-types");
-    const luggageItems = JSON.parse(buildLuggageDetails(luggageQty));
+    const luggageItems = JSON.parse(buildLuggageDetails(luggageQty, luggagePrices));
     const servicesList = [
       { id: "pick-up-from-customer", name: "Pick-up from Customer", price: fees.pickupFee },
       { id: "deliver-to-customer", name: "Deliver to Customer", price: fees.deliveryFee },
@@ -202,9 +231,9 @@ export default function BookPage() {
     const selectedSvcList = servicesList.filter((s) => selectedServices[s.id]).map((s) => s.name);
     const luggageDetailsPayload = selectedSvcList.length > 0
       ? JSON.stringify([...luggageItems, { services: selectedSvcList }])
-      : buildLuggageDetails(luggageQty);
+      : buildLuggageDetails(luggageQty, luggagePrices);
 
-    const subtotal = calcSubtotal(luggageQty);
+    const subtotal = calcSubtotal(luggageQty, luggagePrices) * Math.max(1, storageDays);
     const numBags = calcTotalBags(luggageQty);
     const extraFee = numBags > fees.excessBagThreshold ? (numBags - fees.excessBagThreshold) * fees.excessBagFee : 0;
     const servicesCost = servicesList.filter((s) => selectedServices[s.id]).reduce((sum, s) => sum + s.price, 0);
@@ -293,7 +322,7 @@ export default function BookPage() {
     nextStep();
   }
 
-  if (maintenance?.enabled) {
+  if (maintenance?.enabled || !onlineBookingEnabled) {
     return (
       <div className="min-h-screen bg-blue-50/50">
         <PublicHeader showBackToHome />
@@ -302,7 +331,7 @@ export default function BookPage() {
             <Wrench className="h-10 w-10 text-amber-600" />
           </div>
           <h1 className="text-2xl font-bold text-foreground">Under Maintenance</h1>
-          <p className="mt-3 text-muted-foreground">{maintenance.message || "We are currently undergoing scheduled maintenance. Please check back shortly."}</p>
+          <p className="mt-3 text-muted-foreground">{maintenance?.enabled ? (maintenance.message || "We are currently undergoing scheduled maintenance. Please check back shortly.") : "Online booking is temporarily disabled. Please contact DropnFly staff for assistance."}</p>
           <Link href="/track" className="mt-8 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-md transition-all hover:bg-blue-700">
             <Search className="h-4 w-4" /> Track Existing Booking
           </Link>
@@ -319,6 +348,11 @@ export default function BookPage() {
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-blue-700">Book a Pickup</h1>
           <p className="mt-2 text-muted-foreground">Schedule your luggage pickup. No registration needed.</p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+            <span className="text-muted-foreground">Passenger account:</span>
+            <Link href="/my-account/login" className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 font-medium text-blue-700 transition hover:bg-blue-50">Log in</Link>
+            <Link href="/my-account/register" className="rounded-lg bg-blue-600 px-3 py-1.5 font-medium text-white transition hover:bg-blue-700">Create account</Link>
+          </div>
         </div>
 
         <div className="mb-8">
@@ -380,7 +414,7 @@ export default function BookPage() {
                   <LuggageStep
                     luggageQty={luggageQty} setLuggageQty={setLuggageQty}
                     selectedServices={selectedServices} setSelectedServices={setSelectedServices}
-                    fees={fees} storageDays={storageDays}
+                    fees={fees} luggagePrices={luggagePrices} maxBags={maxBags} storageDays={storageDays}
                     onNext={handleNextStep} onPrev={prevStep}
                   />
                 )}
@@ -390,6 +424,7 @@ export default function BookPage() {
                     pickupTerminal={pickupTerminal} pickupAirline={pickupAirline}
                     deliveryTerminal={deliveryTerminal} deliveryDate={deliveryDate} deliverySlot={deliverySlot}
                     luggageQty={luggageQty} selectedServices={selectedServices} fees={fees}
+                    luggagePrices={luggagePrices} discountCodesEnabled={discountCodesEnabled}
                     promoCode={promoCode} setPromoCode={setPromoCode}
                     promoApplied={promoApplied} setPromoApplied={setPromoApplied}
                     promoDiscount={promoDiscount} setPromoDiscount={setPromoDiscount}

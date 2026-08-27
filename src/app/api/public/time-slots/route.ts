@@ -8,6 +8,7 @@ const DEFAULTS = {
   delivery_slot_duration: "60",
   operating_start: "08:00",
   operating_end: "17:00",
+  store_operating_days: "0,1,2,3,4,5,6",
 };
 
 function generateSlots(start: string, end: string, durationMin: number) {
@@ -24,6 +25,20 @@ function generateSlots(start: string, end: string, durationMin: number) {
     slots.push({ start: slotStart, end: slotEnd });
   }
   return slots;
+}
+
+function manilaNowParts() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || "00";
+  return { date: `${value("year")}-${value("month")}-${value("day")}`, minutes: Number(value("hour")) * 60 + Number(value("minute")) };
 }
 
 export async function GET(req: NextRequest) {
@@ -51,7 +66,10 @@ export async function GET(req: NextRequest) {
 
   const slots = generateSlots(operatingStart, operatingEnd, slotDuration);
 
-  const selectedDate = new Date(dateStr + "T00:00:00");
+  const selectedDate = new Date(dateStr + "T00:00:00+08:00");
+  if (!settings.store_operating_days.split(",").includes(String(selectedDate.getDay()))) {
+    return NextResponse.json({ date: dateStr, type, maxConcurrent, slotDuration, operatingStart, operatingEnd, slots: [] });
+  }
   const nextDate = new Date(selectedDate);
   nextDate.setDate(nextDate.getDate() + 1);
 
@@ -74,9 +92,12 @@ export async function GET(req: NextRequest) {
   for (const b of existingBookings) {
     const dt = isPickup ? (b as { checkIn: Date }).checkIn : (b as { checkOut: Date | null }).checkOut;
     if (!dt) continue;
-    const hours = dt.getHours().toString().padStart(2, "0");
-    const minutes = dt.getMinutes().toString().padStart(2, "0");
-    const timeStr = `${hours}:${minutes}`;
+    const timeStr = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Manila",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(dt);
 
     for (const slot of slots) {
       if (timeStr >= slot.start && timeStr < slot.end) {
@@ -86,12 +107,21 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const result = slots.map((slot) => ({
-    start: slot.start,
-    end: slot.end,
-    booked: slotCounts[slot.start] || 0,
-    available: (slotCounts[slot.start] || 0) < maxConcurrent,
-  }));
+  const manilaNow = manilaNowParts();
+  const result = slots.map((slot) => {
+    const booked = slotCounts[slot.start] || 0;
+    const slotMinutes = Number(slot.start.slice(0, 2)) * 60 + Number(slot.start.slice(3, 5));
+    const isPast = dateStr < manilaNow.date || (dateStr === manilaNow.date && slotMinutes <= manilaNow.minutes);
+    const isFull = booked >= maxConcurrent;
+
+    return {
+      start: slot.start,
+      end: slot.end,
+      booked,
+      available: !isPast && !isFull,
+      unavailableReason: isPast ? "past" : isFull ? "full" : null,
+    };
+  });
 
   return NextResponse.json({
     date: dateStr,

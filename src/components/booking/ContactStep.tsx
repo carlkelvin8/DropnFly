@@ -80,6 +80,7 @@ export function ContactStep({
             placeholder={countriesLoading ? "Loading countries..." : "Type or select a country"}
           />
           <datalist id="country-options">{countries.map((c) => <option key={c.code} value={c.name} />)}</datalist>
+          <p className="text-[11px] text-muted-foreground">All countries are accepted. You may type a country even if it is not shown in the suggestions.</p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="cityOfOrigin">City of Origin <span className="text-red-500">*</span></Label>
@@ -96,6 +97,7 @@ export function ContactStep({
             placeholder={!selectedCountry ? "Enter a country first" : citiesLoading ? "Loading cities..." : "Type or select a city"}
           />
           <datalist id="city-options">{cities.map((city) => <option key={city} value={city} />)}</datalist>
+          <p className="text-[11px] text-muted-foreground">All cities are accepted. Suggestions are optional; type the complete city name if it is not listed.</p>
         </div>
       </div>
       {error && (

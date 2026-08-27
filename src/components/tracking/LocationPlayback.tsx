@@ -9,6 +9,7 @@ import {
   Play, Pause, SkipBack, SkipForward, RotateCcw,
   MapPin, Clock, Navigation, Gauge,
 } from "lucide-react";
+import { OPEN_STREET_MAP_STYLE } from "@/lib/map-style";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
@@ -98,14 +99,19 @@ export function LocationPlayback({ userId, userName }: LocationPlaybackProps) {
     }
   }, [userId, dateFrom, dateTo]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadData(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadData]);
+
   // Initialize map
   useEffect(() => {
-    if (!MAPBOX_TOKEN || !mapContainer.current || map.current) return;
-    mapboxgl.accessToken = MAPBOX_TOKEN;
+    if (!mapContainer.current || map.current) return;
+    if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN;
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: "mapbox://styles/mapbox/dark-v11",
+      style: MAPBOX_TOKEN ? "mapbox://styles/mapbox/dark-v11" : OPEN_STREET_MAP_STYLE,
       center: [120.9842, 14.5995],
       zoom: 12,
     });
@@ -129,6 +135,12 @@ export function LocationPlayback({ userId, userName }: LocationPlaybackProps) {
     const bounds = new mapboxgl.LngLatBounds();
     coords.forEach((c) => bounds.extend(c));
     map.current.fitBounds(bounds, { padding: 60, maxZoom: 15 });
+
+    // A single GPS sample can still be visualized as the rider marker, but it
+    // cannot form a valid GeoJSON route line yet.
+    if (coords.length === 1) {
+      return;
+    }
 
     // Draw full route line
     const geojson: GeoJSON.FeatureCollection = {
@@ -225,7 +237,7 @@ export function LocationPlayback({ userId, userName }: LocationPlaybackProps) {
         }],
       });
     }
-  }, [currentIndex, points]);
+  }, [currentIndex, points, mapReady]);
 
   // Playback animation
   useEffect(() => {
@@ -265,14 +277,6 @@ export function LocationPlayback({ userId, userName }: LocationPlaybackProps) {
   const endTime = points.length > 0 ? new Date(points[points.length - 1].createdAt) : null;
   const currentTime = currentPoint ? new Date(currentPoint.createdAt) : null;
   const duration = startTime && endTime ? endTime.getTime() - startTime.getTime() : 0;
-
-  if (!MAPBOX_TOKEN) {
-    return (
-      <div className="flex h-64 items-center justify-center rounded-xl border bg-muted">
-        <p className="text-sm text-muted-foreground">Mapbox token not configured</p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-4">

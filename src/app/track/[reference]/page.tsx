@@ -29,6 +29,7 @@ import {
   Camera,
   CheckCircle2,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PublicHeader } from "@/components/layout/PublicHeader";
@@ -64,7 +65,7 @@ interface ChatMessage {
   message: string;
   isFromCustomer: boolean;
   createdAt: string;
-  sender?: { name: string };
+  sender?: { name: string; role?: string } | null;
 }
 
 const statusConfig: Record<string, { label: string; color: "default" | "secondary" | "success" | "warning" | "destructive" | "outline"; step: number }> = {
@@ -116,6 +117,27 @@ export default function TrackResultPage() {
   const [verifyError, setVerifyError] = useState("");
   const [scanReload, setScanReload] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportType, setReportType] = useState("lost_baggage");
+  const [reportDescription, setReportDescription] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+
+  async function submitIncidentReport() {
+    if (!reportDescription.trim()) return;
+    setReportSubmitting(true);
+    try {
+      const response = await fetch(`/api/public/bookings/${params.reference}/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: reportType, description: reportDescription }),
+      });
+      if (!response.ok) throw new Error();
+      setReportOpen(false);
+      setReportDescription("");
+    } finally {
+      setReportSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30000);
@@ -159,12 +181,14 @@ export default function TrackResultPage() {
 
   useEffect(() => {
     if (!chatOpen || !params.reference) return;
-    const abort = new AbortController();
-    fetch(`/api/public/bookings/${params.reference}/chat`, { signal: abort.signal })
+    let active = true;
+    const loadMessages = () => fetch(`/api/public/bookings/${params.reference}/chat`)
       .then((res) => res.json())
-      .then((data) => { if (!abort.signal.aborted) setChatMessages(data); })
+      .then((data) => { if (active && Array.isArray(data)) setChatMessages(data); })
       .catch(() => {});
-    return () => abort.abort();
+    void loadMessages();
+    const poll = window.setInterval(loadMessages, 2000);
+    return () => { active = false; window.clearInterval(poll); };
   }, [chatOpen, params.reference]);
 
   useEffect(() => {
@@ -382,7 +406,7 @@ export default function TrackResultPage() {
                   onClick={() => setChatOpen(!chatOpen)}
                 >
                   <MessageCircle className="mr-1.5 h-4 w-4" />
-                  {chatOpen ? "Close Chat" : "Message Rider"}
+                  {chatOpen ? "Close Chat" : "Message Support Team"}
                 </Button>
               </div>
             </CardContent>
@@ -402,7 +426,7 @@ export default function TrackResultPage() {
                 <CardHeader className="flex flex-row items-center justify-between pb-3">
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <MessageCircle className="h-4 w-4 text-blue-600" />
-                    Chat with {rider?.name || "Rider"}
+                    Chat with {chatMessages.slice().reverse().find((message) => !message.isFromCustomer && message.sender)?.sender?.name || "DropnFly Support Team"}
                   </CardTitle>
                   <button
                     onClick={() => setChatOpen(false)}
@@ -431,6 +455,9 @@ export default function TrackResultPage() {
                           }`}
                         >
                           {msg.message}
+                          {!msg.isFromCustomer && (
+                            <p className="mt-1 text-[10px] opacity-70">{msg.sender?.name || "DropnFly staff"}{msg.sender?.role ? ` · ${msg.sender.role.toLowerCase()}` : ""}</p>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -615,8 +642,15 @@ export default function TrackResultPage() {
             )}
 
             {currentStep < 0 && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-center">
+              <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
                 <p className="text-sm font-medium text-red-600">This booking was cancelled.</p>
+                {scanEvents.filter((event) => event.status === "CANCELLED").map((event, index) => (
+                  <div key={`${event.scannedAt}-${index}`} className="rounded-lg border border-red-200 bg-white p-3 text-left">
+                    <p className="text-xs font-semibold text-red-700">Cancellation proof</p>
+                    {event.note && <p className="mt-1 text-xs text-muted-foreground">{event.note}</p>}
+                    {event.photo && <button className="mt-2" onClick={() => setShowPhotoModal(event.photo)}><Image unoptimized width={120} height={80} src={event.photo} alt="Cancellation proof" className="h-20 w-28 rounded object-cover" /></button>}
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
@@ -707,7 +741,7 @@ export default function TrackResultPage() {
             })()}
 
             <div className="mt-6 flex flex-wrap justify-center gap-3 border-t pt-4">
-              {hasRecentLocation && (
+              {rider && (
                 <Button asChild className="bg-orange-500 text-white shadow-lg transition-all hover:bg-orange-600 hover:shadow-xl">
                   <Link href={`/track/map/${params.reference}`}>
                     <Navigation className="mr-2 h-4 w-4" />
@@ -717,6 +751,9 @@ export default function TrackResultPage() {
               )}
               <Button asChild variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
                 <Link href="/book">Book Another Pickup</Link>
+              </Button>
+              <Button type="button" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => setReportOpen(true)}>
+                <AlertTriangle className="mr-2 h-4 w-4" /> File Incident Report
               </Button>
               <Button asChild variant="outline" className="border-border text-foreground hover:bg-muted">
                 <Link href="/"><Home className="mr-2 h-4 w-4" /> Back to Home</Link>
@@ -736,6 +773,18 @@ export default function TrackResultPage() {
               className="absolute -top-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-background text-foreground shadow-lg hover:bg-muted">
               <X className="h-4 w-4" />
             </button>
+          </div>
+        </div>
+      )}
+      {reportOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setReportOpen(false); }}>
+          <div className="w-full max-w-md space-y-4 rounded-xl bg-background p-6 shadow-2xl">
+            <div><h2 className="font-semibold">File an incident report</h2><p className="text-sm text-muted-foreground">This will be sent directly to DropnFly staff for review.</p></div>
+            <select value={reportType} onChange={(event) => setReportType(event.target.value)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
+              <option value="lost_baggage">Lost baggage</option><option value="damaged_baggage">Damaged baggage</option><option value="service_complaint">Service complaint</option><option value="other">Other</option>
+            </select>
+            <textarea value={reportDescription} onChange={(event) => setReportDescription(event.target.value)} rows={5} maxLength={4000} placeholder="Describe what happened..." className="w-full rounded-md border bg-background p-3 text-sm" />
+            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setReportOpen(false)}>Cancel</Button><Button onClick={submitIncidentReport} disabled={reportSubmitting || !reportDescription.trim()}>{reportSubmitting ? "Submitting..." : "Submit Report"}</Button></div>
           </div>
         </div>
       )}

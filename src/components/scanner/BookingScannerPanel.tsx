@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { CameraQRScanner } from "@/components/scanner/CameraQRScanner";
+import { imageFileToDataUrl } from "@/lib/client-image";
 
 const STATUS_FLOW = [
   { value: "PENDING", label: "Pending", icon: Clock, color: "bg-amber-500" },
@@ -82,12 +83,11 @@ export function BookingScannerPanel({ referenceNumber, onUpdate }: BookingScanne
     }
   }
 
-  function handlePhotoCapture(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handlePhotoCapture(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setPhoto(reader.result as string);
-    reader.readAsDataURL(file);
+    try { setPhoto(await imageFileToDataUrl(file)); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Could not read photo"); }
   }
 
   async function handleUpdate() {

@@ -20,7 +20,7 @@ export function LocationUpdater({ enabled, onStatusChange }: LocationUpdaterProp
 
     async function sendLocation(position: GeolocationPosition) {
       try {
-        await fetch("/api/tracking/location", {
+        const response = await fetch("/api/tracking/location", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -29,6 +29,7 @@ export function LocationUpdater({ enabled, onStatusChange }: LocationUpdaterProp
             accuracy: position.coords.accuracy,
           }),
         });
+        if (!response.ok) throw new Error("Location update failed");
         onStatusChange?.("active");
       } catch {
         onStatusChange?.("error");

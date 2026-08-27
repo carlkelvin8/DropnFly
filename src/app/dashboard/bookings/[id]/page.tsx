@@ -33,6 +33,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NAIA_TERMINALS } from "@/components/booking/constants";
 
 interface Booking {
   id: string;
@@ -62,6 +63,8 @@ interface Employee {
   name: string;
   email: string;
   isActive: boolean;
+  isApproved: boolean;
+  role: string;
 }
 
 interface Extension {
@@ -105,6 +108,23 @@ const ADDITIONAL_SERVICES = [
   { id: "delivery", name: "Deliver to Customer", price: 180, icon: "🚚", description: "We deliver the luggage to the customer" },
 ];
 
+function readableLuggageDetails(value: string | null): string {
+  if (!value) return "";
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return value;
+    return parsed.flatMap((entry: Record<string, unknown>) => {
+      const lines: string[] = [];
+      if (typeof entry.type === "string" && typeof entry.qty === "number") lines.push(`${entry.type} × ${entry.qty}`);
+      if (Array.isArray(entry.services)) lines.push(`Additional services: ${(entry.services as string[]).join(", ")}`);
+      if (Array.isArray(entry.notes)) lines.push(`Service notes: ${(entry.notes as string[]).join("; ")}`);
+      return lines;
+    }).join("\n");
+  } catch {
+    return value;
+  }
+}
+
 export default function BookingDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -147,7 +167,7 @@ export default function BookingDetailPage() {
     const abort = new AbortController();
     Promise.all([
       fetch(`/api/bookings/${params.id}`, { signal: abort.signal }).then((r) => r.json()),
-      fetch("/api/employees", { signal: abort.signal }).then((r) => r.json()),
+      fetch("/api/employees?assignable=true", { signal: abort.signal, cache: "no-store" }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/extensions`, { signal: abort.signal }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/luggage`, { signal: abort.signal }).then((r) => r.json()),
       fetch("/api/baggage-tags/available", { signal: abort.signal }).then((r) => r.json()),
@@ -184,6 +204,21 @@ export default function BookingDetailPage() {
     totalPaid >= booking.totalPrice && booking.totalPrice > 0 ? "full" :
     totalPaid > 0 ? "dp" : "unpaid";
   const bookingLocked = booking ? ["CANCELLED", "NO_SHOW"].includes(booking.status) : false;
+  const availedServices = (() => {
+    const names = new Set<string>();
+    if (!booking?.luggageDetails) return names;
+    try {
+      const parsed = JSON.parse(booking.luggageDetails);
+      if (Array.isArray(parsed)) parsed.forEach((entry: Record<string, unknown>) => {
+        if (Array.isArray(entry.services)) (entry.services as string[]).forEach((name) => names.add(name));
+      });
+    } catch {
+      ADDITIONAL_SERVICES.forEach((service) => {
+        if (booking.luggageDetails?.includes(service.name)) names.add(service.name);
+      });
+    }
+    return names;
+  })();
 
   function reloadBooking() {
     fetch(`/api/bookings/${params.id}`)
@@ -205,7 +240,7 @@ export default function BookingDetailPage() {
       const res = await fetch(`/api/bookings/${params.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numberOfBags: booking.numberOfBags + 1, totalPrice: booking.totalPrice + 100 }),
+        body: JSON.stringify({ numberOfBags: booking.numberOfBags + 1, changeNote: "Added one baggage slot; total price recalculated automatically" }),
       });
       const result = await res.json().catch(() => null);
       if (!res.ok) throw new Error(result?.error || "Failed to add baggage");
@@ -294,7 +329,7 @@ export default function BookingDetailPage() {
         if (!getRes.ok) throw new Error("Failed to reload booking");
         const updated = await getRes.json();
         setBooking(updated);
-        toast.success("Employee assigned successfully");
+        toast.success(`${phase === "DROPOFF" ? "Drop-off" : "Pickup"} employee ${booking?.assignments.some((assignment) => assignment.phase === phase) ? "re-assigned" : "assigned"} successfully`);
       } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to assign employee"); }
     }
     setSaving(false);
@@ -430,7 +465,6 @@ export default function BookingDetailPage() {
     for (const [key, val] of formData.entries()) {
       if (key === "checkIn" || key === "checkOut") body[key] = val;
       else if (key === "numberOfBags") body[key] = parseInt(val as string);
-      else if (key === "totalPrice") body[key] = parseFloat(val as string);
       else body[key] = val;
     }
     try {
@@ -465,8 +499,9 @@ export default function BookingDetailPage() {
         if (servicesEntry) {
           const existing = (servicesEntry.services as string[]) || [];
           servicesEntry.services = Array.from(new Set([...existing, ...serviceNames]));
+          if (serviceNote) servicesEntry.notes = [...(Array.isArray(servicesEntry.notes) ? servicesEntry.notes as string[] : []), serviceNote];
         } else {
-          parsed.push({ services: serviceNames });
+          parsed.push({ services: serviceNames, notes: serviceNote ? [serviceNote] : [] });
         }
         newDetails = JSON.stringify(parsed);
       } else {
@@ -484,6 +519,7 @@ export default function BookingDetailPage() {
         body: JSON.stringify({
           luggageDetails: newDetails,
           totalPrice: (booking?.totalPrice || 0) + total,
+          changeNote: `Added services: ${serviceNames.join(", ")}${serviceNote ? `. Notes: ${serviceNote}` : ""}`,
         }),
       });
       if (!res.ok) {
@@ -935,30 +971,38 @@ export default function BookingDetailPage() {
               </select>
             </div>
 
-            <form onSubmit={handleAssign} className="space-y-2">
-              <Label htmlFor="employeeId">Assign Employee</Label>
-              <div className="flex gap-2">
-                <select
-                  id="employeeId" name="employeeId"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                >
-                  <option value="">Select employee...</option>
-                  {employees.filter((e) => e.isActive !== false).map((emp) => (
-                    <option key={emp.id} value={emp.id}>{emp.name}</option>
-                  ))}
-                </select>
-                <select
-                  name="phase"
-                  defaultValue="PICKUP"
-                  className="flex h-9 w-36 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  aria-label="Assignment phase"
-                >
-                  <option value="PICKUP">Pickup</option>
-                  <option value="DROPOFF">Drop-off</option>
-                </select>
-                <Button type="submit" disabled={saving || bookingLocked}>Assign / Replace</Button>
-              </div>
-            </form>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(["PICKUP", "DROPOFF"] as const).map((phase) => {
+                const currentAssignment = booking.assignments.find((assignment) => assignment.phase === phase);
+                const phaseLabel = phase === "PICKUP" ? "Pickup" : "Drop-off";
+                return (
+                  <form key={phase} onSubmit={handleAssign} className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                    <input type="hidden" name="phase" value={phase} />
+                    <div>
+                      <Label htmlFor={`employee-${phase}`}>{phaseLabel} Employee</Label>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {currentAssignment ? `Currently: ${currentAssignment.user.name}` : "No employee assigned"}
+                      </p>
+                    </div>
+                    <select
+                      id={`employee-${phase}`}
+                      name="employeeId"
+                      defaultValue={currentAssignment?.user.id || ""}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                      required
+                    >
+                      <option value="">Select active employee...</option>
+                      {employees.filter((employee) => employee.isActive && employee.isApproved && employee.role === "EMPLOYEE").map((employee) => (
+                        <option key={employee.id} value={employee.id}>{employee.name}</option>
+                      ))}
+                    </select>
+                    <Button type="submit" className="w-full" variant={currentAssignment ? "outline" : "default"} disabled={saving || bookingLocked}>
+                      {currentAssignment ? `Re-assign ${phaseLabel}` : `Assign ${phaseLabel}`}
+                    </Button>
+                  </form>
+                );
+              })}
+            </div>
 
             <div className="space-y-2">
               <Button variant="outline" className="w-full justify-start" onClick={() => setShowEditModal(true)} disabled={bookingLocked}>
@@ -1034,16 +1078,22 @@ export default function BookingDetailPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 mb-4">
-            {ADDITIONAL_SERVICES.map((svc) => (
+            {ADDITIONAL_SERVICES.map((svc) => {
+              const alreadyAvailed = availedServices.has(svc.name);
+              return (
               <div
                 key={svc.id}
                 onClick={() => {
+                  if (alreadyAvailed) return;
                   const next = new Set(selectedServices);
                   if (next.has(svc.id)) next.delete(svc.id);
                   else next.add(svc.id);
                   setSelectedServices(next);
                 }}
-                className={`cursor-pointer rounded-xl border-2 p-4 transition-all ${
+                aria-disabled={alreadyAvailed}
+                className={`rounded-xl border-2 p-4 transition-all ${
+                  alreadyAvailed ? "cursor-not-allowed border-slate-300 bg-slate-100 opacity-55 grayscale" : "cursor-pointer "
+                } ${
                   selectedServices.has(svc.id)
                     ? "border-purple-400 bg-purple-50 ring-1 ring-purple-400 dark:bg-purple-950/20"
                     : "border-muted hover:border-purple-200 hover:bg-muted/50"
@@ -1062,8 +1112,9 @@ export default function BookingDetailPage() {
                 </div>
                 <p className="text-sm font-semibold">{svc.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{svc.description}</p>
+                {alreadyAvailed && <p className="mt-2 text-xs font-semibold text-slate-600">Already availed</p>}
               </div>
-            ))}
+            )})}
           </div>
 
           {selectedServices.size > 0 && (
@@ -1106,7 +1157,10 @@ export default function BookingDetailPage() {
                   const services = parsed.flatMap((item: Record<string, unknown>) =>
                     Array.isArray(item.services) ? (item.services as string[]) : []
                   );
-                  if (items.length > 0 || services.length > 0) {
+                  const notes = parsed.flatMap((item: Record<string, unknown>) =>
+                    Array.isArray(item.notes) ? (item.notes as string[]) : []
+                  );
+                  if (items.length > 0 || services.length > 0 || notes.length > 0) {
                     return (
                       <div className="space-y-1 text-sm">
                         {items.map((item, i) => (
@@ -1121,6 +1175,12 @@ export default function BookingDetailPage() {
                             {services.map((svc, i) => (
                               <p key={i} className="text-purple-700">• {svc}</p>
                             ))}
+                          </div>
+                        )}
+                        {notes.length > 0 && (
+                          <div className="mt-2 rounded-lg border bg-muted/40 p-2">
+                            <p className="text-xs font-medium">Service Notes</p>
+                            {notes.map((note, i) => <p key={i} className="text-xs text-muted-foreground">• {note}</p>)}
                           </div>
                         )}
                       </div>
@@ -1598,13 +1658,17 @@ export default function BookingDetailPage() {
             <form onSubmit={handleEditSave} className="space-y-4">
               <div>
                 <Label>Pickup Location</Label>
-                <input name="pickupLocation" defaultValue={booking.pickupLocation}
-                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                <select name="pickupLocation" defaultValue={booking.pickupLocation}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                  {NAIA_TERMINALS.map((terminal) => <option key={terminal.value} value={terminal.value}>{terminal.label}</option>)}
+                </select>
               </div>
               <div>
                 <Label>Drop-off Location</Label>
-                <input name="dropOffLocation" defaultValue={booking.dropOffLocation}
-                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                <select name="dropOffLocation" defaultValue={booking.dropOffLocation}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                  {NAIA_TERMINALS.map((terminal) => <option key={terminal.value} value={terminal.value}>{terminal.label}</option>)}
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1625,14 +1689,19 @@ export default function BookingDetailPage() {
                     className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
                 </div>
                 <div>
-                  <Label>Total Price (₱)</Label>
-                  <input name="totalPrice" type="number" step="0.01" min="0" defaultValue={booking.totalPrice}
-                    className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                  <Label>Total Price (automatic)</Label>
+                  <div className="mt-1 flex h-9 w-full items-center rounded-md border bg-muted px-3 text-sm font-semibold">{formatCurrency(booking.totalPrice)}</div>
                 </div>
               </div>
               <div>
-                <Label>Luggage Details / Notes</Label>
-                <textarea name="luggageDetails" rows={3} defaultValue={booking.luggageDetails || ""}
+                <Label>Luggage Details (readable)</Label>
+                <textarea rows={4} value={readableLuggageDetails(booking.luggageDetails)} readOnly
+                  className="mt-1 flex w-full resize-none rounded-md border border-input bg-muted px-3 py-2 text-sm shadow-sm" />
+                <input type="hidden" name="luggageDetails" value={booking.luggageDetails || ""} />
+              </div>
+              <div>
+                <Label>Update Reason / Notes</Label>
+                <textarea name="changeNote" rows={2} placeholder="Explain this booking update; it will appear in View Log."
                   className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm" />
               </div>
 

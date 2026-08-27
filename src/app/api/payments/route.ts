@@ -6,13 +6,24 @@ import { hasStaffRole } from "@/lib/staff-access";
 import { decimalsToNumbers } from "@/lib/serialize";
 import { isBookingLocked } from "@/lib/booking-access";
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const from = searchParams.get("from");
+  const to = searchParams.get("to");
+  const createdAt = from || to
+    ? {
+        ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
+        ...(to ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+      }
+    : undefined;
+
   const payments = await prisma.payment.findMany({
+    where: createdAt ? { createdAt } : undefined,
     orderBy: { createdAt: "desc" },
     include: {
       booking: { select: { referenceNumber: true } },

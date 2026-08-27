@@ -71,6 +71,8 @@ export async function POST(req: Request) {
                 hour: "2-digit",
                 minute: "2-digit",
               }),
+              numberOfBags: confirmed.numberOfBags,
+              totalPrice: Number(confirmed.totalPrice),
             });
           } catch (error) {
             console.error("Paid booking confirmation email failed:", error);

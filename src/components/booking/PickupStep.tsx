@@ -12,6 +12,7 @@ interface TimeSlot {
   end: string;
   booked: number;
   available: boolean;
+  unavailableReason?: "past" | "full" | null;
 }
 
 interface PickupStepProps {
@@ -132,7 +133,7 @@ export function PickupStep({
                   }`}
                 >
                   <span className="block">{slot.start}</span>
-                  <span className="block text-[10px] opacity-70">{slot.end}</span>
+                  <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full"}</span>
                 </button>
               ))}
             </div>
@@ -196,7 +197,7 @@ export function PickupStep({
                   }`}
                 >
                   <span className="block">{slot.start}</span>
-                  <span className="block text-[10px] opacity-70">{slot.end}</span>
+                  <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full"}</span>
                 </button>
               ))}
             </div>

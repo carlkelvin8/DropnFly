@@ -13,6 +13,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const messages = await prisma.chatMessage.findMany({
     where: { bookingId: id },
     orderBy: { createdAt: "asc" },
+    include: { sender: { select: { id: true, name: true, role: true } } },
   });
 
   await prisma.chatMessage.updateMany({
@@ -32,10 +33,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!booking || booking.customerId !== customer.id) return new NextResponse("Forbidden", { status: 403 });
 
   const { message } = await req.json();
-  if (!message?.trim()) return new NextResponse("Message is required", { status: 400 });
+  if (typeof message !== "string" || !message.trim() || message.length > 2000) return new NextResponse("Message must be between 1 and 2000 characters", { status: 400 });
 
   const msg = await prisma.chatMessage.create({
-    data: { bookingId: id, customerId: customer.id, message, isFromCustomer: true },
+    data: { bookingId: id, customerId: customer.id, message: message.trim(), isFromCustomer: true },
   });
 
   return NextResponse.json(msg, { status: 201 });

@@ -23,6 +23,9 @@ function addDays(date: Date, days: number): Date {
 }
 
 async function main() {
+  if (!process.env.SEED_PASSWORD && process.env.NODE_ENV === "production") {
+    throw new Error("SEED_PASSWORD is required when seeding production so staff credentials remain recoverable.");
+  }
   console.log(`Seed password: ${seedPassword}`);
   const hashedPassword = await bcrypt.hash(seedPassword, 12);
 

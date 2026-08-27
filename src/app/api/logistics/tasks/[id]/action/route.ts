@@ -64,7 +64,11 @@ export async function POST(
         where: { id },
         data: {
           status: newStatus as BookingStatus,
-          pickupStartedAt: action === "start-pickup" ? new Date() : action === "complete-pickup" ? null : undefined,
+          pickupStartedAt: action === "start-pickup" || action === "start-delivery"
+            ? new Date()
+            : action === "complete-pickup" || action === "complete-delivery"
+              ? null
+              : undefined,
         },
       }),
       prisma.scanEvent.create({

@@ -74,7 +74,7 @@ export default function LiveTrackingPage() {
   const [data, setData] = useState<TrackingData | null>(null);
   const [employeeLoc, setEmployeeLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<{ id: string; message: string; isFromCustomer: boolean; createdAt: string }[]>([]);
+  const [chatMessages, setChatMessages] = useState<{ id: string; message: string; isFromCustomer: boolean; createdAt: string; sender?: { name: string; role?: string } | null }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -130,12 +130,14 @@ export default function LiveTrackingPage() {
 
   useEffect(() => {
     if (!chatOpen) return;
-    const abort = new AbortController();
-    fetch(`/api/public/bookings/${params.reference}/chat`, { signal: abort.signal })
-      .then((res) => res.json())
-      .then((msgs) => { if (!abort.signal.aborted) setChatMessages(msgs); })
+    let active = true;
+    const loadMessages = () => fetch(`/api/public/bookings/${params.reference}/chat`, { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : [])
+      .then((msgs) => { if (active && Array.isArray(msgs)) setChatMessages(msgs); })
       .catch(() => {});
-    return () => abort.abort();
+    void loadMessages();
+    const poll = window.setInterval(loadMessages, 2000);
+    return () => { active = false; window.clearInterval(poll); };
   }, [chatOpen, params.reference]);
 
   useEffect(() => {
@@ -383,7 +385,7 @@ export default function LiveTrackingPage() {
               <CardHeader className="pb-2 cursor-pointer" onClick={() => setChatOpen(!chatOpen)}>
                 <CardTitle className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4 text-blue-500" /> Chat
+                    <MessageCircle className="h-4 w-4 text-blue-500" /> Chat with {chatMessages.slice().reverse().find((message) => !message.isFromCustomer && message.sender)?.sender?.name || "Support"}
                   </span>
                   <Badge variant="outline" className="text-[10px]">
                     {chatMessages.length} msg
@@ -403,7 +405,7 @@ export default function LiveTrackingPage() {
                         }`}>
                           <p>{msg.message}</p>
                           <p className="text-[9px] opacity-60 mt-0.5">
-                            {new Date(msg.createdAt).toLocaleTimeString()}
+                            {new Date(msg.createdAt).toLocaleTimeString()}{!msg.isFromCustomer && ` · ${msg.sender?.name || "DropnFly staff"}`}
                           </p>
                         </div>
                       </div>

@@ -51,7 +51,7 @@ async function queryGemini(prompt: string): Promise<string> {
         ],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 4096,
         },
       }),
     }
@@ -147,21 +147,34 @@ export async function generateReport(
     const revenue = Number(analyticsData.totalRevenue || 0);
     const average = Number(analyticsData.avgBookingValue || (bookings ? revenue / bookings : 0));
     const utilization = Number(analyticsData.storageUtilization || 0);
+    const paidRevenue = Number(analyticsData.totalRevenue || 0);
+    const bookedValue = Number(analyticsData.bookedValue || revenue);
+    const outstanding = Number(analyticsData.outstandingValue || Math.max(0, bookedValue - paidRevenue));
+    const collectionRate = Number(analyticsData.collectionRate || 0);
+    const activeEmployees = Number(analyticsData.activeEmployees || 0);
+    const capacity = Number(analyticsData.storageCapacity || 0);
+    const repeatCustomers = Number(analyticsData.repeatCustomers || 0);
     const title = `${type.charAt(0).toUpperCase() + type.slice(1)} Analytics Report`;
     const common = [
-      { heading: "Booking Performance", content: `${bookings} bookings are represented in the dataset, with an average booking value of ₱${average.toFixed(2)}.` },
-      { heading: "Revenue Analysis", content: `Recorded booking revenue is ₱${revenue.toFixed(2)}. Compare paid transactions against booking totals when reviewing collection performance.` },
-      { heading: "Operational Efficiency", content: `Storage utilization is currently ${utilization}%. Schedule employees around active pickup and delivery demand.` },
-      { heading: "Customer Insights", content: `${Number(analyticsData.totalCustomers || 0)} customers are represented. Repeat-booking behavior becomes more reliable as the demo dataset is replaced by live operations.` },
-      { heading: "Recommendations", content: "Monitor booking volume weekly, verify payment reconciliation, and allocate rider coverage before projected peak periods." },
+      { heading: "Scope and Data Basis", content: `This report covers ${bookings} bookings within the selected reporting period. It uses recorded bookings, payments, luggage items, storage capacity, customers, and employee records; results should be interpreted in the context of the available live data.` },
+      { heading: "Booking Performance", content: `${bookings} bookings produced an average booked value of ₱${average.toFixed(2)}. Review the status distribution and daily trend to identify completion bottlenecks, cancellations, and periods of concentrated demand.` },
+      { heading: "Revenue and Collections", content: `Gross booked value is ₱${bookedValue.toFixed(2)}, while confirmed paid collections are ₱${paidRevenue.toFixed(2)}. Outstanding value is ₱${outstanding.toFixed(2)}, resulting in a ${collectionRate.toFixed(1)}% collection rate for the selected period.` },
+      { heading: "Operational Capacity", content: `Configured capacity is ${capacity} slots and current utilization is ${utilization.toFixed(1)}%. The operation has ${activeEmployees} active employees. Capacity and staffing should be reviewed together during peak booking windows.` },
+      { heading: "Customer Behavior", content: `${Number(analyticsData.totalCustomers || 0)} customers and ${repeatCustomers} repeat customers are represented. Repeat behavior is a useful retention signal, but conclusions become stronger as more completed booking cycles are recorded.` },
+      { heading: "Risks and Limitations", content: "Forecasts are decision-support estimates, not guarantees. Missing payments, incomplete statuses, sparse history, seasonal changes, and unrecorded operating costs can materially change the conclusions." },
+      { heading: "Recommended Actions", content: "Reconcile pending collections, investigate aging active bookings, schedule employees around observed peak hours, monitor utilization thresholds weekly, and compare forecast outcomes with actual results every reporting cycle." },
     ];
-    return { title, summary: `Local analytics generated from ${bookings} bookings. This report remains available without an external AI key and uses deterministic descriptive calculations.`, sections: common, generatedAt: new Date().toISOString() };
+    return { title, summary: `A detailed deterministic report generated from ${bookings} bookings. It remains available without an external AI key and clearly separates booked value from confirmed paid revenue.`, sections: common, generatedAt: new Date().toISOString() };
   }
+  const reportInstructions = `Use the selected report period exactly. Ground every conclusion in the supplied data and quote relevant numeric values. Clearly distinguish gross booked value, paid revenue, outstanding value, and collection rate. Include limitations when the dataset is sparse or a required cost metric is unavailable. Do not invent costs, profit, customer demographics, or causal explanations. Each section should be a substantial analytical paragraph with findings, interpretation, and a specific operational implication.`;
   const prompts: Record<string, string> = {
     descriptive: `You are a business analyst for Dropnfly, a luggage storage service. Generate a DESCRIPTIVE report analyzing past performance.
 
 DATA:
 ${JSON.stringify(analyticsData, null, 2)}
+
+INSTRUCTIONS:
+${reportInstructions}
 
 Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 {
@@ -172,13 +185,17 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
     { "heading": "Revenue Analysis", "content": "<analysis of revenue, average booking value, and payment insights>" },
     { "heading": "Operational Efficiency", "content": "<analysis of storage utilization, employee workload, and capacity>" },
     { "heading": "Customer Insights", "content": "<analysis of customer base, booking behavior, and trends>" },
-    { "heading": "Recommendations", "content": "<actionable recommendations based on the data>" }
+    { "heading": "Risks and Data Limitations", "content": "<data quality, uncertainty, and interpretation limits>" },
+    { "heading": "Recommendations", "content": "<prioritized, measurable actions based on the data>" }
   ]
 }`,
     predictive: `You are a business analyst for Dropnfly, a luggage storage service. Generate a PREDICTIVE report forecasting future trends.
 
 DATA:
 ${JSON.stringify(analyticsData, null, 2)}
+
+INSTRUCTIONS:
+${reportInstructions}
 
 Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 {
@@ -189,13 +206,18 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
     { "heading": "Revenue Projection", "content": "<expected revenue ranges and growth trajectory>" },
     { "heading": "Capacity Planning", "content": "<forecasted storage needs and when to expand capacity>" },
     { "heading": "Resource Allocation", "content": "<predicted employee requirements and peak period staffing>" },
-    { "heading": "Risk Factors", "content": "<potential risks and mitigating strategies>" }
+    { "heading": "Risk Factors", "content": "<potential risks and mitigating strategies>" },
+    { "heading": "Forecast Limitations", "content": "<confidence limits, sparse-data caveats, and assumptions>" },
+    { "heading": "Recommended Decisions", "content": "<prioritized decisions with measurable review points>" }
   ]
 }`,
     financial: `You are a financial analyst for Dropnfly, a luggage storage service. Generate a FINANCIAL report analyzing financial health.
 
 DATA:
 ${JSON.stringify(analyticsData, null, 2)}
+
+INSTRUCTIONS:
+${reportInstructions}
 
 Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 {
@@ -205,8 +227,10 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
     { "heading": "Revenue Overview", "content": "<detailed revenue breakdown, trends, and performance indicators>" },
     { "heading": "Average Revenue per Booking", "content": "<analysis of ARPB, factors affecting it, and optimization opportunities>" },
     { "heading": "Payment Analysis", "content": "<payment collection performance, down payment vs full payment trends>" },
-    { "heading": "Cost Efficiency", "content": "<operational cost analysis and efficiency metrics>" },
-    { "heading": "Growth & Profitability Outlook", "content": "<financial growth projections and profitability recommendations>" }
+    { "heading": "Cost and Profitability Limitations", "content": "<state which cost or profit measures cannot be calculated and what data is required>" },
+    { "heading": "Financial Risks", "content": "<collection, refund, concentration, and data-quality risks>" },
+    { "heading": "Growth & Profitability Outlook", "content": "<evidence-based outlook without inventing unrecorded costs>" },
+    { "heading": "Recommended Financial Actions", "content": "<prioritized reconciliation and revenue actions with measurable targets>" }
   ]
 }`,
   };

@@ -1,22 +1,30 @@
 import { prisma } from "./prisma";
 import nodemailer from "nodemailer";
 import { sendPushToUser, sendPushToCustomer } from "./push";
+import { getSystemSettings, setting } from "./settings";
 
 function sanitizeHtml(str: string): string {
   if (typeof str !== "string") return "";
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-function createTransporter() {
+async function createTransporter() {
+  const settings = await getSystemSettings();
+  const host = setting(settings, "smtp_host", "") || process.env.SMTP_HOST || "smtp.ethereal.email";
+  const port = parseInt(setting(settings, "smtp_port", process.env.SMTP_PORT || "587"));
+  const fromAddress = setting(settings, "smtp_from", "") || process.env.SMTP_FROM || "noreply@dropnfly.ph";
+  const senderName = setting(settings, "email_sender_name", "Dropnfly").replace(/[\r\n"]/g, "").trim() || "Dropnfly";
+  const from = fromAddress.includes("<") ? fromAddress : `"${senderName}" <${fromAddress}>`;
+  const replyTo = setting(settings, "email_reply_to", "") || fromAddress;
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.ethereal.email",
-    port: parseInt(process.env.SMTP_PORT || "587"),
+    host,
+    port,
     secure: process.env.SMTP_SECURE === "true",
     auth: {
       user: process.env.SMTP_USER || "",
       pass: process.env.SMTP_PASS || "",
     },
-  });
+  }, { from, replyTo });
 }
 
 interface SendNotificationParams {
@@ -56,15 +64,16 @@ export async function sendNotification({
 
   if (sendEmail) {
     try {
+      const settings = await getSystemSettings();
+      if (setting(settings, "email_notifications_enabled", "true") === "false") return;
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { email: true, name: true },
       });
 
       if (user?.email) {
-        const transporter = createTransporter();
+        const transporter = await createTransporter();
         await transporter.sendMail({
-          from: process.env.SMTP_FROM || '"Dropnfly" <noreply@dropnfly.ph>',
           to: user.email,
           subject: title,
           html: `

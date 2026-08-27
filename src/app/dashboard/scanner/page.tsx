@@ -13,6 +13,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { toast } from "sonner";
 import { CameraQRScanner } from "@/components/scanner/CameraQRScanner";
+import { imageFileToDataUrl } from "@/lib/client-image";
 
 const STATUS_FLOW = [
   { value: "PENDING", label: "Pending", icon: Clock, color: "bg-amber-500" },
@@ -258,12 +259,11 @@ export default function QrScannerPage() {
     setProcessing(false);
   }
 
-  function handlePhotoCapture(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handlePhotoCapture(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setPhoto(reader.result as string);
-    reader.readAsDataURL(file);
+    try { setPhoto(await imageFileToDataUrl(file)); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Could not read photo"); }
   }
 
   function handleTagChange(index: number, value: string) {
@@ -593,7 +593,7 @@ export default function QrScannerPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
             <Card className="w-full max-w-md"><CardHeader><CardTitle>Update {queueBooking.referenceNumber}</CardTitle></CardHeader><CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">Move from {queueBooking.status.replace(/_/g, " ")} to {queueBooking.status === "RECEIVED" ? "IN STORAGE" : "OUT FOR DELIVERY"}.</p>
-              {queueBooking.status === "RECEIVED" && <div><p className="mb-2 text-sm font-medium">Luggage verification photo (required)</p><input type="file" accept="image/*" capture="environment" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onloadend = () => setQueuePhoto(reader.result as string); reader.readAsDataURL(file); }} />{queuePhoto && <p className="mt-2 text-xs text-emerald-600">Photo ready for verification</p>}</div>}
+              {queueBooking.status === "RECEIVED" && <div><p className="mb-2 text-sm font-medium">Luggage verification photo (required)</p><input type="file" accept="image/*" capture="environment" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { setQueuePhoto(await imageFileToDataUrl(file)); } catch { toast.error("Could not read photo"); } }} />{queuePhoto && <p className="mt-2 text-xs text-emerald-600">Photo ready for verification</p>}</div>}
               <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => { setQueueBooking(null); setQueuePhoto(null); }}>Cancel</Button><Button disabled={intakeProcessing || (queueBooking.status === "RECEIVED" && !queuePhoto)} onClick={updateQueuedBooking}>{intakeProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Update"}</Button></div>
             </CardContent></Card>
           </div>

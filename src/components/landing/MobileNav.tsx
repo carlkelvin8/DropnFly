@@ -79,6 +79,22 @@ export function MobileNav({ open, onClose, links }: MobileNavProps) {
               {link.label}
             </Link>
           ))}
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Link
+              href="/my-account/login"
+              className="rounded-lg border px-3 py-2.5 text-center text-sm font-medium"
+              onClick={onClose}
+            >
+              Passenger Login
+            </Link>
+            <Link
+              href="/my-account/register"
+              className="rounded-lg border px-3 py-2.5 text-center text-sm font-medium"
+              onClick={onClose}
+            >
+              Create Account
+            </Link>
+          </div>
           <Link
             href="/book"
             className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-orange-500 px-5 py-2.5 text-sm font-medium text-white"

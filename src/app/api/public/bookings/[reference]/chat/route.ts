@@ -22,6 +22,12 @@ export async function GET(
   const messages = await prisma.chatMessage.findMany({
     where: { bookingId: booking.id },
     orderBy: { createdAt: "asc" },
+    include: { sender: { select: { id: true, name: true, role: true } } },
+  });
+
+  await prisma.chatMessage.updateMany({
+    where: { bookingId: booking.id, isFromCustomer: false, isRead: false },
+    data: { isRead: true },
   });
 
   return NextResponse.json(messages);

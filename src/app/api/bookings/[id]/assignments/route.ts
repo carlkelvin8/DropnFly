@@ -8,7 +8,7 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const booking = await prisma.booking.findUnique({ where: { id }, select: { id: true, customerId: true } });
+  const booking = await prisma.booking.findUnique({ where: { id }, select: { id: true, customerId: true, status: true } });
   if (!booking) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   if (!(await canAccessBooking(booking))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -30,6 +30,9 @@ export async function GET(
     },
     orderBy: { createdAt: "desc" },
   });
+
+  const activePhase = booking.status === "OUT_FOR_DELIVERY" || booking.status === "DELIVERED" ? "DROPOFF" : "PICKUP";
+  assignments.sort((a, b) => Number(b.phase === activePhase) - Number(a.phase === activePhase));
 
   return NextResponse.json(assignments);
 }

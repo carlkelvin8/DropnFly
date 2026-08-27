@@ -125,6 +125,8 @@ export default function AnalyticsPage() {
   const [period, setPeriod] = useState("month");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState("");
 
   useEffect(() => {
     const abort = new AbortController();
@@ -134,21 +136,33 @@ export default function AnalyticsPage() {
       if (dateFrom) params.set("from", dateFrom);
       if (dateTo) params.set("to", dateTo);
     }
-    fetch(`/api/analytics?${params.toString()}`, { signal: abort.signal })
-      .then((r) => r.json())
-      .then((json) => { if (!abort.signal.aborted) setData(json); })
-      .catch(() => {});
+    fetch(`/api/analytics?${params.toString()}`, { signal: abort.signal, cache: "no-store" })
+      .then(async (r) => {
+        const json = await r.json();
+        if (!r.ok) throw new Error(json.error || "Failed to load analytics");
+        return json;
+      })
+      .then((json) => { if (!abort.signal.aborted) { setData(json); setAnalyticsError(""); } })
+      .catch((error) => { if (!abort.signal.aborted) setAnalyticsError(error instanceof Error ? error.message : "Failed to load analytics"); })
+      .finally(() => { if (!abort.signal.aborted) setAnalyticsLoading(false); });
     return () => abort.abort();
   }, [period, dateFrom, dateTo]);
 
   useEffect(() => {
     if (tab !== "financial") return;
-    fetch("/api/payments")
+    const params = new URLSearchParams();
+    const today = new Date();
+    const days = period === "week" ? 7 : period === "year" ? 365 : 30;
+    const effectiveFrom = period === "custom" ? dateFrom : new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10);
+    const effectiveTo = period === "custom" ? dateTo : today.toISOString().slice(0, 10);
+    if (effectiveFrom) params.set("from", effectiveFrom);
+    if (effectiveTo) params.set("to", effectiveTo);
+    fetch(`/api/payments?${params}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((p) => setPayments(Array.isArray(p) ? p : []))
       .catch(() => toast.error("Failed to load payments"))
       .finally(() => setPaymentsLoading(false));
-  }, [tab]);
+  }, [tab, period, dateFrom, dateTo]);
 
   const totalRevenue = payments.filter((p) => p.status === "PAID").reduce((sum, p) => sum + p.amount, 0);
   const pendingPayments = payments.filter((p) => p.status === "PENDING");
@@ -225,10 +239,14 @@ export default function AnalyticsPage() {
 
       {tab === "overview" && (
         <>
-          {!data ? (
+          {analyticsLoading ? (
             <div className="flex h-64 items-center justify-center text-muted-foreground">
               Loading analytics...
             </div>
+          ) : analyticsError ? (
+            <Card className="border-red-200"><CardContent className="flex h-48 flex-col items-center justify-center gap-2 text-red-600"><AlertCircle className="h-8 w-8" /><p className="font-medium">Analytics could not be loaded</p><p className="text-sm">{analyticsError}</p></CardContent></Card>
+          ) : !data ? (
+            <div className="flex h-64 items-center justify-center text-muted-foreground">No analytics data available.</div>
           ) : (
             <OverviewTab data={data} period={period} />
           )}
@@ -253,15 +271,30 @@ export default function AnalyticsPage() {
 }
 
 function OverviewTab({ data }: { data: Analytics; period: string }) {
-  const { bookingsByDay, hourlyDistribution, employeePerformance, customerTrends, revenueByStatus } = data;
+  const { bookingsByDay, hourlyDistribution, employeePerformance, customerTrends, revenueByStatus, storageLocations, overview } = data;
   const maxDailyCount = Math.max(...bookingsByDay.map((d) => d.count), 1);
   const maxDailyRevenue = Math.max(...bookingsByDay.map((d) => d.revenue), 1);
   const maxHourlyCount = Math.max(...hourlyDistribution.map((h) => h.count), 1);
   const maxEmployee = Math.max(...employeePerformance.map((e) => e.totalAssigned), 1);
   const maxStatusRevenue = Math.max(...revenueByStatus.map((x) => x.revenue), 1);
+  const heatmapDays = bookingsByDay.slice(-60);
+  const heatmapLeadingDays = heatmapDays.length > 0 ? new Date(`${heatmapDays[0].date}T00:00:00`).getDay() : 0;
 
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {[
+          { label: "Bookings", value: overview.totalBookings.toLocaleString(), detail: `${overview.activeBookings} currently active`, color: "border-t-blue-500" },
+          { label: "Collected Revenue", value: formatCurrency(overview.totalRevenue), detail: `${formatCurrency(overview.averagePrice)} average payment`, color: "border-t-emerald-500" },
+          { label: "Average Bags", value: overview.averageBags.toFixed(1), detail: "per booking in selected period", color: "border-t-violet-500" },
+          { label: "Storage Utilization", value: `${overview.storageUtilization.toFixed(1)}%`, detail: `${overview.newCustomers} new customers`, color: "border-t-orange-500" },
+        ].map((metric) => (
+          <Card key={metric.label} className={`border-t-2 ${metric.color}`}>
+            <CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-muted-foreground">{metric.label}</CardTitle></CardHeader>
+            <CardContent><p className="text-2xl font-bold">{metric.value}</p><p className="mt-1 text-xs text-muted-foreground">{metric.detail}</p></CardContent>
+          </Card>
+        ))}
+      </div>
       <div className="grid gap-4 md:grid-cols-2">
         {/* Bookings Over Time */}
         <Card className="border-t-2 border-t-blue-500">
@@ -451,14 +484,30 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
       </div>
 
       <Card className="border-t-2 border-t-orange-500">
-        <CardHeader><CardTitle className="text-sm font-medium">Booking Activity Heatmap</CardTitle><CardDescription>Darker cells indicate busier booking days.</CardDescription></CardHeader>
+        <CardHeader><CardTitle className="text-sm font-medium">Booking Activity Heatmap</CardTitle><CardDescription>Latest 60 days. Darker cells indicate higher booking activity.</CardDescription></CardHeader>
         <CardContent>
-          <div className="grid grid-cols-7 gap-1 sm:grid-cols-10 md:grid-cols-12 lg:grid-cols-15">
-            {bookingsByDay.slice(-60).map((day) => {
-              const opacity = day.count === 0 ? 0.08 : 0.2 + (day.count / maxDailyCount) * 0.8;
-              return <div key={day.date} className="aspect-square min-h-3 rounded-sm bg-orange-500 ring-1 ring-orange-600/10" style={{ opacity }} title={`${new Date(`${day.date}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}: ${day.count} bookings`} aria-label={`${day.date}: ${day.count} bookings`} />;
+          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div>
+          <div className="grid grid-cols-7 gap-1" role="img" aria-label="Booking activity for the latest 60 days">
+            {Array.from({ length: heatmapLeadingDays }, (_, index) => <span key={`empty-${index}`} className="aspect-square min-h-6" aria-hidden="true" />)}
+            {heatmapDays.map((day) => {
+              const intensity = day.count === 0 ? 0.06 : 0.25 + (day.count / maxDailyCount) * 0.75;
+              return <div key={day.date} className="flex aspect-square min-h-6 items-center justify-center rounded border border-orange-600/10 text-[9px] font-medium text-orange-950/70" style={{ backgroundColor: `rgba(249, 115, 22, ${intensity})` }} title={`${new Date(`${day.date}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}: ${day.count} bookings`} aria-label={`${day.date}: ${day.count} bookings`}>{new Date(`${day.date}T00:00:00`).getDate()}</div>;
             })}
           </div>
+          <div className="mt-3 flex items-center justify-end gap-1 text-[10px] text-muted-foreground"><span>Less</span>{[0.08, 0.3, 0.5, 0.7, 1].map((opacity) => <span key={opacity} className="h-3 w-3 rounded-sm border border-orange-600/10" style={{ backgroundColor: `rgba(249, 115, 22, ${opacity})` }} />)}<span>More</span></div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-t-2 border-t-cyan-500">
+        <CardHeader><CardTitle className="text-sm font-medium">Storage Capacity by Location</CardTitle><CardDescription>Active bookings compared with configured capacity.</CardDescription></CardHeader>
+        <CardContent className="space-y-4">
+          {storageLocations.map((location) => (
+            <div key={location.name}>
+              <div className="mb-1.5 flex justify-between text-sm"><span className="font-medium">{location.name}</span><span className="text-muted-foreground">{location.used} / {location.capacity} · {location.utilization.toFixed(1)}%</span></div>
+              <div className="h-2.5 rounded-full bg-muted"><div className={`h-full rounded-full ${location.utilization >= 90 ? "bg-red-500" : location.utilization >= 70 ? "bg-amber-500" : "bg-cyan-500"}`} style={{ width: `${Math.min(location.utilization, 100)}%` }} /></div>
+            </div>
+          ))}
+          {storageLocations.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No storage locations configured.</p>}
         </CardContent>
       </Card>
 
@@ -499,14 +548,16 @@ function FinancialTab({
   period: string;
 }) {
   const paidPayments = payments.filter((p) => p.status === "PAID");
+  const refundedPayments = payments.filter((p) => p.status === "REFUNDED");
   const methodTotals = Array.from(
-    payments.reduce((map, p) => {
+    paidPayments.reduce((map, p) => {
       const key = p.method || "OTHER";
       map.set(key, (map.get(key) || 0) + p.amount);
       return map;
     }, new Map<string, number>())
   ).sort((a, b) => b[1] - a[1]);
   const maxMethodTotal = Math.max(...methodTotals.map(([, amt]) => amt), 1);
+  const collectibleAmount = totalRevenue + pendingPayments.reduce((sum, payment) => sum + payment.amount, 0);
 
   return (
     <div className="space-y-6">
@@ -585,7 +636,7 @@ function FinancialTab({
                   <div className="mb-1.5 flex justify-between text-sm">
                     <span className="font-medium">{method}</span>
                     <span className="font-semibold text-muted-foreground">
-                      {formatCurrency(amt)} &middot; {((amt / maxMethodTotal) * 100).toFixed(0)}%
+                      {formatCurrency(amt)} &middot; {totalRevenue > 0 ? ((amt / totalRevenue) * 100).toFixed(0) : 0}%
                     </span>
                   </div>
                   <div className="h-2.5 w-full rounded-full bg-muted">
@@ -620,11 +671,15 @@ function FinancialTab({
               </span>
             </div>
             <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+              <span className="text-muted-foreground">Refunded</span>
+              <span className="font-bold text-red-600">{formatCurrency(refundedPayments.reduce((sum, payment) => sum + payment.amount, 0))}</span>
+            </div>
+            <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
               <span className="text-muted-foreground">Collection rate</span>
               <span className="font-bold">
-                {payments.length === 0
+                {collectibleAmount === 0
                   ? "0%"
-                  : `${((totalRevenue / payments.reduce((sum, p) => sum + p.amount, 0)) * 100).toFixed(1)}%`}
+                  : `${((totalRevenue / collectibleAmount) * 100).toFixed(1)}%`}
               </span>
             </div>
           </CardContent>

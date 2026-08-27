@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { OPEN_STREET_MAP_STYLE } from "@/lib/map-style";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
@@ -49,7 +50,6 @@ export function LiveMap({
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const routeSourceId = useRef("route");
   const [loading, setLoading] = useState(true);
-  const [noToken] = useState(!MAPBOX_TOKEN);
 
   function drawPoints() {
     if (!map.current) return;
@@ -70,17 +70,16 @@ export function LiveMap({
   }
 
   useEffect(() => {
-    if (!MAPBOX_TOKEN) return;
     if (!mapContainer.current || map.current) return;
 
-    mapboxgl.accessToken = MAPBOX_TOKEN;
+    if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN;
 
     const centerLng = employeeLng || dropoffLng || pickupLng || 120.9842;
     const centerLat = employeeLat || dropoffLat || pickupLat || 14.5995;
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: "mapbox://styles/mapbox/streets-v12",
+      style: MAPBOX_TOKEN ? "mapbox://styles/mapbox/streets-v12" : OPEN_STREET_MAP_STYLE,
       center: [centerLng, centerLat],
       zoom: 13,
     });
@@ -172,24 +171,6 @@ export function LiveMap({
     distance = d;
     const etaMinutes = Math.round((d / 30) * 60);
     eta = etaMinutes <= 1 ? "1 min" : `${etaMinutes} mins`;
-  }
-
-  if (noToken) {
-    const riderLabel = employeeName || (riderView ? "You" : "Assigned rider");
-    return (
-      <div className="relative h-64 overflow-hidden rounded-lg border bg-gradient-to-br from-blue-50 via-slate-100 to-orange-50">
-        <div className="absolute inset-0 opacity-40" style={{ backgroundImage: "linear-gradient(#94a3b8 1px, transparent 1px), linear-gradient(90deg, #94a3b8 1px, transparent 1px)", backgroundSize: "32px 32px" }} />
-        <div className="absolute left-[12%] top-[65%] h-4 w-4 rounded-full border-2 border-white bg-green-500 shadow" title="Pickup" />
-        <div className="absolute right-[12%] top-[20%] h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow" title="Drop-off" />
-        <div className="absolute left-[43%] top-[42%] flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-orange-500 text-xs font-bold text-white shadow-lg">R</div>
-        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="M13 68 C32 70 33 49 47 48 S70 35 87 23" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="3 2" /></svg>
-        <div className="absolute bottom-3 left-3 right-3 rounded-lg border bg-white/90 p-3 text-xs shadow backdrop-blur">
-          <p className="font-semibold">Demo live map · {riderLabel}</p>
-          <p className="mt-1 text-muted-foreground">{pickupAddress || "Pickup point"} → {dropoffAddress || "Drop-off point"}</p>
-          <p className="mt-1 text-[10px] text-blue-600">Live coordinates and status updates remain active; add Mapbox credentials for the interactive street map.</p>
-        </div>
-      </div>
-    );
   }
 
   return (

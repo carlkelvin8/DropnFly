@@ -11,7 +11,7 @@ export async function GET(
 
   const booking = await prisma.booking.findUnique({
     where: { referenceNumber: normalizeReference(reference) },
-    select: { id: true, customerId: true },
+    select: { id: true, customerId: true, status: true },
   });
 
   if (!booking) {
@@ -20,7 +20,10 @@ export async function GET(
   if (!(await canAccessBooking(booking))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const assignment = await prisma.bookingAssignment.findFirst({
-    where: { bookingId: booking.id },
+    where: {
+      bookingId: booking.id,
+      phase: booking.status === "OUT_FOR_DELIVERY" || booking.status === "DELIVERED" ? "DROPOFF" : "PICKUP",
+    },
     orderBy: { createdAt: "desc" },
     include: {
       user: {

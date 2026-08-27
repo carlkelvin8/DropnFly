@@ -27,13 +27,17 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json() as Record<string, string>;
 
-    for (const [key, value] of Object.entries(body)) {
-      await prisma.systemSetting.upsert({
+    if (!body || Array.isArray(body) || Object.keys(body).length === 0) {
+      return NextResponse.json({ error: "No settings supplied" }, { status: 400 });
+    }
+
+    await prisma.$transaction(Object.entries(body).map(([key, value]) =>
+      prisma.systemSetting.upsert({
         where: { key },
         update: { value: String(value) },
         create: { key, value: String(value) },
-      });
-    }
+      })
+    ));
 
     invalidateSettingsCache();
 

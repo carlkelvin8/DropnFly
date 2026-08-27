@@ -8,6 +8,7 @@ import { canReadBooking, hasStaffRole } from "@/lib/staff-access";
 import { awardDeliveryPoints } from "@/lib/loyalty";
 import { decimalsToNumbers } from "@/lib/serialize";
 import { isBookingLocked } from "@/lib/booking-access";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 const VALID_STATUS = [
   "PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE",
@@ -75,7 +76,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await req.json();
-    const existingBooking = await prisma.booking.findUnique({ where: { id }, select: { status: true, checkIn: true, checkOut: true } });
+    const existingBooking = await prisma.booking.findUnique({ where: { id }, select: { status: true, checkIn: true, checkOut: true, numberOfBags: true, totalPrice: true } });
     if (!existingBooking) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
 
     if (isBookingLocked(existingBooking.status)) {
@@ -110,6 +111,11 @@ export async function PUT(
     if (body.numberOfBags !== undefined) {
       if (!Number.isInteger(body.numberOfBags) || body.numberOfBags <= 0) return NextResponse.json({ error: "Invalid bag count" }, { status: 400 });
       data.numberOfBags = body.numberOfBags;
+      if (body.totalPrice === undefined) {
+        const settings = await getSystemSettings();
+        const bagFee = Number(setting(settings, "excess_bag_fee", "100"));
+        data.totalPrice = Math.max(0, Number(existingBooking.totalPrice) + (body.numberOfBags - existingBooking.numberOfBags) * bagFee);
+      }
     }
     for (const field of ["pickupLocation", "dropOffLocation"] as const) {
       if (body[field] !== undefined) {
@@ -141,6 +147,18 @@ export async function PUT(
       where: { id },
       data: data as { status?: BookingStatus; [key: string]: unknown },
     });
+
+    if (!body.status) {
+      await logActivity({
+        userId: session.user.id,
+        action: "UPDATE",
+        entity: "Booking",
+        entityId: id,
+        details: typeof body.changeNote === "string" && body.changeNote.trim()
+          ? body.changeNote.trim().slice(0, 1000)
+          : "Booking details updated",
+      });
+    }
 
     if (body.status) {
       await logActivity({

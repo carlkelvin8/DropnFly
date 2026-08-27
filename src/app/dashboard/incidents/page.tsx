@@ -84,7 +84,9 @@ export default function IncidentsPage() {
     if (statusFilter) params.set("status", statusFilter);
     if (priorityFilter) params.set("priority", priorityFilter);
     params.set("page", String(page));
-    fetch(`/api/incidents?${params}`)
+    fetch("/api/incidents/auto-flag", { method: "POST" })
+      .catch(() => null)
+      .then(() => fetch(`/api/incidents?${params}`, { cache: "no-store" }))
       .then((r) => r.json())
       .then((d) => setData(d))
       .catch(() => {})

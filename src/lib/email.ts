@@ -9,6 +9,8 @@ interface EmailConfig {
   user: string;
   pass: string;
   from: string;
+  replyTo: string;
+  companyName: string;
 }
 
 function sanitizeHtml(str: string): string {
@@ -20,7 +22,11 @@ async function getEmailConfig(): Promise<EmailConfig> {
   const enabled = setting(map, "email_notifications_enabled", "true") !== "false";
   const host = setting(map, "smtp_host", "") || process.env.SMTP_HOST || "smtp.ethereal.email";
   const port = parseInt(setting(map, "smtp_port", process.env.SMTP_PORT || "587"));
-  const from = setting(map, "smtp_from", "") || process.env.SMTP_FROM || '"Dropnfly" <noreply@dropnfly.ph>';
+  const fromAddress = setting(map, "smtp_from", "") || process.env.SMTP_FROM || "noreply@dropnfly.ph";
+  const senderName = setting(map, "email_sender_name", "Dropnfly").replace(/[\r\n"]/g, "").trim() || "Dropnfly";
+  const from = fromAddress.includes("<") ? fromAddress : `"${senderName}" <${fromAddress}>`;
+  const replyTo = setting(map, "email_reply_to", "") || undefined;
+  const companyName = setting(map, "email_company_name", "Dropnfly Logistics Inc.").replace(/[\r\n]/g, "").trim() || "Dropnfly Logistics Inc.";
   return {
     enabled,
     host,
@@ -29,6 +35,8 @@ async function getEmailConfig(): Promise<EmailConfig> {
     user: process.env.SMTP_USER || "",
     pass: process.env.SMTP_PASS || "",
     from,
+    replyTo: replyTo || fromAddress,
+    companyName,
   };
 }
 
@@ -45,7 +53,12 @@ async function getTransporter() {
       user: config.user,
       pass: config.pass,
     },
-  });
+  }, { from: config.from, replyTo: config.replyTo });
+}
+
+export async function verifyConfirmationEmailService(): Promise<void> {
+  const transporter = await getTransporter();
+  await transporter.verify();
 }
 
 export async function sendCustomerActivationEmail({ to, customerName, token }: { to: string; customerName: string; token: string }) {
@@ -83,6 +96,8 @@ export async function sendConfirmationEmail({
   pickupLocation,
   dropOffLocation,
   scheduledDate,
+  numberOfBags,
+  totalPrice,
 }: {
   to: string;
   customerName: string;
@@ -91,10 +106,12 @@ export async function sendConfirmationEmail({
   pickupLocation: string;
   dropOffLocation: string;
   scheduledDate: string;
+  numberOfBags: number;
+  totalPrice: number;
 }): Promise<boolean> {
   const config = await getEmailConfig();
-  const settings = await getSystemSettings();
-  if (!config.enabled || setting(settings, "booking_confirmation_email", "true") === "false") return false;
+  // Booking confirmations are transactional receipts and are always required.
+  // General notification preferences only apply to optional notification emails.
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -119,6 +136,14 @@ export async function sendConfirmationEmail({
             <td style="padding: 8px; color: #9ca3af;">Scheduled Date</td>
             <td style="padding: 8px; font-weight: 600;">${sanitizeHtml(scheduledDate)}</td>
           </tr>
+          <tr style="background: #f1f5f9;">
+            <td style="padding: 8px; color: #9ca3af;">Number of Bags</td>
+            <td style="padding: 8px; font-weight: 600;">${numberOfBags}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; color: #9ca3af;">Booking Total</td>
+            <td style="padding: 8px; font-weight: 700; color: #166534;">₱${totalPrice.toFixed(2)}</td>
+          </tr>
         </table>
 
         <div style="text-align: center; margin: 24px 0;">
@@ -135,7 +160,7 @@ export async function sendConfirmationEmail({
 
         <hr style="border: none; border-top: 1px solid #d1d5db; margin: 24px 0;" />
         <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-          Dropnfly &bull; Reference: ${referenceNumber}
+          ${sanitizeHtml(config.companyName)} &bull; Reference: ${referenceNumber}
         </p>
       </div>
     </div>
@@ -173,7 +198,8 @@ export async function sendRiderAssignedEmail({
   plateNumber?: string | null;
 }) {
   const config = await getEmailConfig();
-  if (!config.enabled) {
+  const settings = await getSystemSettings();
+  if (!config.enabled || setting(settings, "rider_assignment_email", "true") === "false") {
     if (process.env.NODE_ENV === "development") {
       console.warn("[EMAIL] Email notifications are disabled in settings");
     }
@@ -212,7 +238,7 @@ export async function sendRiderAssignedEmail({
 
         <hr style="border: none; border-top: 1px solid #d1d5db; margin: 24px 0;" />
         <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-          Dropnfly &bull; Reference: ${referenceNumber}
+          ${sanitizeHtml(config.companyName)} &bull; Reference: ${referenceNumber}
         </p>
       </div>
     </div>

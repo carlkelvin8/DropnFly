@@ -38,10 +38,10 @@ import {
 } from "lucide-react";
 
 const SETTING_DEFAULTS: Record<string, string> = {
-  luggage_extra_small_price: "150",
-  luggage_small_price: "200",
-  luggage_standard_price: "250",
-  luggage_large_price: "300",
+  luggage_extra_small_price: "50",
+  luggage_small_price: "150",
+  luggage_standard_price: "175",
+  luggage_large_price: "250",
   excess_bag_fee: "100",
   excess_bag_threshold: "3",
   pickup_fee: "0",
@@ -158,10 +158,12 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
       });
-      if (!res.ok) toast.error("Failed to save settings");
-      else toast.success("Settings saved successfully");
-    } catch {
-      toast.error("Failed to save settings");
+      const result = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(result?.error || "Failed to save settings");
+      setSettings({ ...SETTING_DEFAULTS, ...result });
+      toast.success("Settings saved and applied successfully");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -181,7 +183,13 @@ export default function SettingsPage() {
   }
 
   function setFleet(fleet: FleetVehicle[]) {
-    handleChange("fleet_data", JSON.stringify(fleet));
+    const totalVehicles = fleet.reduce((sum, vehicle) => sum + Math.max(0, vehicle.count), 0);
+    setSettings((prev) => ({
+      ...prev,
+      fleet_data: JSON.stringify(fleet),
+      max_concurrent_pickups: String(Math.max(1, totalVehicles)),
+      max_concurrent_deliveries: String(Math.max(1, totalVehicles)),
+    }));
   }
 
   function addVehicle() {
@@ -419,14 +427,8 @@ export default function SettingsPage() {
                   onChange={(e) => handleChange("currency", e.target.value)}
                   options={[
                     { value: "PHP", label: "PHP - Philippine Peso" },
-                    { value: "USD", label: "USD - US Dollar" },
-                    { value: "JPY", label: "JPY - Japanese Yen" },
-                    { value: "KRW", label: "KRW - South Korean Won" },
-                    { value: "CNY", label: "CNY - Chinese Yuan" },
-                    { value: "AUD", label: "AUD - Australian Dollar" },
-                    { value: "SGD", label: "SGD - Singapore Dollar" },
-                    { value: "EUR", label: "EUR - Euro" },
                   ]} className="w-full" />
+                <p className="text-[10px] text-muted-foreground">Prices and PayMongo settlements currently operate in Philippine pesos.</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="min_dp_percentage">Minimum Down Payment (%)</Label>
@@ -564,7 +566,7 @@ export default function SettingsPage() {
                 <Input id="free_cancellation_window_hours" type="number" min="0" className="w-28 font-mono"
                   value={settings.free_cancellation_window_hours || "24"}
                   onChange={(e) => handleChange("free_cancellation_window_hours", e.target.value)} />
-                <p className="text-[10px] text-muted-foreground">Customers can cancel free of charge within this window</p>
+                <p className="text-[10px] text-muted-foreground">Self-service cancellation closes this many hours before pickup</p>
               </div>
               <div className="space-y-1.5">
                 <Label>Store Operating Days</Label>

@@ -5,6 +5,7 @@ import { generateReferenceNumber } from "@/lib/reference";
 import { decimalsToNumbers } from "@/lib/serialize";
 import type { BookingStatus } from "@/generated/prisma/client";
 import { normalizeReference } from "@/lib/utils";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -92,6 +93,18 @@ export async function GET(req: Request) {
     },
   });
 
+  const chatBookingIds = include === "chat" ? bookings.map((booking) => booking.id) : [];
+  const [customerChatStats, unreadChatStats, staffChatStats] = include === "chat" && chatBookingIds.length > 0
+    ? await Promise.all([
+        prisma.chatMessage.groupBy({ by: ["bookingId"], where: { bookingId: { in: chatBookingIds }, isFromCustomer: true }, _count: true, _max: { createdAt: true } }),
+        prisma.chatMessage.groupBy({ by: ["bookingId"], where: { bookingId: { in: chatBookingIds }, isFromCustomer: true, isRead: false }, _count: true }),
+        prisma.chatMessage.groupBy({ by: ["bookingId"], where: { bookingId: { in: chatBookingIds }, isFromCustomer: false }, _count: true, _max: { createdAt: true } }),
+      ])
+    : [[], [], []];
+  const customerChatMap = new Map(customerChatStats.map((row) => [row.bookingId, row]));
+  const unreadChatMap = new Map(unreadChatStats.map((row) => [row.bookingId, row._count]));
+  const staffChatMap = new Map(staffChatStats.map((row) => [row.bookingId, row]));
+
   const mapped = bookings.map((b) => {
     const totalPaid = b.payments
       .filter((p) => p.status === "PAID")
@@ -129,6 +142,11 @@ export async function GET(req: Request) {
       ...(include === "chat" ? {
         _count: b._count,
         lastMessage: b.chatMessages?.[0] || null,
+        unreadCustomerCount: unreadChatMap.get(b.id) || 0,
+        customerMessageCount: customerChatMap.get(b.id)?._count || 0,
+        staffMessageCount: staffChatMap.get(b.id)?._count || 0,
+        lastCustomerMessageAt: customerChatMap.get(b.id)?._max.createdAt || null,
+        lastStaffMessageAt: staffChatMap.get(b.id)?._max.createdAt || null,
       } : {}),
     };
   });
@@ -145,6 +163,10 @@ export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const settings = await getSystemSettings();
+  if (setting(settings, "walk_in_mode_enabled", "false") !== "true") {
+    return NextResponse.json({ error: "Walk-in booking mode is currently disabled in Settings" }, { status: 403 });
   }
 
   try {

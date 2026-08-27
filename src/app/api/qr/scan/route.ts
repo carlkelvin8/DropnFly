@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
 import { logActivity } from "@/lib/activity";
 import type { BookingStatus } from "@/generated/prisma/client";
+import { sendCustomerNotification } from "@/lib/notifications";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 const VALID_STATUS_FLOW = [
   "PENDING",
@@ -348,6 +350,17 @@ export async function POST(req: Request) {
           ? `QR scan: luggage collected (${tagList.length} item(s) tagged) for ${booking.referenceNumber}`
           : `QR scan: status updated to ${status} for ${booking.referenceNumber}`,
     });
+
+    const settings = await getSystemSettings();
+    if (setting(settings, "qr_scan_notification", "true") !== "false") {
+      await sendCustomerNotification({
+        customerId: booking.customerId,
+        type: "qr_scan_update",
+        title: "Luggage Status Updated",
+        message: `Booking ${booking.referenceNumber} is now ${status.replace(/_/g, " ").toLowerCase()}.`,
+        link: `/my-account/bookings/${booking.id}`,
+      });
+    }
 
     if (status === "DELIVERED") {
       const existingPoints = await prisma.pointsTransaction.findFirst({

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { prisma } from "@/lib/prisma";
 import { generateReferenceNumber } from "@/lib/reference";
-import { sendConfirmationEmail } from "@/lib/email";
+import { sendConfirmationEmail, verifyConfirmationEmailService } from "@/lib/email";
 import { notifyBookingCreated, sendCustomerNotification } from "@/lib/notifications";
 import { getSystemSettings, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
@@ -10,6 +10,8 @@ import { isPaymongoConfigured } from "@/lib/paymongo";
 import { grantBookingAccess } from "@/lib/booking-access";
 import type { Prisma, Booking } from "@/generated/prisma/client";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
+
+class StorageCapacityError extends Error {}
 
 export async function POST(req: Request) {
   const limited = await rateLimit(`booking:${requestKey(req)}`, 10, 60 * 60 * 1000);
@@ -25,6 +27,9 @@ export async function POST(req: Request) {
         { error: setting(settings, "maintenance_message", "We are currently undergoing scheduled maintenance. Please check back shortly.") },
         { status: 503 }
       );
+    }
+    if (setting(settings, "online_booking_enabled", "true") === "false") {
+      return NextResponse.json({ error: "Online booking is currently disabled." }, { status: 503 });
     }
 
     const body = await req.json();
@@ -58,6 +63,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "City of Origin is too long" }, { status: 400 });
     }
 
+    try {
+      await verifyConfirmationEmailService();
+    } catch (error) {
+      console.error("Booking email service preflight failed:", error);
+      return NextResponse.json(
+        { error: "Booking is temporarily unavailable because the confirmation email service cannot be reached. Please try again shortly." },
+        { status: 503 }
+      );
+    }
+
     const safeCountry = typeof body.countryOfOrigin === "string" ? body.countryOfOrigin.slice(0, 100) : undefined;
     const safeCity = typeof body.cityOfOrigin === "string" ? body.cityOfOrigin.slice(0, 100) : undefined;
 
@@ -67,6 +82,12 @@ export async function POST(req: Request) {
     }
     if (checkInDate < new Date()) {
       return NextResponse.json({ error: "Pickup date must be in the future" }, { status: 400 });
+    }
+    const operatingDays = setting(settings, "store_operating_days", "0,1,2,3,4,5,6").split(",");
+    const manilaWeekday = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", weekday: "short" }).format(checkInDate);
+    const weekdayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(manilaWeekday);
+    if (!operatingDays.includes(String(weekdayIndex))) {
+      return NextResponse.json({ error: "The store is closed on the selected pickup day." }, { status: 400 });
     }
 
     const maxAdvanceDays = parseInt(setting(settings, "max_advance_booking_days", "0"));
@@ -87,6 +108,11 @@ export async function POST(req: Request) {
       if (checkOutDate <= checkInDate) {
         return NextResponse.json({ error: "Delivery date must be after pickup date" }, { status: 400 });
       }
+      const minStorageDays = parseInt(setting(settings, "min_storage_days", "1"));
+      const storageHours = (checkOutDate.getTime() - checkInDate.getTime()) / 3_600_000;
+      if (minStorageDays > 0 && storageHours < minStorageDays * 24) {
+        return NextResponse.json({ error: `Storage period must be at least ${minStorageDays} day${minStorageDays === 1 ? "" : "s"}` }, { status: 400 });
+      }
       const maxStorageDays = parseInt(setting(settings, "max_storage_days", "0"));
       if (maxStorageDays > 0) {
         const maxCheckOut = new Date(checkInDate);
@@ -98,15 +124,18 @@ export async function POST(req: Request) {
     }
 
     const { luggageLines, services } = parseLuggageDetails(luggageDetails);
+    const storageDays = checkOutDate
+      ? Math.max(1, Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)))
+      : 1;
 
     let discount = 0;
     let promoCodeId: string | null = null;
 
-    if (promoCode) {
+    if (promoCode && setting(settings, "discount_codes_enabled", "true") !== "false") {
       const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.toUpperCase() } });
       if (promo && promo.isActive && promo.usedCount < promo.maxUsage) {
         if (!promo.expiresAt || new Date() <= promo.expiresAt) {
-          const computed = computeBookingPrice({ luggageLines, services, discount: 0, settings: priceSettings });
+          const computed = computeBookingPrice({ luggageLines, services, discount: 0, settings: priceSettings, storageDays });
           const orderAmount = computed.totalPrice;
           if (orderAmount >= Number(promo.minAmount)) {
             if (promo.type === "PERCENTAGE") {
@@ -121,7 +150,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const pricing = computeBookingPrice({ luggageLines, services, discount, settings: priceSettings });
+    const pricing = computeBookingPrice({ luggageLines, services, discount, settings: priceSettings, storageDays });
 
     if (pricing.totalBags <= 0) {
       return NextResponse.json({ error: "Please select at least one bag (Luggage Types)" }, { status: 400 });
@@ -131,6 +160,7 @@ export async function POST(req: Request) {
     if (maxBags > 0 && pricing.totalBags > maxBags) {
       return NextResponse.json({ error: `Maximum of ${maxBags} bags per booking` }, { status: 400 });
     }
+    const maxSimultaneousBags = parseInt(setting(settings, "max_simultaneous_bags", "0"));
 
     const declaredBags = parseInt(numberOfBags);
     if (isNaN(declaredBags) || declaredBags !== pricing.totalBags) {
@@ -211,7 +241,8 @@ export async function POST(req: Request) {
     }
 
     const txPrefix = setting(settings, "tx_prefix", "DROPFLY");
-    const qrSize = parseInt(setting(settings, "qr_image_size", "300"));
+    const qrSize = Math.min(1000, Math.max(100, parseInt(setting(settings, "qr_image_size", "300")) || 300));
+    const qrPrefix = setting(settings, "qr_code_prefix", "DNF");
 
     const minDpPercent = parseInt(setting(settings, "min_dp_percentage", "0"));
     const paymentsEnabled = isPaymongoConfigured() && process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
@@ -239,7 +270,7 @@ export async function POST(req: Request) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         referenceNumber = generateReferenceNumber(txPrefix);
-        qrCode = await QRCode.toDataURL(referenceNumber, {
+        qrCode = await QRCode.toDataURL(`${qrPrefix}-${referenceNumber}`, {
           width: qrSize,
           margin: 2,
         });
@@ -252,6 +283,16 @@ export async function POST(req: Request) {
           const lockKeys = [checkInDate, checkOutDate].filter((d): d is Date => Boolean(d)).map((d) => `slot:${d.toISOString().split('T')[0]}:${d === checkInDate ? "pickup" : "delivery"}`);
           for (const key of lockKeys) {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+          }
+          if (maxSimultaneousBags > 0) {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
+            const activeBagTotal = await tx.booking.aggregate({
+              where: { status: { notIn: ["DELIVERED", "CANCELLED", "NO_SHOW"] } },
+              _sum: { numberOfBags: true },
+            });
+            if (Number(activeBagTotal._sum.numberOfBags || 0) + pricing.totalBags > maxSimultaneousBags) {
+              throw new StorageCapacityError("Storage capacity is full for the requested booking");
+            }
           }
           await slotQuery(checkInDate, "pickup", tx);
           if (checkOutDate) await slotQuery(checkOutDate, "delivery", tx);
@@ -301,8 +342,9 @@ export async function POST(req: Request) {
 
     let confirmationEmailSent = false;
     if (initialStatus === "CONFIRMED") {
-      try {
-        confirmationEmailSent = await sendConfirmationEmail({
+      for (let attempt = 0; attempt < 3 && !confirmationEmailSent; attempt += 1) {
+        try {
+          confirmationEmailSent = await sendConfirmationEmail({
           to: normalizedEmail,
           customerName: name,
           referenceNumber,
@@ -317,9 +359,12 @@ export async function POST(req: Request) {
             hour: "2-digit",
             minute: "2-digit",
           }),
-        });
-      } catch (error) {
-        console.error("Booking confirmation email failed:", error);
+          numberOfBags: booking.numberOfBags,
+          totalPrice: Number(booking.totalPrice),
+          });
+        } catch (error) {
+          console.error(`Booking confirmation email attempt ${attempt + 1} failed:`, error);
+        }
       }
     }
 
@@ -365,6 +410,9 @@ export async function POST(req: Request) {
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof StorageCapacityError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     if (process.env.NODE_ENV === "development") {
       console.error("Booking creation error:", error);
     }

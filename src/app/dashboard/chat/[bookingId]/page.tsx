@@ -16,6 +16,7 @@ interface Message {
   message: string;
   isFromCustomer: boolean;
   createdAt: string;
+  sender?: { name: string; role: string } | null;
 }
 
 interface BookingInfo {
@@ -48,7 +49,7 @@ export default function ChatRoomPage() {
       } catch { if (initial) toast.error("Failed to load chat"); }
     };
     load(true);
-    const poll = window.setInterval(() => load(false), 3000);
+    const poll = window.setInterval(() => load(false), 2000);
     return () => { active = false; window.clearInterval(poll); };
   }, [bookingId]);
 
@@ -129,7 +130,7 @@ export default function ChatRoomPage() {
                   <p className="text-sm">{msg.message}</p>
                   <p className={`mt-1 text-[10px] ${msg.isFromCustomer ? "text-muted-foreground" : "text-primary-foreground/70"}`}>
                     {formatDate(msg.createdAt)}
-                    {msg.isFromCustomer ? " · Customer" : " · You"}
+                    {msg.isFromCustomer ? " · Customer" : ` · ${msg.sender?.name || "Staff"}`}
                   </p>
                 </div>
               </div>

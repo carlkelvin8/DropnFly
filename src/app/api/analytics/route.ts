@@ -79,6 +79,7 @@ export async function GET(req: Request) {
     }),
     prisma.bookingAssignment.groupBy({
       by: ["userId"],
+      where: { createdAt: { gte: since, ...(until ? { lte: until } : {}) } },
       _count: true,
       _max: { createdAt: true },
     }),
@@ -140,7 +141,9 @@ export async function GET(req: Request) {
     revenueByStatusMap[status] = (revenueByStatusMap[status] || 0) + Number(p.amount);
   }
 
-  const hourlyDistribution: Record<number, number> = {};
+  const hourlyDistribution: Record<number, number> = Object.fromEntries(
+    Array.from({ length: 24 }, (_, hour) => [hour, 0])
+  );
   for (const b of bookingsByHour) {
     const hour = b.checkIn.getHours();
     hourlyDistribution[hour] = (hourlyDistribution[hour] || 0) + 1;

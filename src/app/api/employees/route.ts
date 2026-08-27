@@ -5,13 +5,19 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { employeeSchema } from "@/lib/validations";
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
+  const assignableOnly = new URL(req.url).searchParams.get("assignable") === "true";
+  const canAssignBookings = session?.user && ["ADMIN", "STAFF"].includes(session.user.role);
+
+  if (!session?.user || (assignableOnly ? !canAssignBookings : session.user.role !== "ADMIN")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const employees = await prisma.user.findMany({
+    where: assignableOnly
+      ? { role: "EMPLOYEE", isActive: true, isApproved: true }
+      : undefined,
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

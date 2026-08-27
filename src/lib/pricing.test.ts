@@ -24,3 +24,15 @@ test("negative quantities and discounts cannot reduce the price", () => {
   assert.equal(result.totalPrice, 0);
   assert.equal(result.discount, 0);
 });
+
+test("luggage rates are charged per storage day", () => {
+  const result = computeBookingPrice({
+    luggageLines: [{ type: "Standard", qty: 2 }],
+    services: [],
+    discount: 0,
+    storageDays: 3,
+    settings: DEFAULT_PRICE_SETTINGS,
+  });
+  assert.equal(result.subtotal, 2 * 175 * 3);
+  assert.equal(result.totalPrice, 2 * 175 * 3);
+});

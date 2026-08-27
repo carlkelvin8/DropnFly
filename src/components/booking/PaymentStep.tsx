@@ -19,6 +19,8 @@ interface PaymentStepProps {
   luggageQty: Record<string, number>;
   selectedServices: Record<string, boolean>;
   fees: { pickupFee: number; deliveryFee: number; excessBagFee: number; excessBagThreshold: number };
+  luggagePrices: Record<string, number>;
+  discountCodesEnabled: boolean;
   promoCode: string;
   setPromoCode: (v: string) => void;
   promoApplied: string;
@@ -44,7 +46,7 @@ interface PaymentStepProps {
 export function PaymentStep({
   pickupDate, pickupSlot, pickupTerminal, pickupAirline,
   deliveryTerminal, deliveryDate, deliverySlot,
-  luggageQty, selectedServices, fees,
+  luggageQty, selectedServices, fees, luggagePrices, discountCodesEnabled,
   promoCode, setPromoCode, promoApplied, setPromoApplied,
   promoDiscount, setPromoDiscount, promoError, setPromoError,
   paymentPercent, setPaymentPercent, acceptedTerms, setAcceptedTerms,
@@ -54,7 +56,8 @@ export function PaymentStep({
   const [paymentHover, setPaymentHover] = useState<number | null>(null);
 
   const totalBags = calcTotalBags(luggageQty);
-  const subtotal = calcSubtotal(luggageQty);
+  const billableDays = Math.max(1, storageDays);
+  const subtotal = calcSubtotal(luggageQty, luggagePrices) * billableDays;
   const extraFee = totalBags > fees.excessBagThreshold ? (totalBags - fees.excessBagThreshold) * fees.excessBagFee : 0;
   const servicesList = [
     { id: "pick-up-from-customer", name: "Pick-up from Customer", price: fees.pickupFee },
@@ -125,7 +128,7 @@ export function PaymentStep({
             {LUGGAGE_TYPES.filter((lt) => (luggageQty[lt.id] || 0) > 0).map((lt) => (
               <div key={lt.id} className="flex justify-between text-muted-foreground">
                 <span>{lt.name} <span className="text-muted-foreground/60">x{luggageQty[lt.id]}</span></span>
-                <span>&#x20B1;{(lt.price * (luggageQty[lt.id] || 0)).toFixed(2)}</span>
+                <span>&#x20B1;{((luggagePrices[lt.id] ?? lt.price) * (luggageQty[lt.id] || 0) * billableDays).toFixed(2)}</span>
               </div>
             ))}
           </div>
@@ -147,7 +150,7 @@ export function PaymentStep({
 
         <div className="mt-3 border-t border-border pt-3 space-y-1.5">
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Subtotal</span>
+            <span className="text-muted-foreground">Storage subtotal ({billableDays} day{billableDays > 1 ? "s" : ""})</span>
             <span className="font-medium">&#x20B1;{subtotal.toFixed(2)}</span>
           </div>
           {extraFee > 0 && (
@@ -252,7 +255,7 @@ export function PaymentStep({
         </div>
       </div>
 
-      <div className="mt-6">
+      {discountCodesEnabled && <div className="mt-6">
         <div className="mb-4 flex items-center gap-2">
           <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
@@ -280,7 +283,7 @@ export function PaymentStep({
           </div>
         )}
         {promoError && <p className="mt-1 text-sm text-red-500">{promoError}</p>}
-      </div>
+      </div>}
 
       <div className="mt-6 flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-4">
         <Checkbox

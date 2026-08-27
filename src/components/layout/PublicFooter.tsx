@@ -1,6 +1,34 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 export function PublicFooter() {
+  const [footer, setFooter] = useState({
+    phone: "+63 (2) 1234 5678",
+    email: "hello@dropnfly.ph",
+    facebook: "",
+    instagram: "",
+    twitter: "",
+    operating_start: "08:00",
+    operating_end: "17:00",
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/public/settings", { signal: controller.signal, cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => { if (data?.footer && !controller.signal.aborted) setFooter(data.footer); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  const { phone, email, operating_start: start, operating_end: end } = footer;
+  const socialLinks = [
+    ["Facebook", footer.facebook],
+    ["Instagram", footer.instagram],
+    ["X / Twitter", footer.twitter],
+  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
   return (
     <footer className="border-t bg-muted/50">
       <div className="mx-auto max-w-5xl px-4 py-8">
@@ -21,7 +49,10 @@ export function PublicFooter() {
             <p className="mb-2 font-semibold text-foreground/80">Support</p>
             <div className="space-y-1">
               <p className="text-muted-foreground">NAIA Terminals 1–4, Pasay City</p>
-              <p className="text-muted-foreground">hello@dropnfly.ph</p>
+              <a href={`mailto:${email}`} className="block text-muted-foreground hover:text-blue-600">{email}</a>
+              <a href={`tel:${phone.replace(/[^+\d]/g, "")}`} className="block text-muted-foreground hover:text-blue-600">{phone}</a>
+              <p className="text-muted-foreground">Open {start}–{end}</p>
+              {socialLinks.length > 0 && <div className="flex flex-wrap gap-3 pt-1">{socialLinks.map(([label, href]) => <a key={label} href={href} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-blue-600">{label}</a>)}</div>}
             </div>
           </div>
         </div>

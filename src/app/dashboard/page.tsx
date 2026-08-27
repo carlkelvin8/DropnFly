@@ -247,7 +247,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-3">
         {/* Calendar */}
         <Card className="self-start">
           <CardHeader>
@@ -346,9 +346,8 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="space-y-6">
-          {/* Storage Duration Breakdown */}
-          <Card>
+        {/* Storage Duration Breakdown */}
+        <Card className="self-start">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
                 <Clock className="h-4 w-4" />
@@ -381,10 +380,10 @@ export default function DashboardPage() {
                 <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
               )}
             </CardContent>
-          </Card>
+        </Card>
 
-          {/* Bag Size Distribution */}
-          <Card>
+        {/* Bag Size Distribution */}
+        <Card className="self-start md:col-span-2 xl:col-span-1">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
                 <Package className="h-4 w-4" />
@@ -435,8 +434,7 @@ export default function DashboardPage() {
                 <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
               )}
             </CardContent>
-          </Card>
-        </div>
+        </Card>
       </div>
     </div>
   );

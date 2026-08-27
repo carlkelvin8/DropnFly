@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 export async function POST(req: Request) {
   const key = requestKey(req);
@@ -9,6 +10,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429, headers: { "Retry-After": String(retryAfter) } });
   }
   try {
+    const settings = await getSystemSettings();
+    if (setting(settings, "discount_codes_enabled", "true") === "false") {
+      return NextResponse.json({ error: "Discount codes are currently disabled" }, { status: 403 });
+    }
     const { code, amount } = await req.json();
 
     if (!code) {

@@ -15,6 +15,8 @@ import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { LocationPlayback } from "@/components/tracking/LocationPlayback";
 import { LocationUpdater } from "@/components/tracking/LocationUpdater";
+import { Pagination } from "@/components/ui/pagination";
+import { imageFileToDataUrl } from "@/lib/client-image";
 
 interface Employee {
   id: string;
@@ -76,6 +78,7 @@ export default function LogisticsPage() {
   const [now, setNow] = useState(() => Date.now());
   const [taskSearch, setTaskSearch] = useState("");
   const [taskTypeFilter, setTaskTypeFilter] = useState("all");
+  const [taskPage, setTaskPage] = useState(1);
   const [locationStatus, setLocationStatus] = useState<"requesting" | "active" | "denied" | "error" | "idle">("idle");
   const handleLocationStatus = useCallback((status: "requesting" | "active" | "denied" | "error") => setLocationStatus(status), []);
 
@@ -85,7 +88,7 @@ export default function LogisticsPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/employees")
+    fetch("/api/riders?includeLocation=true", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
         const emps = Array.isArray(data) ? data : data.employees || [];
@@ -154,6 +157,10 @@ export default function LogisticsPage() {
     const matchesSearch = !query || `${task.referenceNumber} ${task.customer.name} ${task.rider?.name || ""}`.toLowerCase().includes(query);
     return matchesSearch && (taskTypeFilter === "all" || task.taskType === taskTypeFilter);
   });
+  const taskPageSize = 5;
+  const taskTotalPages = Math.max(1, Math.ceil(filteredTasks.length / taskPageSize));
+  const currentTaskPage = Math.min(taskPage, taskTotalPages);
+  const paginatedTasks = filteredTasks.slice((currentTaskPage - 1) * taskPageSize, currentTaskPage * taskPageSize);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -251,8 +258,8 @@ export default function LogisticsPage() {
         </div>
       ) : <>
         <div className="grid gap-2 sm:grid-cols-[1fr_180px]">
-          <input value={taskSearch} onChange={(e) => setTaskSearch(e.target.value)} placeholder="Filter by reference, customer, or rider" className="h-10 rounded-lg border bg-background px-3 text-sm" />
-          <select value={taskTypeFilter} onChange={(e) => setTaskTypeFilter(e.target.value)} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="all">All task types</option><option value="pickup">Pickup</option><option value="delivery">Delivery</option></select>
+          <input value={taskSearch} onChange={(e) => { setTaskSearch(e.target.value); setTaskPage(1); }} placeholder="Filter by reference, customer, or rider" className="h-10 rounded-lg border bg-background px-3 text-sm" />
+          <select value={taskTypeFilter} onChange={(e) => { setTaskTypeFilter(e.target.value); setTaskPage(1); }} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="all">All task types</option><option value="pickup">Pickup</option><option value="delivery">Delivery</option></select>
         </div>
       {filteredTasks.length === 0 ? (
         <Card>
@@ -263,7 +270,7 @@ export default function LogisticsPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {filteredTasks.map((task) => (
+          {paginatedTasks.map((task) => (
             <Card key={task.id} className={`border-l-4 ${task.taskType === "delivery" ? "border-l-orange-500" : "border-l-blue-500"}`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
@@ -322,9 +329,9 @@ export default function LogisticsPage() {
                                 </Button>
                               )}
                               <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
-                                onChange={(e) => {
+                                onChange={async (e) => {
                                   const f = e.target.files?.[0];
-                                  if (f) { const r = new FileReader(); r.onloadend = () => setPhotoProof(r.result as string); r.readAsDataURL(f); }
+                                  if (f) { try { setPhotoProof(await imageFileToDataUrl(f)); } catch { toast.error("Could not read photo"); } }
                                 }} className="hidden" />
                               <input
                                 value={actionNote} onChange={(e) => setActionNote(e.target.value)}
@@ -377,6 +384,7 @@ export default function LogisticsPage() {
               </CardContent>
             </Card>
           ))}
+          <Pagination currentPage={currentTaskPage} totalPages={taskTotalPages} onPageChange={setTaskPage} />
         </div>
       )}</>}
     </div>
