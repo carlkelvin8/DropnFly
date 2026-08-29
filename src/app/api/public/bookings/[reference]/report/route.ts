@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
 import { canAccessBooking } from "@/lib/booking-access";
+import { sendIncidentEmail } from "@/lib/email";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ reference: string }> }) {
   const { reference } = await params;
@@ -58,9 +59,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ referen
           },
         },
       },
+      include: {
+        customer: { select: { name: true, email: true } },
+      },
     });
 
-    return NextResponse.json({ success: true, incidentId: incident.id }, { status: 201 });
+    // Send confirmation email with Report Details and Tracking Number (async, don't block response on SMTP failure)
+    if (incident.customer?.email) {
+      void sendIncidentEmail({
+        to: incident.customer.email,
+        customerName: incident.customer.name,
+        referenceNumber: booking.referenceNumber,
+        incidentType: type,
+        status: "PENDING",
+        incidentId: incident.id,
+        description: description.trim(),
+      }).catch((e) => {
+        if (process.env.NODE_ENV === "development") console.warn("[EMAIL] incident submission email failed:", e);
+      });
+    }
+
+    return NextResponse.json({ success: true, incidentId: incident.id, trackingNumber: `INC-${incident.id.slice(0, 8).toUpperCase()}` }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Failed to submit report" }, { status: 500 });
   }

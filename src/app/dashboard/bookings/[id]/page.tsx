@@ -25,7 +25,7 @@ import { formatDate, formatCurrency } from "@/lib/utils";
 import {
   ArrowLeft, Mail, Phone, MapPin, Calendar, Package,
   User, Navigation, Printer, Trash2, Tag, MessageCircle, Clock,
-  Briefcase, Plus, Edit3, AlertTriangle, X, CheckCircle, ShieldAlert,
+  Briefcase, Plus, Minus, Edit3, AlertTriangle, X, CheckCircle, ShieldAlert,
   Wrench, ShoppingBag, CreditCard, Receipt, Ban, UserX,
   RotateCcw, History, Flag, Check, XCircle, ChevronDown, Activity, Camera, Loader2,
 } from "lucide-react";
@@ -33,7 +33,8 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { NAIA_TERMINALS } from "@/components/booking/constants";
+import { NAIA_TERMINALS, AIRLINES } from "@/components/booking/constants";
+import { getAirlinesForTerminal } from "@/lib/terminal-airlines";
 
 interface Booking {
   id: string;
@@ -140,6 +141,10 @@ export default function BookingDetailPage() {
   const [addingLuggage, setAddingLuggage] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [editPickupTerminal, setEditPickupTerminal] = useState("");
+  const [editPickupAirline, setEditPickupAirline] = useState("");
+  const [editDropOffTerminal, setEditDropOffTerminal] = useState("");
+  const [editSessionName, setEditSessionName] = useState<string | null>(null);
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
   const [serviceNote, setServiceNote] = useState("");
   const [dangerModal, setDangerModal] = useState<{ action: "no-show" | "cancelled"; mode: "admin" | "report" } | null>(null);
@@ -162,6 +167,10 @@ export default function BookingDetailPage() {
   const [selectedTagNumbers, setSelectedTagNumbers] = useState<Set<string>>(new Set());
   const [requestingTags, setRequestingTags] = useState(false);
   const [flaggableItem, setFlaggableItem] = useState<string | null>(null);
+  const [sectionFilter, setSectionFilter] = useState<string>("all");
+  const [showAddBagModal, setShowAddBagModal] = useState(false);
+  const [addBagType, setAddBagType] = useState<string>("Standard");
+  const [addBagQty, setAddBagQty] = useState<number>(1);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -192,9 +201,51 @@ export default function BookingDetailPage() {
       .then((r) => r.json())
       .then((s) => {
         setUserRole(s?.user?.role || null);
+        setEditSessionName(s?.user?.name || null);
       })
       .catch(() => setUserRole(null));
   }, []);
+
+  useEffect(() => {
+    if (!booking || showEditModal) return;
+    // pre-fill edit fields from booking when not editing
+    const pick = booking.pickupLocation || "";
+    if (pick.includes(" - ")) {
+      const [t, a] = pick.split(" - ");
+      setEditPickupTerminal(t.trim());
+      setEditPickupAirline(a.trim());
+    } else {
+      // try to detect terminal substring
+      const found = NAIA_TERMINALS.find((tt) => pick.includes(tt.value));
+      setEditPickupTerminal(found ? found.value : pick);
+      setEditPickupAirline("");
+    }
+    setEditDropOffTerminal(booking.dropOffLocation || "");
+  }, [booking, showEditModal]);
+
+  useEffect(() => {
+    if (showEditModal && booking) {
+      const pick = booking.pickupLocation || "";
+      if (pick.includes(" - ")) {
+        const [t, a] = pick.split(" - ");
+        setEditPickupTerminal(t.trim());
+        setEditPickupAirline(a.trim());
+      } else {
+        const found = NAIA_TERMINALS.find((tt) => pick.includes(tt.value));
+        setEditPickupTerminal(found ? found.value : pick);
+        setEditPickupAirline("");
+      }
+      setEditDropOffTerminal(booking.dropOffLocation || "");
+    }
+  }, [showEditModal, booking]);
+
+  useEffect(() => {
+    if (!booking) return;
+    fetch(`/api/bookings/${booking.id}/log`)
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setLogs(d); })
+      .catch(() => {});
+  }, [booking?.id]);
 
   const totalPaid = (booking?.payments || [])
     .filter((p) => p.status === "PAID")
@@ -234,18 +285,47 @@ export default function BookingDetailPage() {
   }
 
   async function handleAddLuggage() {
+    // open modal instead of direct add
+    setShowAddBagModal(true);
+  }
+
+  async function confirmAddBaggage() {
     if (!booking) return;
+    if (!addBagType) return toast.error("Select baggage type");
+    if (addBagQty < 1) return toast.error("Quantity must be at least 1");
     setAddingLuggage(true);
     try {
+      const actor = editSessionName || "staff";
+      // Build updated luggageDetails JSON with the added type
+      let parsed: Array<Record<string, unknown>> = [];
+      try {
+        parsed = booking.luggageDetails ? JSON.parse(booking.luggageDetails) : [];
+        if (!Array.isArray(parsed)) parsed = [];
+      } catch { parsed = []; }
+      // Find existing entry for addBagType
+      const { LUGGAGE_TYPES: LT } = await import("@/lib/luggage-types");
+      const typeMeta = LT.find((t: { name: string }) => t.name === addBagType);
+      const price = typeMeta ? typeMeta.price : 0;
+      const existing = parsed.find((e) => e.type === addBagType) as Record<string, unknown> | undefined;
+      if (existing && typeof existing.qty === "number") {
+        existing.qty = (existing.qty as number) + addBagQty;
+      } else {
+        parsed.push({ type: addBagType, qty: addBagQty, price });
+      }
+      const newLuggageDetails = JSON.stringify(parsed);
+      const changeNote = `Additional ${addBagQty}pc ${addBagType} baggage has been added (added by: ${actor})`;
       const res = await fetch(`/api/bookings/${params.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numberOfBags: booking.numberOfBags + 1, changeNote: "Added one baggage slot; total price recalculated automatically" }),
+        body: JSON.stringify({ numberOfBags: booking.numberOfBags + addBagQty, luggageDetails: newLuggageDetails, changeNote }),
       });
       const result = await res.json().catch(() => null);
       if (!res.ok) throw new Error(result?.error || "Failed to add baggage");
       reloadBooking();
-      toast.success("Additional baggage added. Select an available physical tag below.");
+      // refresh logs so Added by shows in card
+      fetch(`/api/bookings/${params.id}/log`).then((r) => r.json()).then(setLogs).catch(() => {});
+      toast.success(`${changeNote}. Select an available physical tag below.`);
+      setShowAddBagModal(false);
     } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to add luggage"); }
     setAddingLuggage(false);
   }
@@ -465,7 +545,18 @@ export default function BookingDetailPage() {
     for (const [key, val] of formData.entries()) {
       if (key === "checkIn" || key === "checkOut") body[key] = val;
       else if (key === "numberOfBags") body[key] = parseInt(val as string);
+      else if (key === "pickupTerminal" || key === "pickupAirline" || key === "dropOffTerminal") continue;
       else body[key] = val;
+    }
+    // Combine terminal + airline for pickup (airline availability per terminal)
+    const pickupLocation = editPickupAirline ? `${editPickupTerminal} - ${editPickupAirline}` : editPickupTerminal;
+    const dropOffLocation = editDropOffTerminal || booking?.dropOffLocation || "";
+    if (pickupLocation) body.pickupLocation = pickupLocation;
+    if (dropOffLocation) body.dropOffLocation = dropOffLocation;
+    // Add change note with actor
+    if (!body.changeNote) {
+      const actor = editSessionName || "staff";
+      body.changeNote = `Booking edited (by: ${actor}) - terminal/airline updated`;
     }
     try {
       const res = await fetch(`/api/bookings/${params.id}`, {
@@ -625,6 +716,8 @@ export default function BookingDetailPage() {
     setFlaggableItem(null);
   }
 
+  const shouldShow = (type: string) => sectionFilter === "all" || sectionFilter === type;
+
   if (!booking) {
     return (
       <div className="mx-auto max-w-5xl space-y-6">
@@ -669,6 +762,28 @@ export default function BookingDetailPage() {
         </span>
       </div>
 
+      {/* Filter Type for action containers - Display All vs Specific Type */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Filter Type</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">— show only the section you need, avoids scrolling through long content</span>
+        </div>
+        <select
+          value={sectionFilter}
+          onChange={(e) => setSectionFilter(e.target.value)}
+          className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm min-w-[180px]"
+        >
+          <option value="all">Display All</option>
+          <option value="customer">Customer & Pickup</option>
+          <option value="booking">Booking & Payment</option>
+          <option value="actions">Actions & Assignments</option>
+          <option value="services">Additional Services</option>
+          <option value="luggage">Luggage & Tags</option>
+          <option value="history">History & Logs</option>
+        </select>
+      </div>
+
+      {shouldShow("customer") && (
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="border-t-2 border-t-blue-500">
           <CardHeader>
@@ -714,7 +829,9 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
       </div>
+      )}
 
+      {shouldShow("booking") && (
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="border-t-2 border-t-emerald-500">
           <CardHeader>
@@ -944,7 +1061,9 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
       </div>
+      )}
 
+      {shouldShow("actions") && (
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="self-start border-t-2 border-t-gray-500">
           <CardHeader>
@@ -1065,7 +1184,9 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
       </div>
+      )}
 
+      {shouldShow("services") && (
       <Card className="border-t-2 border-t-purple-500">
         <CardHeader>
           <div className="flex items-center gap-2">
@@ -1144,7 +1265,10 @@ export default function BookingDetailPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
+      {shouldShow("luggage") && (
+      <>
       {booking.luggageDetails && (
         <Card>
           <CardHeader><CardTitle>Luggage Details</CardTitle></CardHeader>
@@ -1251,7 +1375,33 @@ export default function BookingDetailPage() {
         </CardHeader>
         <CardContent>
           {luggageItems.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No luggage items registered</p>
+            (() => {
+              const addLogs = logs.filter((l) => l.details && l.details.includes("Additional") && l.details.toLowerCase().includes("baggage"));
+              if (addLogs.length > 0) {
+                return (
+                  <div className="space-y-2">
+                    {addLogs.map((log) => (
+                      <div key={log.id} className="flex items-start gap-3 rounded-lg border bg-amber-50 px-3 py-2.5">
+                        <div className="rounded-lg bg-amber-100 p-2">
+                          <ShoppingBag className="h-4 w-4 text-amber-600" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-amber-800">{log.details}</p>
+                          <p className="text-[11px] text-muted-foreground">{formatDate(log.createdAt)} {log.user?.name ? `· by ${log.user.name}` : ""}</p>
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-[11px] text-muted-foreground">Select a physical tag in the Baggage Tags section below to link it.</p>
+                  </div>
+                );
+              }
+              return (
+                <div className="rounded-lg border border-dashed p-4 text-center">
+                  <p className="text-sm text-muted-foreground">No luggage items registered</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Click <span className="font-medium">Add Additional Bag</span>, choose the baggage type (Extra Small/Small/Standard/Large) and quantity — it will show here as “Additional 1pc XL size Baggage has been added (added by: {editSessionName || "staff"})”.</p>
+                </div>
+              );
+            })()
           ) : (
             <div className="divide-y">
               {luggageItems.map((item) => (
@@ -1281,6 +1431,13 @@ export default function BookingDetailPage() {
                         <option value="CANCELLED">Cancelled</option>
                       </select>
                   </div>
+                </div>
+              ))}
+              {/* Also show any additional baggage that hasn't been assigned a physical tag yet */}
+              {logs.filter((l) => l.details && l.details.includes("Additional") && l.details.toLowerCase().includes("baggage") && !luggageItems.some((li) => l.details!.includes(li.tagNumber))).slice(0,3).map((log) => (
+                <div key={`add-pending-${log.id}`} className="flex items-start gap-3 py-2.5 bg-amber-50/50 rounded-lg px-3 mt-2">
+                  <ShoppingBag className="h-4 w-4 text-amber-600 mt-0.5" />
+                  <p className="text-sm text-amber-800">{log.details} <span className="text-[11px] text-muted-foreground">· {formatDate(log.createdAt)}</span></p>
                 </div>
               ))}
             </div>
@@ -1466,7 +1623,11 @@ export default function BookingDetailPage() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
+      {shouldShow("history") && (
+      <>
       <Card>
         <CardHeader>
           <button onClick={handleLoadLogs} className="flex w-full items-center justify-between">
@@ -1547,6 +1708,8 @@ export default function BookingDetailPage() {
           </Table>
         </CardContent>
       </Card>
+      </>
+      )}
 
       <ConfirmDialog
         open={deleteConfirm}
@@ -1657,17 +1820,30 @@ export default function BookingDetailPage() {
 
             <form onSubmit={handleEditSave} className="space-y-4">
               <div>
-                <Label>Pickup Location</Label>
-                <select name="pickupLocation" defaultValue={booking.pickupLocation}
+                <Label>Pickup Terminal</Label>
+                <select value={editPickupTerminal} onChange={(e) => { setEditPickupTerminal(e.target.value); setEditPickupAirline(""); }}
                   className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                  <option value="">Select terminal...</option>
                   {NAIA_TERMINALS.map((terminal) => <option key={terminal.value} value={terminal.value}>{terminal.label}</option>)}
                 </select>
               </div>
               <div>
+                <Label>Airline (availability per terminal)</Label>
+                <select value={editPickupAirline} onChange={(e) => setEditPickupAirline(e.target.value)}
+                  disabled={!editPickupTerminal}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm disabled:opacity-50">
+                  <option value="">{editPickupTerminal ? "Select airline..." : "Select terminal first"}</option>
+                  {editPickupTerminal && getAirlinesForTerminal(editPickupTerminal).map((a) => <option key={a} value={a}>{a}</option>)}
+                  {!editPickupTerminal && AIRLINES.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+                {editPickupTerminal && <p className="mt-1 text-[11px] text-muted-foreground">Showing airlines available for {editPickupTerminal}</p>}
+              </div>
+              <div>
                 <Label>Drop-off Location</Label>
-                <select name="dropOffLocation" defaultValue={booking.dropOffLocation}
+                <select value={editDropOffTerminal} onChange={(e) => setEditDropOffTerminal(e.target.value)}
                   className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
                   {NAIA_TERMINALS.map((terminal) => <option key={terminal.value} value={terminal.value}>{terminal.label}</option>)}
+                  <option value="Villamor, Pasay City">Villamor, Pasay City (Dropnfly Counter)</option>
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1707,9 +1883,57 @@ export default function BookingDetailPage() {
 
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="outline" onClick={() => setShowEditModal(false)}>Cancel</Button>
-                <Button type="submit" disabled={editSaving}>{editSaving ? "Saving..." : "Save Changes"}</Button>
+                <Button type="submit" disabled={editSaving || !editPickupTerminal}>{editSaving ? "Saving..." : "Save Changes"}</Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showAddBagModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddBagModal(false)} />
+          <div className="relative z-10 mx-4 w-full max-w-md rounded-xl border bg-background p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                  <ShoppingBag className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">Add Additional Baggage</h3>
+                  <p className="text-xs text-muted-foreground">Select type and qty — will show as “Additional 1pc XL size … (added by: {editSessionName || "staff"})”</p>
+                </div>
+              </div>
+              <button onClick={() => setShowAddBagModal(false)} className="rounded-lg p-1 hover:bg-muted"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <Label>Baggage Type <span className="text-red-500">*</span></Label>
+                <select value={addBagType} onChange={(e) => setAddBagType(e.target.value)} className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                  <option value="Extra Small">Extra Small</option>
+                  <option value="Small">Small</option>
+                  <option value="Standard">Standard</option>
+                  <option value="Large">Large</option>
+                  <option value="XL">XL</option>
+                </select>
+              </div>
+              <div>
+                <Label>Quantity <span className="text-red-500">*</span></Label>
+                <div className="mt-1 flex items-center gap-2">
+                  <Button type="button" variant="outline" size="icon" onClick={() => setAddBagQty((n) => Math.max(1, n - 1))}><Minus className="h-4 w-4" /></Button>
+                  <input type="number" min={1} value={addBagQty} onChange={(e) => setAddBagQty(Math.max(1, parseInt(e.target.value) || 1))} className="flex h-9 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm text-center shadow-sm" />
+                  <Button type="button" variant="outline" size="icon" onClick={() => setAddBagQty((n) => n + 1)}><Plus className="h-4 w-4" /></Button>
+                  <span className="text-xs text-muted-foreground ml-2">Will be logged as {addBagQty}pc {addBagType}</span>
+                </div>
+              </div>
+              <div className="rounded-lg border bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Preview: <strong>Additional {addBagQty}pc {addBagType} size Baggage has been added (added by: {editSessionName || "staff"})</strong>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowAddBagModal(false)}>Cancel</Button>
+                <Button onClick={confirmAddBaggage} disabled={addingLuggage} className="bg-amber-600 hover:bg-amber-700">{addingLuggage ? "Adding..." : "Add Baggage"}</Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

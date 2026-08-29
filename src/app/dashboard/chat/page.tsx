@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { MessageCircle, Search, ArrowRight } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { Pagination } from "@/components/ui/pagination";
 
 interface ChatBooking {
   id: string;
@@ -22,11 +23,14 @@ interface ChatBooking {
   lastStaffMessageAt: string | null;
 }
 
+const ITEMS_PER_PAGE = 8;
+
 export default function ChatListPage() {
   const [bookings, setBookings] = useState<ChatBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     let active = true;
@@ -60,6 +64,19 @@ export default function ChatListPage() {
       b.customer.name.toLowerCase().includes(q)
     );
   });
+
+  // Reset to first page when search/filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+
+  // Clamp page if filtered shrinks (e.g., after polling)
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   if (loading) {
     return (
@@ -99,45 +116,53 @@ export default function ChatListPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((b) => (
-            <Link key={b.id} href={`/dashboard/chat/${b.id}`}>
-              <Card className="transition-shadow hover:shadow-md">
-                <CardContent className="flex items-center justify-between p-4">
-                  <div className="flex items-start gap-4">
-                    <div className="rounded-full bg-primary/10 p-2">
-                      <MessageCircle className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold">{b.customer.name}</p>
-                        <Badge variant="outline" className="text-xs">
-                          {b.referenceNumber}
-                        </Badge>
+        <>
+          <div className="space-y-3 min-h-[520px]">
+            {paginated.map((b) => (
+              <Link key={b.id} href={`/dashboard/chat/${b.id}`}>
+                <Card className="transition-shadow hover:shadow-md">
+                  <CardContent className="flex items-center justify-between p-4">
+                    <div className="flex items-start gap-4">
+                      <div className="rounded-full bg-primary/10 p-2">
+                        <MessageCircle className="h-5 w-5 text-primary" />
                       </div>
-                      {b.lastMessage && (
-                        <p className="mt-1 text-sm text-muted-foreground line-clamp-1">
-                          {b.lastMessage.isFromCustomer ? "Customer: " : "Staff: "}
-                          {b.lastMessage.message}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold">{b.customer.name}</p>
+                          <Badge variant="outline" className="text-xs">
+                            {b.referenceNumber}
+                          </Badge>
+                        </div>
+                        {b.lastMessage && (
+                          <p className="mt-1 text-sm text-muted-foreground line-clamp-1">
+                            {b.lastMessage.isFromCustomer ? "Customer: " : "Staff: "}
+                            {b.lastMessage.message}
+                          </p>
+                        )}
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {b.unreadCustomerCount > 0 && <Badge className="bg-red-500 text-[10px]">{b.unreadCustomerCount} Unread</Badge>}
+                          {b.customerMessageCount > 0 && new Date(b.lastCustomerMessageAt || 0).getTime() > new Date(b.lastStaffMessageAt || 0).getTime() && <Badge variant="secondary" className="text-[10px]">No Response</Badge>}
+                          {b.staffMessageCount > 0 && new Date(b.lastStaffMessageAt || 0).getTime() >= new Date(b.lastCustomerMessageAt || 0).getTime() && <Badge variant="outline" className="text-[10px]">Responded</Badge>}
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {b._count.chatMessages} message{b._count.chatMessages !== 1 ? "s" : ""}
+                          {b.lastMessage && ` · ${formatDate(b.lastMessage.createdAt)}`}
                         </p>
-                      )}
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {b.unreadCustomerCount > 0 && <Badge className="bg-red-500 text-[10px]">{b.unreadCustomerCount} Unread</Badge>}
-                        {b.customerMessageCount > 0 && new Date(b.lastCustomerMessageAt || 0).getTime() > new Date(b.lastStaffMessageAt || 0).getTime() && <Badge variant="secondary" className="text-[10px]">No Response</Badge>}
-                        {b.staffMessageCount > 0 && new Date(b.lastStaffMessageAt || 0).getTime() >= new Date(b.lastCustomerMessageAt || 0).getTime() && <Badge variant="outline" className="text-[10px]">Responded</Badge>}
                       </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {b._count.chatMessages} message{b._count.chatMessages !== 1 ? "s" : ""}
-                        {b.lastMessage && ` · ${formatDate(b.lastMessage.createdAt)}`}
-                      </p>
                     </div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Showing {(page - 1) * ITEMS_PER_PAGE + 1}–{Math.min(page * ITEMS_PER_PAGE, filtered.length)} of {filtered.length}
+            </p>
+            <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+          </div>
+        </>
       )}
     </div>
   );

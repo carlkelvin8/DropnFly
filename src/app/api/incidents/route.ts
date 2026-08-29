@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { notifyNoShowReported } from "@/lib/notifications";
+import { sendIncidentEmail } from "@/lib/email";
 
 const REPORT_TYPES = ["no_show", "cancellation"];
 
@@ -104,6 +105,21 @@ export async function POST(req: Request) {
         incident.booking.referenceNumber,
         session.user.name || "Staff member"
       );
+    }
+
+    // For non-staff reports (customer-visible), send tracking email (async, respects SMTP settings)
+    if (!isStaffReport && incident.customer?.email) {
+      void sendIncidentEmail({
+        to: incident.customer.email,
+        customerName: incident.customer.name,
+        referenceNumber: incident.booking.referenceNumber,
+        incidentType: type,
+        status: "PENDING",
+        incidentId: incident.id,
+        description,
+      }).catch((e) => {
+        if (process.env.NODE_ENV === "development") console.warn("[EMAIL] incident submission email failed:", e);
+      });
     }
 
     return NextResponse.json(incident, { status: 201 });

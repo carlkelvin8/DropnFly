@@ -259,6 +259,8 @@ export async function sendIncidentEmail({  to,
   status,
   resolution,
   siteUrl,
+  incidentId,
+  description,
 }: {
   to: string;
   customerName: string;
@@ -268,10 +270,12 @@ export async function sendIncidentEmail({  to,
   resolution?: string | null;
   incidentId: string;
   siteUrl?: string;
+  description?: string | null;
 }) {
   const baseUrl = siteUrl || process.env.NEXTAUTH_URL || "http://localhost:3000";
   const trackUrl = `${baseUrl}/track/${referenceNumber}`;
   const typeLabel = incidentType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const trackingNumber = `INC-${incidentId.slice(0, 8).toUpperCase()}`;
 
   const config = await getEmailConfig();
   if (!config.enabled) {
@@ -283,9 +287,9 @@ export async function sendIncidentEmail({  to,
 
   let statusSection = "";
   if (status === "PENDING") {
-    statusSection = `<p>Your report has been received and is pending review. Our team will investigate and get back to you.</p>`;
+    statusSection = `<p>Your report has been received and is pending review. Our team will investigate and get back to you shortly.</p>`;
   } else if (status === "INVESTIGATING") {
-    statusSection = `<p>Your report is now being investigated by our team. We will keep you updated on the progress.</p>`;
+    statusSection = `<p>Your report is now being <strong>investigated by our Dropnfly team</strong>. We are actively looking into the matter and will keep you updated on the progress.</p>`;
   } else if (status === "RESOLVED") {
     statusSection = `
       <p>Your report has been <strong style="color: #16a34a;">resolved</strong>.</p>
@@ -298,41 +302,55 @@ export async function sendIncidentEmail({  to,
     statusSection = `<p>This report has been closed. Thank you for your patience.</p>`;
   }
 
+  const detailsBlock = `
+    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0;">
+      <p style="margin: 0; color: #991b1b;"><strong>Incident Tracking Number:</strong> ${trackingNumber}</p>
+      <p style="margin: 8px 0 0; color: #991b1b;"><strong>Booking Reference:</strong> ${sanitizeHtml(referenceNumber)}</p>
+      <p style="margin: 8px 0 0; color: #991b1b;"><strong>Status:</strong> ${status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</p>
+      <p style="margin: 8px 0 0; color: #7f1d1d;"><strong>Type:</strong> ${sanitizeHtml(typeLabel)}</p>
+      ${description ? `<p style="margin: 8px 0 0; color: #7f1d1d;"><strong>Report Details:</strong> ${sanitizeHtml(description)}</p>` : ""}
+    </div>
+  `;
+
+  const subjectPrefix = status === "PENDING" ? "Incident Report Received" : "Incident Report Update";
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #dc2626; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
-        <h2 style="margin: 0;">Incident Report Update</h2>
-        <p style="margin: 8px 0 0; opacity: 0.9;">Reference: <strong>${referenceNumber}</strong></p>
+        <h2 style="margin: 0;">${status === "PENDING" ? "Incident Report Received" : "Incident Report Update"}</h2>
+        <p style="margin: 8px 0 0; opacity: 0.9;">Reference: <strong>${referenceNumber}</strong> &bull; Tracking: <strong>${trackingNumber}</strong></p>
       </div>
       <div style="background: #f8fafc; padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
         <p>Hi <strong>${sanitizeHtml(customerName)}</strong>,</p>
-        <p>There has been an update on your <strong>${typeLabel}</strong> report.</p>
+        <p>${status === "PENDING" ? `Thank you for submitting your <strong>${typeLabel}</strong> report. Here are your report details for tracking:` : `There has been an update on your <strong>${typeLabel}</strong> report from our investigation team.`}</p>
 
-        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0;">
-          <p style="margin: 0; color: #991b1b;">Status: <strong>${status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</strong></p>
-        </div>
+        ${detailsBlock}
 
         ${statusSection}
 
         <p style="text-align: center; margin-top: 24px;">
           <a href="${trackUrl}"
              style="display: inline-block; background: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
-            Track Your Report
+            ${status === "PENDING" ? "Track Your Report" : "View Investigation Update"}
           </a>
         </p>
 
+        <p style="color: #6b7280; font-size: 12px; margin-top: 16px;">You will continue to receive emails from our investigation team as the status changes (Pending → Investigating → Resolved/Closed). Keep your tracking number <strong>${trackingNumber}</strong> safe.</p>
+
         <hr style="border: none; border-top: 1px solid #d1d5db; margin: 24px 0;" />
         <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-          Dropnfly &bull; Reference: ${referenceNumber}
+          Dropnfly &bull; Reference: ${referenceNumber} &bull; Tracking: ${trackingNumber}
         </p>
       </div>
     </div>
   `;
 
+  const subject = status === "PENDING"
+    ? `Incident Report Received - ${referenceNumber} [${trackingNumber}]`
+    : `Incident Report Update - ${referenceNumber} [${trackingNumber}]`;
   await (await getTransporter()).sendMail({
     from: config.from,
     to,
-    subject: `Incident Report Update - ${referenceNumber}`,
+    subject,
     html,
   });
 }

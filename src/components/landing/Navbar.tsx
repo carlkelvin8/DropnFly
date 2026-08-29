@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Luggage, Menu, X, ArrowRight, UserRound } from "lucide-react";
+import { Luggage, Menu, X, ArrowRight } from "lucide-react";
 import { MobileNav } from "./MobileNav";
 
 const navLinks = [
@@ -44,19 +44,7 @@ export function LandingNavbar() {
               {link.label}
             </Link>
           ))}
-          <Link
-            href="/my-account/login"
-            className="ml-2 inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <UserRound className="h-4 w-4" />
-            Passenger Login
-          </Link>
-          <Link
-            href="/my-account/register"
-            className="inline-flex h-9 items-center rounded-lg border px-3 text-sm font-medium transition-colors hover:bg-accent"
-          >
-            Create Account
-          </Link>
+
           <Link
             href="/book"
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-orange-500 px-5 text-sm font-medium text-white shadow-lg shadow-orange-500/25 transition-all hover:bg-orange-600 hover:shadow-xl hover:shadow-orange-500/30"

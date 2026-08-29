@@ -254,31 +254,42 @@ export default function Home() {
           </div>
         </section>
 
-        {/* CTA Section */}
+        {/* CTA Section — same background as "Travel Light. We Carry the Load." hero */}
         <section className="relative overflow-hidden py-20 md:py-28">
-          <div className="absolute inset-0 bg-orange-500" />
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE4YzEuNjU3IDAgMy0xLjM0MyAzLTNzLTEuMzQzLTMtMy0zLTMgMS4zNDMtMyAzIDEuMzQzIDMgMyAzek0yNyAyNWMxLjY1NyAwIDMtMS4zNDMgMy0zcy0xLjM0My0zLTMtMy0zIDEuMzQzLTMgMyAxLjM0MyAzIDMgM3oiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-30" />
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute -left-40 -top-40 h-[500px] w-[500px] rounded-full bg-blue-500/[0.05] blur-[120px]" />
+            <div className="absolute -right-40 -top-20 h-[400px] w-[400px] rounded-full bg-violet-500/[0.05] blur-[120px]" />
+            <div className="absolute -bottom-40 left-1/3 h-[350px] w-[350px] rounded-full bg-cyan-500/[0.05] blur-[120px]" />
+            <svg className="absolute inset-0 h-full w-full opacity-[0.03]" aria-hidden="true">
+              <defs>
+                <pattern id="cta-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" strokeWidth="1" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#cta-grid)" />
+            </svg>
+          </div>
 
           <div className="container relative mx-auto px-4 text-center">
             <FadeIn>
-              <h2 className="text-3xl font-bold tracking-tight text-white md:text-5xl">
+              <h2 className="text-3xl font-bold tracking-tight md:text-5xl">
                 Ready to Travel Hands-Free?
               </h2>
-              <p className="mx-auto mt-4 max-w-xl text-blue-100">
+              <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
                 Book your first pickup today. No registration, no hassle — just
                 show up and go.
               </p>
               <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
                 <Link
                   href="/book"
-                  className="inline-flex h-12 items-center gap-2 rounded-xl bg-white px-8 text-sm font-semibold text-blue-700 shadow-xl transition-all hover:shadow-2xl hover:brightness-105"
+                  className="group inline-flex h-12 items-center gap-2 rounded-xl bg-orange-500 px-8 text-sm font-semibold text-white shadow-xl shadow-orange-500/30 transition-all hover:bg-orange-600 hover:shadow-2xl hover:shadow-orange-500/40"
                 >
                   Get Started Free
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Link>
                 <Link
                   href="/track"
-                  className="inline-flex h-12 items-center gap-2 rounded-xl border border-white/30 px-8 text-sm font-semibold text-white transition-all hover:bg-white/10"
+                  className="inline-flex h-12 items-center gap-2 rounded-xl border px-8 text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:shadow-md"
                 >
                   Track Existing Booking
                 </Link>

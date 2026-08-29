@@ -247,16 +247,16 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3 items-stretch">
         {/* Calendar */}
-        <Card className="self-start">
+        <Card className="flex flex-col h-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <CalendarDays className="h-4 w-4" />
               Calendar
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-1 flex-col">
             <div className="flex items-center justify-between mb-4">
               <button onClick={prevMonth} aria-label="Previous month" className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors">
                 <ChevronLeft className="h-4 w-4" />
@@ -273,7 +273,7 @@ export default function DashboardPage() {
                 <div key={d} className="text-center text-[10px] font-medium text-muted-foreground py-1">{d}</div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid flex-1 content-start grid-cols-7 gap-1 auto-rows-fr">
               {calendarCells.map((day, i) => {
                 if (day === null) return <div key={`empty-${i}`} />;
                 const key = dateKey(day);
@@ -282,7 +282,7 @@ export default function DashboardPage() {
                   <button
                     key={key}
                     onClick={() => openDay(key)}
-                    className={`relative flex h-9 w-full items-center justify-center rounded-lg text-xs font-medium transition-all ${
+                    className={`relative flex min-h-9 w-full items-center justify-center rounded-lg text-xs font-medium transition-all ${
                       isSelected
                         ? "bg-orange-500 text-white shadow-md"
                         : "text-muted-foreground hover:bg-muted"
@@ -300,7 +300,7 @@ export default function DashboardPage() {
                 );
               })}
             </div>
-            <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground">
+            <div className="mt-auto pt-3 flex items-center gap-4 text-[10px] text-muted-foreground">
               <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-orange-500" /> Has schedule</span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-2 w-2 rounded ring-2 ring-blue-400" /> Today
@@ -347,31 +347,33 @@ export default function DashboardPage() {
         )}
 
         {/* Storage Duration Breakdown */}
-        <Card className="self-start">
+        <Card className="flex flex-col h-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
                 <Clock className="h-4 w-4" />
                 Storage Duration Breakdown
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-1 flex-col">
               {durationData.length > 0 ? (
                 <>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={durationData}>
-                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                      <YAxis allowDecimals={false} />
-                      <Tooltip
-                        formatter={(value, _name, props) => [
-                          `${value} booking${Number(value) !== 1 ? "s" : ""}`,
-                          `Duration: ${props?.payload ? durationLabelMap[props.payload.name] || props.payload.name : ""}`,
-                        ]}
-                        labelFormatter={(label) => `Storage: ${durationLabelMap[label as string] || label}`}
-                        contentStyle={{ borderRadius: "8px", border: "1px solid var(--border)", fontSize: "12px" }}
-                      />
-                      <Bar dataKey="value" fill="#ea7d3d" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div className="flex-1 min-h-[200px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={durationData}>
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                        <YAxis allowDecimals={false} />
+                        <Tooltip
+                          formatter={(value, _name, props) => [
+                            `${value} booking${Number(value) !== 1 ? "s" : ""}`,
+                            `Duration: ${props?.payload ? durationLabelMap[props.payload.name] || props.payload.name : ""}`,
+                          ]}
+                          labelFormatter={(label) => `Storage: ${durationLabelMap[label as string] || label}`}
+                          contentStyle={{ borderRadius: "8px", border: "1px solid var(--border)", fontSize: "12px" }}
+                        />
+                        <Bar dataKey="value" fill="#ea7d3d" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                   <p className="mt-2 text-[11px] text-muted-foreground text-center">
                     Distribution of luggage storage durations across all delivered bookings.
                   </p>
@@ -383,17 +385,18 @@ export default function DashboardPage() {
         </Card>
 
         {/* Bag Size Distribution */}
-        <Card className="self-start md:col-span-2 xl:col-span-1">
+        <Card className="flex flex-col h-full md:col-span-2 xl:col-span-1">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
                 <Package className="h-4 w-4" />
                 Bag Size Distribution
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-1 flex-col">
               {bagData.length > 0 ? (
                 <>
-                  <ResponsiveContainer width="100%" height={Math.max(140, bagData.length * 40)}>
+                  <div className="flex-1" style={{ minHeight: Math.max(200, bagData.length * 40) }}>
+                    <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={bagData} layout="vertical" margin={{ left: 10, right: 30 }}>
                       <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
                       <YAxis
@@ -425,7 +428,8 @@ export default function DashboardPage() {
                         />
                       </Bar>
                     </BarChart>
-                  </ResponsiveContainer>
+                    </ResponsiveContainer>
+                  </div>
                   <p className="mt-2 text-[11px] text-muted-foreground text-center">
                     Breakdown of luggage by size type across all active bookings.
                   </p>

@@ -253,6 +253,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       (resolution !== undefined && resolution !== existing.resolution);
     if (customerVisibleChange) {
       try {
+        // Include tracking details and ensure investigation email is sent (SMTP-gated inside helper)
+        const fullIncident = await prisma.incidentReport.findUnique({ where: { id }, select: { description: true } });
         await sendIncidentEmail({
           to: incident.customer.email,
           customerName: incident.customer.name,
@@ -261,6 +263,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           status: status || incident.status,
           resolution: resolution || incident.resolution,
           incidentId: id,
+          description: fullIncident?.description || null,
         });
       } catch (emailErr) {
         if (process.env.NODE_ENV === "development") {

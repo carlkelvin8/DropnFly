@@ -36,18 +36,7 @@ export function PublicHeader({ showBackToHome }: PublicHeaderProps) {
           >
             Track
           </Link>
-          <Link
-            href="/my-account/login"
-            className="text-sm font-medium text-muted-foreground transition-colors hover:text-blue-600"
-          >
-            Passenger Login
-          </Link>
-          <Link
-            href="/my-account/register"
-            className="hidden rounded-lg border px-3 py-2 text-sm font-medium transition-colors hover:bg-accent sm:inline-flex"
-          >
-            Create Account
-          </Link>
+
 
         </nav>
       </div>

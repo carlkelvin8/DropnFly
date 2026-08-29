@@ -27,6 +27,8 @@ import {
   Clock,
 } from "lucide-react";
 import { LUGGAGE_TYPES, EXTRA_BAG_FEE, EXTRA_BAG_THRESHOLD, calcSubtotal, calcTotalBags, calcExtraFee, buildLuggageDetails } from "@/lib/luggage-types";
+import { NAIA_TERMINALS, FALLBACK_COUNTRIES, FALLBACK_CITIES } from "@/components/booking/constants";
+import { getAirlinesForTerminal } from "@/lib/terminal-airlines";
 
 interface Customer {
   id: string;
@@ -35,56 +37,29 @@ interface Customer {
   phone: string;
 }
 
-const NAIA_TERMINALS = [
-  { value: "NAIA Terminal 1", label: "Terminal 1" },
-  { value: "NAIA Terminal 2", label: "Terminal 2" },
-  { value: "NAIA Terminal 3", label: "Terminal 3" },
-  { value: "NAIA Terminal 4", label: "Terminal 4" },
-];
-
-const AIRLINES = [
-  "Philippine Airlines", "Cebu Pacific", "AirAsia Philippines", "Emirates",
-  "Qatar Airways", "Singapore Airlines", "Cathay Pacific", "Korean Air",
-  "Japan Airlines", "Turkish Airlines", "Etihad Airways", "United Airlines",
-];
-
 const ADDITIONAL_SERVICES = [
   { id: "pick-up-from-customer", name: "Pick-up from Customer", price: 180 },
   { id: "deliver-to-customer", name: "Deliver to Customer", price: 180 },
 ] as const;
 
-const COUNTRY_FALLBACK = [
-  "Philippines", "United States", "Japan", "South Korea", "China",
-  "Singapore", "Australia", "United Kingdom", "UAE", "Germany",
-  "France", "Canada", "Thailand", "Vietnam", "Indonesia",
-];
+const COUNTRY_FALLBACK = FALLBACK_COUNTRIES;
 
-const COUNTRY_CITY_FALLBACK: Record<string, string[]> = {
-  "Philippines": ["Manila", "Cebu", "Davao", "Makati", "Pasay", "Quezon City"],
-  "United States": ["New York", "Los Angeles", "San Francisco", "Chicago"],
-  "Japan": ["Tokyo", "Osaka", "Nagoya"],
-  "South Korea": ["Seoul", "Busan"],
-  "United Kingdom": ["London", "Manchester"],
-  "Singapore": ["Singapore"],
-};
+const COUNTRY_CITY_FALLBACK: Record<string, string[]> = FALLBACK_CITIES;
 
 export default function NewBookingPage() {
   const router = useRouter();
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
 
-  // Customer fields
-  const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [isNewCustomer, setIsNewCustomer] = useState(false);
+  // Customer fields - walk-in always creates a new customer
   const [custName, setCustName] = useState("");
   const [custEmail, setCustEmail] = useState("");
   const [custPhone, setCustPhone] = useState("");
   const [custCountry, setCustCountry] = useState("");
   const [custCity, setCustCity] = useState("");
-  const [countries, setCountries] = useState<string[]>([]);
+  const [countries, setCountries] = useState<string[]>(COUNTRY_FALLBACK);
   const [cities, setCities] = useState<string[]>([]);
-  const [countriesLoading, setCountriesLoading] = useState(true);
+  const [countriesLoading, setCountriesLoading] = useState(false);
   const [citiesLoading, setCitiesLoading] = useState(false);
 
   // Terminal/Airline
@@ -123,10 +98,6 @@ export default function NewBookingPage() {
       : 0;
 
   useEffect(() => {
-    fetch("/api/customers")
-      .then((r) => r.ok ? r.json() : [])
-      .then((data) => setCustomers(Array.isArray(data) ? data : []))
-      .catch(() => {});
     fetch("/api/locations")
       .then((r) => r.ok ? r.json() : [])
       .then((data) => {
@@ -134,16 +105,16 @@ export default function NewBookingPage() {
         if (locs.length > 0) setLocationId(locs[0].id);
       })
       .catch(() => {});
+    // Attempt to refresh full country list from API, fallback is already comprehensive
+    setCountriesLoading(true);
     fetch("https://restcountries.com/v3.1/all?fields=name,cca2")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setCountries(data.map((c: { name: { common: string } }) => c.name.common).sort((a: string, b: string) => a.localeCompare(b)));
-        } else {
-          setCountries(COUNTRY_FALLBACK);
         }
       })
-      .catch(() => setCountries(COUNTRY_FALLBACK))
+      .catch(() => {})
       .finally(() => setCountriesLoading(false));
   }, []);
 
@@ -166,28 +137,6 @@ export default function NewBookingPage() {
       .finally(() => setCitiesLoading(false));
   }, [custCountry]);
 
-  function handleCustomerSelect(e: React.ChangeEvent<HTMLSelectElement>) {
-    const val = e.target.value;
-    if (val === "__new__") {
-      setIsNewCustomer(true);
-      setSelectedCustomerId("");
-      setCustName("");
-      setCustEmail("");
-      setCustPhone("");
-      setCustCountry("");
-      setCustCity("");
-    } else {
-      setIsNewCustomer(false);
-      setSelectedCustomerId(val);
-      const cust = customers.find((c) => c.id === val);
-      if (cust) {
-        setCustName(cust.name);
-        setCustEmail(cust.email);
-        setCustPhone(cust.phone);
-      }
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (step !== 3) {
@@ -197,55 +146,37 @@ export default function NewBookingPage() {
     setLoading(true);
 
     try {
-      let customerId = selectedCustomerId;
-
-      // Create new customer if needed
-      if (isNewCustomer && custName && custEmail && custPhone) {
-        const custRes = await fetch("/api/customers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: custName,
-            email: custEmail,
-            phone: custPhone,
-            countryOfOrigin: custCountry || undefined,
-            cityOfOrigin: custCity || undefined,
-          }),
-        });
-        if (!custRes.ok) {
-          const err = await custRes.json();
-          toast.error(err.error || "Failed to create customer");
-          setLoading(false);
-          return;
-        }
-        const newCust = await custRes.json();
-        customerId = newCust.id;
-      }
-
-      if (!customerId) {
-        toast.error("Please select or create a customer");
+      // Walk-in always creates a new customer record
+      if (!custName.trim() || !custEmail.trim() || !custPhone.trim()) {
+        toast.error("Please fill in customer name, email and phone");
         setLoading(false);
         return;
       }
-
-      // If an existing customer was selected but their details were edited, keep them in sync
-      const selected = customers.find((c) => c.id === customerId);
-      if (selected && (custName !== selected.name || custEmail !== selected.email || custPhone !== selected.phone)) {
-        const updateRes = await fetch(`/api/customers/${customerId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: custName,
-            email: custEmail,
-            phone: custPhone,
-          }),
-        });
-        if (!updateRes.ok) {
-          toast.error("Failed to update customer details");
-          setLoading(false);
-          return;
-        }
+      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(custEmail.trim());
+      if (!emailValid) {
+        toast.error("Please enter a valid email address");
+        setLoading(false);
+        return;
       }
+      const custRes = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: custName.trim(),
+          email: custEmail.trim(),
+          phone: custPhone.trim(),
+          countryOfOrigin: custCountry || undefined,
+          cityOfOrigin: custCity || undefined,
+        }),
+      });
+      if (!custRes.ok) {
+        const err = await custRes.json();
+        toast.error(err.error || "Failed to create customer");
+        setLoading(false);
+        return;
+      }
+      const newCust = await custRes.json();
+      const customerId = newCust.id;
 
       const luggageItems = JSON.parse(buildLuggageDetails(luggageQty));
       const selectedSvcList = ADDITIONAL_SERVICES.filter((s) => selectedServices[s.id]).map((s) => s.name);
@@ -335,23 +266,10 @@ export default function NewBookingPage() {
       <form onSubmit={handleSubmit}>
         <Card className="border-t-2 border-t-blue-500">
           <CardContent className="pt-6">
-            {/* Step 1: Customer */}
+            {/* Step 1: Customer - Walk-in always new */}
             {step === 1 && (
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Select Customer</Label>
-                  <select
-                    value={isNewCustomer ? "__new__" : selectedCustomerId}
-                    onChange={handleCustomerSelect}
-                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
-                  >
-                    <option value="">Choose a customer...</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.email})</option>
-                    ))}
-                    <option value="__new__">+ New Customer (Walk-in)</option>
-                  </select>
-                </div>
+                <p className="text-xs text-muted-foreground rounded-lg border bg-blue-50/50 px-3 py-2">Walk-in booking — a new customer record will be created from the details below.</p>
 
                 <div className="grid gap-4 md:grid-cols-2 rounded-lg border bg-muted/30 p-4">
                   <div className="space-y-2">
@@ -393,14 +311,19 @@ export default function NewBookingPage() {
                   </div>
                 </div>
 
-                {selectedCustomerId && !isNewCustomer && (
-                  <div className="rounded-lg border bg-green-50 p-3 text-sm text-green-700">
-                    <span className="font-medium">{custName}</span> selected — you can update the details above if needed.
-                  </div>
-                )}
-
                 <div className="flex justify-end">
-                  <Button type="button" onClick={() => setStep(2)} disabled={(!selectedCustomerId && !isNewCustomer) || !custName || !custEmail || !custPhone}>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(custEmail.trim());
+                      if (!custName.trim() || !custEmail.trim() || !custPhone.trim() || !emailOk) {
+                        toast.error(!emailOk ? "Please enter a valid email address" : "Please fill in all required customer fields");
+                        return;
+                      }
+                      setStep(2);
+                    }}
+                    disabled={!custName.trim() || !custEmail.trim() || !custPhone.trim()}
+                  >
                     Next: Details
                   </Button>
                 </div>
@@ -413,17 +336,18 @@ export default function NewBookingPage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label className="flex items-center gap-1.5"><Building2 className="h-4 w-4 text-blue-500" /> Pickup Terminal <span className="text-red-500">*</span></Label>
-                    <select value={terminal} onChange={(e) => setTerminal(e.target.value)} required className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm">
+                    <select value={terminal} onChange={(e) => { setTerminal(e.target.value); setAirline(""); }} required className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm">
                       <option value="">Select terminal...</option>
                       {NAIA_TERMINALS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
                     <Label className="flex items-center gap-1.5"><Plane className="h-4 w-4 text-blue-500" /> Pickup Airline <span className="text-red-500">*</span></Label>
-                    <select value={airline} onChange={(e) => setAirline(e.target.value)} required className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm">
-                      <option value="">Select airline...</option>
-                      {AIRLINES.map((a) => <option key={a} value={a}>{a}</option>)}
+                    <select value={airline} onChange={(e) => setAirline(e.target.value)} required disabled={!terminal} className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm disabled:opacity-50">
+                      <option value="">{terminal ? "Select airline..." : "Select terminal first"}</option>
+                      {getAirlinesForTerminal(terminal).map((a) => <option key={a} value={a}>{a}</option>)}
                     </select>
+                    {terminal && <p className="text-[10px] text-muted-foreground">Showing airlines available for {terminal}</p>}
                   </div>
                 </div>
 

@@ -37,6 +37,7 @@ export default function ChatBot() {
   const [loading, setLoading] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [showLiveAgent, setShowLiveAgent] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -65,23 +66,62 @@ export default function ChatBot() {
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || verifying) return;
 
     setInput("");
 
-    if (showLiveAgent && isBookingRef(text)) {
-      const ref = text.replace(/[\s,]+/g, "").toUpperCase();
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: text },
-        {
-          role: "assistant",
-          content: `Taking you to the tracking page for ${ref} with a live chat open — one moment!`,
-        },
-      ]);
-      setShowLiveAgent(false);
-      window.open(`/track/${ref}?chat=1`, "_blank", "noopener,noreferrer");
-      return;
+    if (showLiveAgent) {
+      if (isBookingRef(text)) {
+        const ref = text.replace(/[\s,]+/g, "").toUpperCase();
+        setVerifying(true);
+        setMessages((prev) => [...prev, { role: "user", content: text }]);
+        try {
+          const vRes = await fetch(`/api/chat/verify-booking?ref=${encodeURIComponent(ref)}`, { cache: "no-store" });
+          const vData = await vRes.json().catch(() => ({}));
+          if (vRes.ok && vData.valid) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: `Verified booking ${vData.referenceNumber} (${vData.status.replace(/_/g, " ")}). Taking you to the tracking page with live chat open — one moment!`,
+              },
+            ]);
+            setShowLiveAgent(false);
+            window.open(`/track/${vData.referenceNumber}?chat=1`, "_blank", "noopener,noreferrer");
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: vData.error || "Booking not found or not active. Please check your reference and try again. You need an active booking (not Cancelled/Delivered) to chat with a live agent. For general questions, I can help you here — just ask your FAQ!",
+              },
+            ]);
+          }
+        } catch {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: "Unable to verify booking right now. Please try again or contact hello@dropnfly.ph for help.",
+            },
+          ]);
+        } finally {
+          setVerifying(false);
+        }
+        return;
+      } else {
+        // In live-agent mode but input is not a valid reference format
+        setMessages((prev) => [
+          ...prev,
+          { role: "user", content: text },
+          {
+            role: "assistant",
+            content:
+              "Please enter a valid booking reference to chat with a live agent (e.g. DROPFLY-123456). Your reference is required to connect you to the assigned staff. For FAQ without a booking, just type your question and I'll answer as AI!",
+          },
+        ]);
+        return;
+      }
     }
 
     if (LIVE_AGENT_KEYWORDS.test(text)) {
@@ -92,7 +132,7 @@ export default function ChatBot() {
         {
           role: "assistant",
           content:
-            "I'd be happy to connect you with a live agent! If you have an active booking, you can chat directly with our staff through the tracking page. Just enter your booking reference number to get started.",
+            "For FAQs, I can answer right here without a booking — just ask me about booking, tracking, pricing, or services! If you need a live agent, please provide your active booking reference (e.g. DROPFLY-123456). Live agent chat requires an active booking so we can connect you to your assigned staff. Please enter your reference below:",
         },
       ]);
       setShowLiveAgent(true);
@@ -264,7 +304,7 @@ export default function ChatBot() {
                         </p>
                       </div>
                       <p className="mb-3 text-xs text-blue-700/80 dark:text-blue-300/70">
-                        Type your booking reference (e.g. DROPFLY-123456) below and I&apos;ll open the live chat with our staff for that booking.
+                        FAQ? Just ask me — I can answer without a booking. For a live agent, an <strong>active booking is required</strong>. Enter your reference (e.g. DROPFLY-123456) to verify and open live chat.
                       </p>
                       <div className="flex gap-2">
                         <input
@@ -278,16 +318,18 @@ export default function ChatBot() {
                             }
                           }}
                           placeholder="DROPFLY-XXXXXX"
-                          className="min-w-0 flex-1 rounded-xl border bg-white/80 px-3 py-2 text-xs outline-none focus:border-blue-500 dark:bg-black/30"
+                          disabled={verifying}
+                          className="min-w-0 flex-1 rounded-xl border bg-white/80 px-3 py-2 text-xs outline-none focus:border-blue-500 disabled:opacity-50 dark:bg-black/30"
                         />
                         <button
                           onClick={handleSend}
-                          disabled={!isBookingRef(input)}
+                          disabled={!isBookingRef(input) || verifying}
                           className="shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-orange-600 disabled:opacity-40"
                         >
-                          Open Chat
+                          {verifying ? "..." : "Open Chat"}
                         </button>
                       </div>
+                      {verifying && <p className="mt-2 text-[11px] text-blue-600">Verifying booking...</p>}
                       <a
                         href="/track"
                         target="_blank"
@@ -330,14 +372,14 @@ export default function ChatBot() {
                         {
                           role: "assistant",
                           content:
-                            "I'd be happy to connect you with a live agent! If you have an active booking, you can chat directly with our staff through the tracking page. Just enter your booking reference number to get started.",
+                            "For FAQs, I can answer right here without a booking — just ask! If you need a live agent, an active booking is required. Please enter your booking reference below to verify and open live chat.",
                         },
                       ]);
                     }}
                     className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-muted-foreground/30 py-1.5 text-xs text-muted-foreground transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/30"
                   >
                     <HeadphonesIcon className="h-3.5 w-3.5" />
-                    Talk to a human
+                    Talk to a human (requires booking)
                   </button>
                 )}
                 <div className="flex items-center gap-2">
@@ -346,13 +388,13 @@ export default function ChatBot() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Type your message..."
-                    disabled={loading}
+                    placeholder={showLiveAgent ? "Enter booking reference (e.g. DROPFLY-XXXXXX)" : "Type your message... (FAQ via AI, no booking needed)"}
+                    disabled={loading || verifying}
                     className="flex-1 rounded-xl border bg-muted/50 px-4 py-2.5 text-sm outline-none transition-colors focus:border-blue-500 focus:bg-background disabled:opacity-50"
                   />
                   <button
                     onClick={handleSend}
-                    disabled={!input.trim() || loading}
+                    disabled={!input.trim() || loading || verifying}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-orange-500 to-blue-500 text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100"
                   >
                     <Send className="h-4 w-4" />
