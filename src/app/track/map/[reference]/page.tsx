@@ -77,7 +77,9 @@ export default function LiveTrackingPage() {
   const [chatMessages, setChatMessages] = useState<{ id: string; message: string; isFromCustomer: boolean; createdAt: string; sender?: { name: string; role?: string } | null }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatBoxRef = useRef<HTMLDivElement>(null);
+  const chatStickToBottomRef = useRef(true);
+  const lastChatMessageIdRef = useRef<string | null>(null);
   const [isRiderView, setIsRiderView] = useState(false);
 
   useEffect(() => {
@@ -133,7 +135,13 @@ export default function LiveTrackingPage() {
     let active = true;
     const loadMessages = () => fetch(`/api/public/bookings/${params.reference}/chat`, { cache: "no-store" })
       .then((res) => res.ok ? res.json() : [])
-      .then((msgs) => { if (active && Array.isArray(msgs)) setChatMessages(msgs); })
+      .then((msgs) => {
+        if (!active || !Array.isArray(msgs)) return;
+        const lastId = msgs.length ? String(msgs[msgs.length - 1].id) : "";
+        if (lastId === lastChatMessageIdRef.current) return;
+        lastChatMessageIdRef.current = lastId;
+        setChatMessages(msgs);
+      })
       .catch(() => {});
     void loadMessages();
     const poll = window.setInterval(loadMessages, 2000);
@@ -141,8 +149,16 @@ export default function LiveTrackingPage() {
   }, [chatOpen, params.reference]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
+    const el = chatBoxRef.current;
+    if (!el || !chatStickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [chatMessages, chatOpen]);
+
+  function handleChatScroll() {
+    const el = chatBoxRef.current;
+    if (!el) return;
+    chatStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function sendChat() {
     const text = chatInput.trim();
@@ -394,7 +410,7 @@ export default function LiveTrackingPage() {
               </CardHeader>
               {chatOpen && (
                 <CardContent className="space-y-3">
-                  <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-2 bg-muted/20">
+                  <div ref={chatBoxRef} onScroll={handleChatScroll} className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-2 bg-muted/20">
                     {chatMessages.length === 0 && (
                       <p className="text-xs text-muted-foreground text-center py-2">No messages yet</p>
                     )}
@@ -410,7 +426,7 @@ export default function LiveTrackingPage() {
                         </div>
                       </div>
                     ))}
-                    <div ref={chatEndRef} />
+                    <div />
                   </div>
                   <div className="flex gap-2">
                     <input

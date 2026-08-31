@@ -2,6 +2,25 @@
 
 import { useState, useEffect } from "react";
 
+export function BookingModals({
+  termsOpen,
+  privacyOpen,
+  onTermsClose,
+  onPrivacyClose,
+}: {
+  termsOpen: boolean;
+  privacyOpen: boolean;
+  onTermsClose: () => void;
+  onPrivacyClose: () => void;
+}) {
+  return (
+    <>
+      <TermsModal open={termsOpen} onClose={onTermsClose} />
+      <PrivacyModal open={privacyOpen} onClose={onPrivacyClose} />
+    </>
+  );
+}
+
 export function TermsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [content, setContent] = useState<string | null>(null);
 

@@ -1,20 +1,29 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { motion, AnimatePresence } from "framer-motion";
 import { Check, User, MapPin, Luggage, Wrench, Search } from "lucide-react";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { PublicFooter } from "@/components/layout/PublicFooter";
-import { ContactStep } from "@/components/booking/ContactStep";
-import { PickupStep } from "@/components/booking/PickupStep";
-import { LuggageStep } from "@/components/booking/LuggageStep";
-import { PaymentStep } from "@/components/booking/PaymentStep";
-import { TermsModal, PrivacyModal } from "@/components/booking/BookingModals";
 import { FALLBACK_COUNTRIES, FALLBACK_CITIES } from "@/components/booking/constants";
+
+const ContactStep = lazy(() => import("@/components/booking/ContactStep").then((m) => ({ default: m.ContactStep })));
+const PickupStep = lazy(() => import("@/components/booking/PickupStep").then((m) => ({ default: m.PickupStep })));
+const LuggageStep = lazy(() => import("@/components/booking/LuggageStep").then((m) => ({ default: m.LuggageStep })));
+const PaymentStep = lazy(() => import("@/components/booking/PaymentStep").then((m) => ({ default: m.PaymentStep })));
+const BookingModals = lazy(() => import("@/components/booking/BookingModals").then((m) => ({ default: m.BookingModals })));
+
+const StepFallback = () => (
+  <div className="flex items-center justify-center py-12">
+    <div className="text-center space-y-3">
+      <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+      <p className="text-sm text-muted-foreground">Loading step...</p>
+    </div>
+  </div>
+);
 
 interface TimeSlot {
   start: string;
@@ -287,7 +296,7 @@ export default function BookPage() {
         if (payment.url) { window.location.assign(payment.url); return; }
       }
       // Checkout failed — show error with retry option
-      setError("Payment setup failed. Your booking is confirmed but payment was not processed. Please contact support or retry from My Account.");
+      setError("Payment setup failed. Your booking is confirmed but payment was not processed. Please contact support or retry your payment.");
       setLoading(false);
       submittingRef.current = false;
       return;
@@ -348,17 +357,12 @@ export default function BookPage() {
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-blue-700">Book a Pickup</h1>
           <p className="mt-2 text-muted-foreground">Schedule your luggage pickup. No registration needed.</p>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
-            <span className="text-muted-foreground">Passenger account:</span>
-            <Link href="/my-account/login" className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 font-medium text-blue-700 transition hover:bg-blue-50">Log in</Link>
-            <Link href="/my-account/register" className="rounded-lg bg-blue-600 px-3 py-1.5 font-medium text-white transition hover:bg-blue-700">Create account</Link>
-          </div>
         </div>
 
         <div className="mb-8">
           <div className="relative">
             <div className="h-2 w-full rounded-full bg-border">
-              <motion.div className="h-2 rounded-full bg-orange-500" initial={false} animate={{ width: `${progress}%` }} transition={{ duration: 0.4, ease: "easeInOut" }} />
+              <div className="h-2 rounded-full bg-orange-500 transition-[width] duration-500 ease-in-out" style={{ width: `${progress}%` }} />
             </div>
             <div className="mt-2 flex justify-between">
               {steps.map((s) => {
@@ -381,8 +385,8 @@ export default function BookPage() {
         <Card className="border-t-4 border-blue-500 shadow-lg">
           <CardContent className="pt-6">
             <form onSubmit={handleSubmit}>
-              <AnimatePresence mode="wait">
-                {step === 1 && (
+              {step === 1 && (
+                <Suspense fallback={<StepFallback />}>
                   <ContactStep
                     customerName={customerName} setCustomerName={setCustomerName}
                     customerEmail={customerEmail} setCustomerEmail={setCustomerEmail}
@@ -393,8 +397,10 @@ export default function BookPage() {
                     countriesLoading={countriesLoading} citiesLoading={citiesLoading}
                     setCities={setCities} error={error} onNext={handleNextStep}
                   />
-                )}
-                {step === 2 && (
+                </Suspense>
+              )}
+              {step === 2 && (
+                <Suspense fallback={<StepFallback />}>
                   <PickupStep
                     pickupTerminal={pickupTerminal} setPickupTerminal={setPickupTerminal}
                     setPickupAirline={setPickupAirline} pickupAirline={pickupAirline}
@@ -409,16 +415,20 @@ export default function BookPage() {
                     deliverySlot={deliverySlot} setDeliverySlot={setDeliverySlot}
                     storageDays={storageDays} error={error} onNext={handleNextStep} onPrev={prevStep}
                   />
-                )}
-                {step === 3 && (
+                </Suspense>
+              )}
+              {step === 3 && (
+                <Suspense fallback={<StepFallback />}>
                   <LuggageStep
                     luggageQty={luggageQty} setLuggageQty={setLuggageQty}
                     selectedServices={selectedServices} setSelectedServices={setSelectedServices}
                     fees={fees} luggagePrices={luggagePrices} maxBags={maxBags} storageDays={storageDays}
                     onNext={handleNextStep} onPrev={prevStep}
                   />
-                )}
-                {step === 4 && (
+                </Suspense>
+              )}
+              {step === 4 && (
+                <Suspense fallback={<StepFallback />}>
                   <PaymentStep
                     pickupDate={pickupDate} pickupSlot={pickupSlot}
                     pickupTerminal={pickupTerminal} pickupAirline={pickupAirline}
@@ -437,8 +447,8 @@ export default function BookPage() {
                     onShowTermsModal={() => setShowTermsModal(true)}
                     onShowPrivacyModal={() => setShowPrivacyModal(true)}
                   />
-                )}
-              </AnimatePresence>
+                </Suspense>
+              )}
             </form>
           </CardContent>
         </Card>
@@ -453,8 +463,14 @@ export default function BookPage() {
           variant="warning"
         />
 
-        <TermsModal open={showTermsModal} onClose={() => setShowTermsModal(false)} />
-        <PrivacyModal open={showPrivacyModal} onClose={() => setShowPrivacyModal(false)} />
+        <Suspense fallback={null}>
+          <BookingModals
+            termsOpen={showTermsModal}
+            privacyOpen={showPrivacyModal}
+            onTermsClose={() => setShowTermsModal(false)}
+            onPrivacyClose={() => setShowPrivacyModal(false)}
+          />
+        </Suspense>
       </main>
       <PublicFooter />
     </div>

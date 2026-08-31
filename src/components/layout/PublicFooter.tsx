@@ -16,7 +16,7 @@ export function PublicFooter() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/public/settings", { signal: controller.signal, cache: "no-store" })
+    fetch("/api/public/settings", { signal: controller.signal })
       .then((response) => response.ok ? response.json() : null)
       .then((data) => { if (data?.footer && !controller.signal.aborted) setFooter(data.footer); })
       .catch(() => {});
@@ -42,7 +42,6 @@ export function PublicFooter() {
             <div className="space-y-1">
               <Link href="/book" className="block text-muted-foreground transition-colors hover:text-blue-600">Book a Pickup</Link>
               <Link href="/track" className="block text-muted-foreground transition-colors hover:text-blue-600">Track Luggage</Link>
-              <Link href="/my-account/login" className="block text-muted-foreground transition-colors hover:text-blue-600">Login/Register</Link>
             </div>
           </div>
           <div>

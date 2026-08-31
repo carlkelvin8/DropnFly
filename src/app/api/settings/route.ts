@@ -47,20 +47,26 @@ export async function PUT(req: Request) {
       }
     }
 
-    // Use sequential upserts to avoid transaction batch limits/timeouts on large setting sets (e.g., 40+ keys)
-    // Sequential is safer than a single $transaction with 40+ operations which can hit interactive transaction timeouts
-    for (const [key, value] of entries) {
-      const strValue = String(value);
-      try {
-        await prisma.systemSetting.upsert({
-          where: { key: key.trim() },
-          update: { value: strValue },
-          create: { key: key.trim(), value: strValue },
-        });
-      } catch (upsertErr) {
-        console.error(`[SETTINGS] upsert failed for ${key}:`, upsertErr);
-        throw new Error(`Failed to save ${key}: ${upsertErr instanceof Error ? upsertErr.message : String(upsertErr)}`);
-      }
+    // Use batched upserts instead of fully sequential writes.
+    // A single $transaction with 40+ ops can hit interactive transaction
+    // timeouts, so we chunk into smaller parallel batches. This dramatically
+    // reduces wall-clock time vs. one sequential round-trip per setting.
+    const cleanEntries = entries.map(([k, v]) => [k.trim(), String(v)] as const);
+
+    const BATCH_SIZE = 8;
+
+    for (let i = 0; i < cleanEntries.length; i += BATCH_SIZE) {
+      const batch = cleanEntries.slice(i, i + BATCH_SIZE);
+      await prisma.$transaction(
+        batch.map(([key, value]) =>
+          prisma.systemSetting.upsert({
+            where: { key },
+            update: { value },
+            create: { key, value },
+          })
+        ),
+        { maxWait: 15000, timeout: 15000 }
+      );
     }
 
     invalidateSettingsCache();

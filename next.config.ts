@@ -4,6 +4,15 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["pg", "@prisma/adapter-pg", "prisma", "@prisma/client"],
   poweredByHeader: false,
   output: "standalone",
+  compress: true,
+  images: {
+    formats: ["image/avif", "image/webp"],
+    remotePatterns: [
+      { protocol: "https", hostname: "*.mapbox.com" },
+      { protocol: "https", hostname: "fastly.picsum.photos" },
+      { protocol: "https", hostname: "*.supabase.co" },
+    ],
+  },
   async headers() {
     const csp = [
       "default-src 'self'",
@@ -20,18 +29,32 @@ const nextConfig: NextConfig = {
       "frame-src 'self' https://checkout.paymongo.com",
       "upgrade-insecure-requests",
     ].join("; ");
-    return [{
-      source: "/:path*",
-      headers: [
-        { key: "X-Content-Type-Options", value: "nosniff" },
-        { key: "X-Frame-Options", value: "DENY" },
-        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        { key: "Permissions-Policy", value: "camera=(self), geolocation=(self), microphone=()" },
-        { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-        { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-        { key: "Content-Security-Policy", value: csp },
-      ],
-    }];
+    return [
+      {
+        source: "/api/public/(.*)",
+        headers: [
+          { key: "Cache-Control", value: "public, s-maxage=60, stale-while-revalidate=300" },
+        ],
+      },
+      {
+        source: "/_next/static/(.*)",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(self), geolocation=(self), microphone=()" },
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+          { key: "Content-Security-Policy", value: csp },
+        ],
+      },
+    ];
   },
 };
 

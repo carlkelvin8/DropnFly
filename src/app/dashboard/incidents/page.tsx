@@ -88,9 +88,11 @@ export default function IncidentsPage() {
     if (priorityFilter) params.set("priority", priorityFilter);
     params.set("page", String(page));
     params.set("limit", String(INCIDENTS_PER_PAGE));
-    fetch("/api/incidents/auto-flag", { method: "POST" })
-      .catch(() => null)
-      .then(() => fetch(`/api/incidents?${params}`, { cache: "no-store" }))
+
+    // Fire-and-forget auto-flag in the background so it never blocks the list.
+    fetch("/api/incidents/auto-flag", { method: "POST" }).catch(() => null);
+
+    fetch(`/api/incidents?${params}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => setData(d))
       .catch(() => {})

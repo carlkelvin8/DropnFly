@@ -28,6 +28,8 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
+import RechartsPie from "@/components/dashboard/RechartsPie";
+import RechartsLine from "@/components/dashboard/RechartsLine";
 
 interface Overview {
   totalBookings: number;
@@ -398,6 +400,53 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* New Chart Types: Line, Pie, Donut */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Line Graph - Bookings & Revenue Over Time */}
+        <Card className="md:col-span-2 border-t-2 border-t-sky-500">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Bookings & Revenue Trend (Line Graph)</CardTitle>
+            <CardDescription>Daily bookings and collected revenue over the selected period.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RechartsLine
+              data={bookingsByDay.slice(-30).map((d) => ({ date: d.date, bookings: d.count, revenue: d.revenue }))}
+              dataKeys={["bookings", "revenue"]}
+              labels={["Bookings", "Revenue"]}
+              colors={["#3b82f6", "#10b981"]}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Pie Chart - Booking Status Breakdown */}
+        <Card className="border-t-2 border-t-rose-500">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Booking Status Proportions (Pie Chart)</CardTitle>
+            <CardDescription>Share of each booking status relative to the total.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RechartsPie
+              data={data.bookingsByStatus.map((s) => ({ name: s.status.replace(/_/g, " "), value: s.count }))}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Donut Chart - Revenue by Status */}
+        <Card className="border-t-2 border-t-amber-500">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Revenue Share by Status (Donut Chart)</CardTitle>
+            <CardDescription>Distribution of collected revenue across booking statuses.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RechartsPie
+              data={revenueByStatus.map((s) => ({ name: s.status.replace(/_/g, " "), value: s.revenue }))}
+              isDonut
+              currency
+            />
           </CardContent>
         </Card>
       </div>

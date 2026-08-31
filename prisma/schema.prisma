@@ -54,6 +54,7 @@ model User {
   chatMessages      ChatMessage[]
   scanEvents        ScanEvent[]
   incidentTimelines IncidentTimeline[]
+  supportMessages   SupportChatMessage[]
 }
 
 model StorageLocation {
@@ -389,6 +390,35 @@ model ChatMessage {
   customer Customer? @relation(fields: [customerId], references: [id])
 
   @@index([bookingId, createdAt])
+}
+
+model SupportChat {
+  id            String   @id @default(cuid())
+  token         String   @unique
+  customerName  String?
+  customerEmail String?
+  status        String   @default("OPEN") // OPEN, CLOSED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  messages SupportChatMessage[]
+
+  @@index([status, updatedAt])
+}
+
+model SupportChatMessage {
+  id            String   @id @default(cuid())
+  supportChatId String
+  senderId      String?
+  message       String
+  isFromCustomer Boolean  @default(false)
+  isRead        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  supportChat SupportChat @relation(fields: [supportChatId], references: [id])
+  sender      User?       @relation(fields: [senderId], references: [id])
+
+  @@index([supportChatId, createdAt])
 }
 
 model BookingReview {

@@ -230,7 +230,7 @@ export default function ConfirmPage() {
                 <p className="mt-1 font-medium text-green-700">
                   Total: &#x20B1;{booking.totalPrice.toFixed(2)}
                 </p>
-                <p className="text-xs text-green-600">Booking confirmed. Your down payment is recorded as pending — our team will confirm payment on pickup, or pay securely online from My Account.</p>
+                <p className="text-xs text-green-600">Booking confirmed. Your down payment is recorded as pending — our team will confirm payment on pickup.</p>
               </div>
             )}
 

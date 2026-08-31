@@ -5,9 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, ArrowRight, Info, Luggage, Minus, Package, Plus, AlertTriangle } from "lucide-react";
-import { motion } from "framer-motion";
-import { LUGGAGE_TYPES, calcSubtotal, calcTotalBags, type LuggageType } from "@/lib/luggage-types";
+import { ArrowLeft, ArrowRight, Info, Luggage, Minus, Package, Plus, AlertTriangle, ZoomIn } from "lucide-react";
+import { LUGGAGE_TYPES, calcSubtotal, calcTotalBags } from "@/lib/luggage-types";
 
 interface LuggageStepProps {
   luggageQty: Record<string, number>;
@@ -20,87 +19,6 @@ interface LuggageStepProps {
   storageDays: number;
   onNext: () => void;
   onPrev: () => void;
-}
-
-function LuggageIllustration({ type, qty }: { type: LuggageType; qty: number }) {
-  const active = qty > 0;
-  const stroke = active ? "stroke-emerald-600" : "stroke-muted-foreground/60";
-  const fill = active ? "fill-emerald-100" : "fill-muted";
-  const fillDark = active ? "fill-emerald-200" : "fill-muted/80";
-  const fillAccent = active ? "fill-emerald-500" : "fill-muted-foreground/40";
-
-  if (type.id === "extra-small") {
-    // Backpack illustration
-    return (
-      <svg width="56" height="56" viewBox="0 0 56 56" fill="none" className={`transition-all ${active ? "opacity-100" : "opacity-60"}`}>
-        <rect x="16" y="12" width="24" height="32" rx="6" className={`${fill} ${stroke}`} strokeWidth="1.5" />
-        <rect x="20" y="16" width="16" height="10" rx="3" className={`${fillDark} ${stroke}`} strokeWidth="1" />
-        <rect x="22" y="30" width="12" height="8" rx="2" className={`${fillAccent}`} opacity="0.5" />
-        <path d="M16 20 C12 20, 10 24, 10 28 L10 32" className={`${stroke}`} strokeWidth="1.5" fill="none" strokeLinecap="round" />
-        <path d="M40 20 C44 20, 46 24, 46 28 L46 32" className={`${stroke}`} strokeWidth="1.5" fill="none" strokeLinecap="round" />
-        <line x1="24" y1="8" x2="24" y2="12" className={`${stroke}`} strokeWidth="1.5" strokeLinecap="round" />
-        <line x1="32" y1="8" x2="32" y2="12" className={`${stroke}`} strokeWidth="1.5" strokeLinecap="round" />
-        <rect x="26" y="20" width="4" height="3" rx="1" className={`${fillAccent}`} opacity="0.6" />
-      </svg>
-    );
-  }
-
-  if (type.id === "small") {
-    // Duffle/carry-on bag
-    return (
-      <svg width="56" height="56" viewBox="0 0 56 56" fill="none" className={`transition-all ${active ? "opacity-100" : "opacity-60"}`}>
-        <rect x="8" y="18" width="40" height="22" rx="4" className={`${fill} ${stroke}`} strokeWidth="1.5" />
-        <rect x="12" y="22" width="14" height="14" rx="2" className={`${fillDark} ${stroke}`} strokeWidth="1" />
-        <circle cx="19" cy="29" r="3" className={`${fillAccent}`} opacity="0.5" />
-        <path d="M20 14 C20 10, 28 10, 28 14" className={`${stroke}`} strokeWidth="1.5" fill="none" strokeLinecap="round" />
-        <path d="M28 14 C28 10, 36 10, 36 14" className={`${stroke}`} strokeWidth="1.5" fill="none" strokeLinecap="round" />
-        <line x1="12" y1="40" x2="12" y2="44" className={`${stroke}`} strokeWidth="1.5" strokeLinecap="round" />
-        <line x1="44" y1="40" x2="44" y2="44" className={`${stroke}`} strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="12" cy="46" r="2" className={`${fillAccent}`} />
-        <circle cx="44" cy="46" r="2" className={`${fillAccent}`} />
-      </svg>
-    );
-  }
-
-  if (type.id === "standard") {
-    // Medium suitcase with wheels
-    return (
-      <svg width="56" height="56" viewBox="0 0 56 56" fill="none" className={`transition-all ${active ? "opacity-100" : "opacity-60"}`}>
-        <rect x="12" y="8" width="32" height="38" rx="4" className={`${fill} ${stroke}`} strokeWidth="1.5" />
-        <rect x="16" y="12" width="24" height="18" rx="2" className={`${fillDark} ${stroke}`} strokeWidth="1" />
-        <line x1="16" y1="18" x2="40" y2="18" className={`${stroke}`} strokeWidth="0.8" opacity="0.4" />
-        <line x1="16" y1="22" x2="40" y2="22" className={`${stroke}`} strokeWidth="0.8" opacity="0.4" />
-        <rect x="22" y="34" width="12" height="4" rx="1" className={`${fillAccent}`} opacity="0.5" />
-        <line x1="24" y1="4" x2="24" y2="8" className={`${stroke}`} strokeWidth="1.5" strokeLinecap="round" />
-        <line x1="32" y1="4" x2="32" y2="8" className={`${stroke}`} strokeWidth="1.5" strokeLinecap="round" />
-        <rect x="22" y="2" width="12" height="4" rx="2" className={`${fillDark} ${stroke}`} strokeWidth="1" />
-        <circle cx="18" cy="48" r="2.5" className={`${fillAccent}`} />
-        <circle cx="38" cy="48" r="2.5" className={`${fillAccent}`} />
-        <line x1="18" y1="46" x2="18" y2="44" className={`${stroke}`} strokeWidth="1" />
-        <line x1="38" y1="46" x2="38" y2="44" className={`${stroke}`} strokeWidth="1" />
-      </svg>
-    );
-  }
-
-  // Large suitcase
-  return (
-    <svg width="56" height="56" viewBox="0 0 56 56" fill="none" className={`transition-all ${active ? "opacity-100" : "opacity-60"}`}>
-      <rect x="10" y="6" width="36" height="42" rx="4" className={`${fill} ${stroke}`} strokeWidth="1.5" />
-      <rect x="14" y="10" width="28" height="22" rx="2" className={`${fillDark} ${stroke}`} strokeWidth="1" />
-      <line x1="14" y1="16" x2="42" y2="16" className={`${stroke}`} strokeWidth="0.8" opacity="0.4" />
-      <line x1="14" y1="20" x2="42" y2="20" className={`${stroke}`} strokeWidth="0.8" opacity="0.4" />
-      <line x1="14" y1="24" x2="42" y2="24" className={`${stroke}`} strokeWidth="0.8" opacity="0.4" />
-      <rect x="18" y="36" width="20" height="6" rx="2" className={`${fillAccent}`} opacity="0.5" />
-      <line x1="22" y1="2" x2="22" y2="6" className={`${stroke}`} strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="34" y1="2" x2="34" y2="6" className={`${stroke}`} strokeWidth="1.5" strokeLinecap="round" />
-      <rect x="20" y="0" width="16" height="4" rx="2" className={`${fillDark} ${stroke}`} strokeWidth="1" />
-      <circle cx="16" cy="50" r="2.5" className={`${fillAccent}`} />
-      <circle cx="40" cy="50" r="2.5" className={`${fillAccent}`} />
-      <line x1="16" y1="48" x2="16" y2="46" className={`${stroke}`} strokeWidth="1" />
-      <line x1="40" y1="48" x2="40" y2="46" className={`${stroke}`} strokeWidth="1" />
-      <rect x="24" y="14" width="8" height="8" rx="1.5" className={`${fillAccent}`} opacity="0.4" />
-    </svg>
-  );
 }
 
 export function LuggageStep({
@@ -117,7 +35,8 @@ export function LuggageStep({
   ];
 
   return (
-    <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+    <div key="step3" style={{ animation: "step-in 0.25s ease-out" }}>
+      <style>{`@keyframes step-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`}</style>
       <div className="mb-4 flex items-center gap-2">
         <Luggage className="h-5 w-5 text-blue-600" />
         <h3 className="text-lg font-semibold">Luggage Details</h3>
@@ -134,36 +53,40 @@ export function LuggageStep({
 
       <Card className="mt-8 border-t-4 border-blue-400 shadow-md">
         <CardContent className="pt-5">
-          <Label className="mb-2 flex items-center gap-1.5 text-base">
-            <Package className="h-4 w-4 text-blue-500" />
-            Luggage Types — Select your bags
-          </Label>
-          <p className="mb-4 text-xs text-muted-foreground">Choose the type and quantity of each luggage you want to store.</p>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <Label className="flex items-center gap-1.5 text-base">
+              <Package className="h-4 w-4 text-blue-500" />
+              Luggage Types — Select your bags
+            </Label>
+            <a
+              href="/images/booking/references/pricing.png"
+              target="_blank"
+              rel="noreferrer"
+              className="group inline-flex items-center gap-1.5 rounded-full border bg-white px-2.5 py-1 text-[11px] font-semibold text-blue-700 shadow-sm transition hover:shadow"
+            >
+              <Image
+                src="/images/booking/references/pricing.png"
+                alt="DropnFly luggage pricing and limits"
+                width={940}
+                height={788}
+                className="h-6 w-8 shrink-0 rounded object-cover"
+              />
+              Pricing &amp; limits
+              <ZoomIn className="h-3 w-3" />
+            </a>
+          </div>
+          <p className="mb-4 text-xs text-muted-foreground">Choose the type and quantity of each luggage you want to store. Tap any image to view the full-size reference.</p>
 
           <div className="mb-5 flex items-start gap-3 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-950 shadow-sm">
             <Info className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
             <div className="space-y-1">
-              <p className="font-semibold">Important Notice</p>
+              <p className="font-semibold">Important Baggage Notes</p>
               <ul className="list-disc space-y-1.5 pl-4 text-sm leading-relaxed text-amber-900">
-                <li>Do not pack hazardous materials, perishables, firearms, illegal items, cash, jewelry, or electronics.</li>
-                <li>Dropnfly is not liable for prohibited, undeclared, or valuable items packed inside luggage.</li>
-                <li>Select the category that matches your bag&apos;s actual dimensions. Oversized bags may be reclassified and charged accordingly.</li>
+                <li><strong>Note 1:</strong> If your baggage exceeds the weight limit, it is okay as long as your baggage/luggage dimension fits within the required size.</li>
+                <li><strong>Note 2:</strong> If your baggage/luggage dimension exceeds the required dimension, you are required to upgrade the baggage declaration (e.g., Small → Large).</li>
+                <li><strong>Note 3:</strong> If you availed the Additional Service &quot;Pick-up&quot; and/or &quot;Drop-off/Delivery,&quot; the maximum baggage that Dropnfly will carry is 3 Baggages/Luggages.</li>
+                <li><strong>Note 4:</strong> If your Baggage/Luggage exceeds the maximum &quot;Pick-up&quot; or &quot;Drop-off/Delivery&quot; baggage limit, you are required to pay an additional &#x20B1;100 per extra baggage.</li>
               </ul>
-            </div>
-          </div>
-
-          <div className="mb-5 overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4">
-            <p className="text-sm font-semibold text-blue-900">Official size and pricing references</p>
-            <p className="mt-1 text-xs leading-relaxed text-blue-700">Tap any image to view the full-size guide. The limits shown below follow these references.</p>
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              {[...LUGGAGE_TYPES.map((type) => ({ src: type.referenceImage, alt: `${type.name} size reference`, label: type.name })), { src: "/images/booking/references/pricing.png", alt: "DropnFly luggage pricing and limits", label: "Pricing" }].map((reference) => (
-                <a key={reference.src} href={reference.src} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-lg border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                  <div className="flex h-36 items-center justify-center bg-white p-2">
-                    <Image src={reference.src} alt={reference.alt} width={940} height={788} className="max-h-full w-full object-contain" />
-                  </div>
-                  <p className="px-2 py-1.5 text-center text-xs font-semibold text-blue-800">{reference.label}</p>
-                </a>
-              ))}
             </div>
           </div>
 
@@ -172,10 +95,24 @@ export function LuggageStep({
               const qty = luggageQty[lt.id] || 0;
               const price = luggagePrices[lt.id] ?? lt.price;
               return (
-                <div key={lt.id} className={`relative overflow-hidden rounded-xl border-2 p-4 transition-all ${qty > 0 ? `${lt.color} shadow-md` : "border-border bg-card hover:border-border"}`}>
-                  <div className="mb-3 flex justify-center">
-                    <LuggageIllustration type={lt} qty={qty} />
-                  </div>
+                <div key={lt.id} className={`relative overflow-hidden rounded-xl border-2 p-3 transition-all ${qty > 0 ? `${lt.color} shadow-md` : "border-border bg-card hover:border-border"}`}>
+                  <a
+                    href={lt.referenceImage}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group relative mb-2 flex h-28 items-center justify-center overflow-hidden rounded-lg border bg-white"
+                  >
+                    <Image
+                      src={lt.referenceImage}
+                      alt={`${lt.name} size reference`}
+                      width={940}
+                      height={788}
+                      className="h-full w-full object-contain transition-transform group-hover:scale-[1.05]"
+                    />
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/10 group-hover:opacity-100">
+                      <ZoomIn className="h-5 w-5 text-white drop-shadow" />
+                    </span>
+                  </a>
                   <div className="text-center">
                     <p className="text-sm font-bold">{lt.name}</p>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">{lt.description}</p>
@@ -276,6 +213,6 @@ export function LuggageStep({
           Next Step <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
       </div>
-    </motion.div>
+    </div>
   );
 }

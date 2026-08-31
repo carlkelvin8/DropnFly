@@ -51,7 +51,7 @@ export async function POST(req: Request) {
   if (!GEMINI_API_KEY) {
     const { message = "" } = await req.json();
     const text = String(message).toLowerCase();
-    let reply = "I can help with booking, tracking, luggage storage, and delivery. For a live conversation, share your DROPFLY booking reference or open the chat inside My Account.";
+    let reply = "I can help with booking, tracking, luggage storage, and delivery. For a live conversation, share your DROPFLY booking reference.";
     const reference = String(message).toUpperCase().match(BOOKING_REFERENCE_PATTERN)?.[0];
     if (reference) reply = `Thanks! I found your booking reference ${reference}. You can track it anytime at /track/${reference} — the live map and status timeline work even in demo mode.`;
     else if (text.includes("book")) reply = "You can create a test booking at /book. Online payment is optional in demo mode, so you can complete the full booking flow without PayMongo.";

@@ -14,6 +14,9 @@ export async function GET() {
     const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    const startOfDurations = new Date(now);
+    startOfDurations.setFullYear(startOfDurations.getFullYear() - 1);
+
     const [
       totalBookings,
       deliveredBookings,
@@ -49,8 +52,10 @@ export async function GET() {
       }),
       prisma.user.count(),
       prisma.booking.findMany({
-        where: { checkOut: { not: null }, status: "DELIVERED" },
+        where: { status: "DELIVERED", checkOut: { not: null, gte: startOfDurations } },
         select: { checkIn: true, checkOut: true },
+        orderBy: { checkOut: "desc" },
+        take: 5000,
       }),
       prisma.booking.findMany({
         where: { luggageDetails: { not: null }, status: { not: "CANCELLED" } },

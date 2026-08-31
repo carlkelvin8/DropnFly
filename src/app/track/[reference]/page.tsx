@@ -109,7 +109,9 @@ export default function TrackResultPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [scanEvents, setScanEvents] = useState<{ status: string; photo: string | null; note: string | null; scannedAt: string; user: { name: string } | null }[]>([]);
   const [showPhotoModal, setShowPhotoModal] = useState<string | null>(null);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatBoxRef = useRef<HTMLDivElement>(null);
+  const chatStickToBottomRef = useRef(true);
+  const lastChatMessageIdRef = useRef<string | null>(null);
   const verifyFileRef = useRef<HTMLInputElement>(null);
   const [verifyPhoto, setVerifyPhoto] = useState<string | null>(null);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
@@ -151,31 +153,18 @@ export default function TrackResultPage() {
 
   useEffect(() => {
     const abort = new AbortController();
-    fetch(`/api/public/bookings/${params.reference}`, { signal: abort.signal })
+    fetch(`/api/public/bookings/${params.reference}/status`, { signal: abort.signal })
       .then((res) => {
         if (!res.ok) throw new Error("Not found");
         return res.json();
       })
-      .then((data) => { if (!abort.signal.aborted) setBooking(data); })
+      .then((data) => {
+        if (abort.signal.aborted) return;
+        setBooking(data.booking);
+        setRider(data.rider ?? null);
+        setScanEvents(Array.isArray(data.scans) ? data.scans : []);
+      })
       .catch(() => { if (!abort.signal.aborted) setNotFound(true); });
-    return () => abort.abort();
-  }, [params.reference]);
-
-  useEffect(() => {
-    const abort = new AbortController();
-    fetch(`/api/public/bookings/${params.reference}/rider`, { signal: abort.signal })
-      .then((res) => res.json())
-      .then((data) => { if (!abort.signal.aborted) setRider(data.rider); })
-      .catch(() => {});
-    return () => abort.abort();
-  }, [params.reference]);
-
-  useEffect(() => {
-    const abort = new AbortController();
-    fetch(`/api/bookings/by-ref/${params.reference}/scans`, { signal: abort.signal })
-      .then((res) => res.json())
-      .then((data) => { if (!abort.signal.aborted && Array.isArray(data)) setScanEvents(data); })
-      .catch(() => {});
     return () => abort.abort();
   }, [params.reference, scanReload]);
 
@@ -184,7 +173,13 @@ export default function TrackResultPage() {
     let active = true;
     const loadMessages = () => fetch(`/api/public/bookings/${params.reference}/chat`)
       .then((res) => res.json())
-      .then((data) => { if (active && Array.isArray(data)) setChatMessages(data); })
+      .then((data) => {
+        if (!active || !Array.isArray(data)) return;
+        const lastId = data.length ? String(data[data.length - 1].id) : "";
+        if (lastId === lastChatMessageIdRef.current) return;
+        lastChatMessageIdRef.current = lastId;
+        setChatMessages(data);
+      })
       .catch(() => {});
     void loadMessages();
     const poll = window.setInterval(loadMessages, 2000);
@@ -192,8 +187,16 @@ export default function TrackResultPage() {
   }, [chatOpen, params.reference]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
+    const el = chatBoxRef.current;
+    if (!el || !chatStickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [chatMessages, chatOpen]);
+
+  function handleChatScroll() {
+    const el = chatBoxRef.current;
+    if (!el) return;
+    chatStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function sendChat() {
     const text = chatInput.trim();
@@ -436,7 +439,7 @@ export default function TrackResultPage() {
                   </button>
                 </CardHeader>
                 <CardContent>
-                  <div className="mb-3 max-h-60 overflow-y-auto space-y-3 rounded-lg border bg-muted/20 p-3">
+                  <div ref={chatBoxRef} onScroll={handleChatScroll} className="mb-3 max-h-60 overflow-y-auto space-y-3 rounded-lg border bg-muted/20 p-3">
                     {chatMessages.length === 0 && (
                       <p className="py-8 text-center text-sm text-muted-foreground">
                         No messages yet. Start a conversation with your rider.
@@ -461,7 +464,7 @@ export default function TrackResultPage() {
                         </div>
                       </div>
                     ))}
-                    <div ref={chatEndRef} />
+                    <div />
                   </div>
                   <div className="flex items-center gap-2">
                     <input

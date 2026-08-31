@@ -4,8 +4,7 @@ import { useState, Suspense } from "react";
 import { signIn, getSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
-import { Luggage, Eye, EyeOff, LogIn, ShieldCheck, ExternalLink, UserRound } from "lucide-react";
+import { Luggage, Eye, EyeOff, LogIn, ShieldCheck, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +25,7 @@ function FloatingOrb({
   duration: number;
 }) {
   return (
-    <motion.div
+    <div
       className="absolute rounded-full blur-3xl"
       style={{
         width: size,
@@ -34,18 +33,7 @@ function FloatingOrb({
         background: color,
         left: x,
         top: y,
-      }}
-      animate={{
-        x: [0, 30, -20, 10, 0],
-        y: [0, -30, 20, -10, 0],
-        scale: [1, 1.1, 0.9, 1.05, 1],
-        opacity: [0.15, 0.2, 0.12, 0.18, 0.15],
-      }}
-      transition={{
-        duration,
-        delay,
-        repeat: Infinity,
-        ease: "easeInOut",
+        animation: `orb-move ${duration}s ease-in-out ${delay}s infinite`,
       }}
     />
   );
@@ -63,18 +51,14 @@ function Particle() {
   }));
 
   return (
-    <motion.div
+    <div
       className="absolute rounded-full bg-blue-400/30"
-      style={{ width: style.width, height: style.width, left: style.left, top: style.top }}
-      animate={{
-        y: [0, -30, 0],
-        opacity: [0, 0.6, 0],
-      }}
-      transition={{
-        duration: anim.duration,
-        delay: anim.delay,
-        repeat: Infinity,
-        ease: "easeInOut",
+      style={{
+        width: style.width,
+        height: style.width,
+        left: style.left,
+        top: style.top,
+        animation: `particle-float ${anim.duration}s ease-in-out ${anim.delay}s infinite`,
       }}
     />
   );
@@ -171,59 +155,33 @@ function LoginForm() {
 
       {/* Content */}
       <div className="relative z-10 flex w-full items-center justify-center px-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-sm"
-        >
+        <div className="w-full max-w-sm" style={{ animation: "fade-scale-in 0.5s ease-out" }}>
           {/* Logo */}
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.5 }}
-            className="mb-8 text-center"
-          >
+          <div style={{ animation: "fade-down-in 0.5s ease-out 0.1s backwards" }} className="mb-8 text-center">
             <Link href="/" className="inline-flex items-center gap-3">
-              <motion.div
-                whileHover={{ rotate: [0, -10, 10, -5, 0], scale: 1.05 }}
-                transition={{ duration: 0.5 }}
-                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500 shadow-lg shadow-orange-500/25"
-              >
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500 shadow-lg shadow-orange-500/25" style={{ animation: "logo-wiggle 0.5s ease-in-out 0.3s" }}>
                 <Luggage className="h-6 w-6 text-white" />
-              </motion.div>
+              </div>
               <span className="text-2xl font-bold text-white">
                 Drop<span className="text-blue-400">nfly</span>
               </span>
             </Link>
-          </motion.div>
+          </div>
 
           {/* Form Card */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
+          <div
+            style={{ animation: "fade-up-in 0.5s ease-out 0.2s backwards" }}
             className="rounded-2xl border border-white/10 bg-slate-900 p-8 shadow-2xl"
           >
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-              className="mb-6 text-center"
-            >
+            <div style={{ animation: "fade-in 0.5s ease-out 0.3s backwards" }} className="mb-6 text-center">
               <h1 className="text-xl font-semibold text-white">Welcome back</h1>
               <p className="mt-1 text-sm text-white/60">
                 Sign in to the staff and admin portal
               </p>
-            </motion.div>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.35, duration: 0.4 }}
-                className="space-y-2"
-              >
+              <div style={{ animation: "fade-left-in 0.4s ease-out 0.35s backwards" }} className="space-y-2">
                 <Label htmlFor="email" className="text-sm text-white/80">
                   Email
                 </Label>
@@ -240,14 +198,9 @@ function LoginForm() {
                     className="relative border-white/10 bg-white/5 text-white placeholder:text-white/30 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20"
                   />
                 </div>
-              </motion.div>
+              </div>
 
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.4, duration: 0.4 }}
-                className="space-y-2"
-              >
+              <div style={{ animation: "fade-left-in 0.4s ease-out 0.4s backwards" }} className="space-y-2">
                 <Label htmlFor="password" className="text-sm text-white/80">
                   Password
                 </Label>
@@ -272,7 +225,7 @@ function LoginForm() {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-              </motion.div>
+              </div>
 
               <div className="flex justify-end">
                 <Link
@@ -283,119 +236,97 @@ function LoginForm() {
                 </Link>
               </div>
 
-              <AnimatePresence>
-                {showTotp && (
-                  <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="space-y-2"
-                  >
-                    <Label htmlFor="totpCode" className="flex items-center gap-1.5 text-sm text-white/80">
-                      <ShieldCheck className="h-4 w-4 text-blue-400" />
-                      Two-Factor Code
-                    </Label>
-                    <Input
-                      id="totpCode"
-                      name="totpCode"
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="000000"
-                      maxLength={6}
-                      required={showTotp}
-                      value={totpCode}
-                      onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
-                      className="relative border-white/10 bg-white/5 text-center font-mono text-lg tracking-[0.4em] text-white placeholder:text-white/30 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20"
-                    />
-                    <p className="text-xs text-white/50">Enter the 6-digit code from your Google Authenticator app.</p>
-                  </motion.div>
-                )}
-                {success && (
-                  <motion.p
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400"
-                  >
-                    {success}
-                  </motion.p>
-                )}
-                {error && (
-                  <motion.p
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400"
-                  >
-                    {error}
-                  </motion.p>
-                )}
-              </AnimatePresence>
+              {showTotp && (
+                <div style={{ animation: "fade-left-in 0.4s ease-out" }} className="space-y-2">
+                  <Label htmlFor="totpCode" className="flex items-center gap-1.5 text-sm text-white/80">
+                    <ShieldCheck className="h-4 w-4 text-blue-400" />
+                    Two-Factor Code
+                  </Label>
+                  <Input
+                    id="totpCode"
+                    name="totpCode"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="000000"
+                    maxLength={6}
+                    required={showTotp}
+                    value={totpCode}
+                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                    className="relative border-white/10 bg-white/5 text-center font-mono text-lg tracking-[0.4em] text-white placeholder:text-white/30 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20"
+                  />
+                  <p className="text-xs text-white/50">Enter the 6-digit code from your Google Authenticator app.</p>
+                </div>
+              )}
+              {success && (
+                <p style={{ animation: "fade-left-in 0.4s ease-out" }} className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
+                  {success}
+                </p>
+              )}
+              {error && (
+                <p style={{ animation: "fade-left-in 0.4s ease-out" }} className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                  {error}
+                </p>
+              )}
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5, duration: 0.4 }}
-              >
-                <motion.div
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
+              <div style={{ animation: "fade-up-in 0.4s ease-out 0.5s backwards" }}>
+                <Button
+                  type="submit"
+                  className="relative w-full overflow-hidden bg-orange-500 text-white shadow-lg shadow-orange-500/25 transition-all hover:bg-orange-600 hover:shadow-xl"
+                  disabled={loading}
+                  size="lg"
                 >
-                  <Button
-                    type="submit"
-                    className="relative w-full overflow-hidden bg-orange-500 text-white shadow-lg shadow-orange-500/25 transition-all hover:bg-orange-600 hover:shadow-xl"
-                    disabled={loading}
-                    size="lg"
-                  >
-                    {/* Shimmer */}
-                    <motion.div
-                      className="absolute inset-0 -skew-x-12 bg-gradient-to-r from-transparent via-white/10 to-transparent"
-                      animate={{ x: ["-100%", "200%"] }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                    />
-                    {loading ? (
-                      <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                      >
-                        <svg className="h-5 w-5" viewBox="0 0 24 24">
-                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" strokeDasharray="50" strokeLinecap="round" />
-                        </svg>
-                      </motion.div>
-                    ) : (
-                      <span className="flex items-center gap-2">
-                        <LogIn className="h-4 w-4" />
-                        Staff / Admin Sign In
-                      </span>
-                    )}
-                  </Button>
-                </motion.div>
-              </motion.div>
+                  {loading ? (
+                    <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" strokeDasharray="50" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <LogIn className="h-4 w-4" />
+                      Staff / Admin Sign In
+                    </span>
+                  )}
+                </Button>
+              </div>
             </form>
 
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.6, duration: 0.4 }}
+            <p
+              style={{ animation: "fade-in 0.4s ease-out 0.6s backwards" }}
               className="mt-6 text-center text-sm text-white/50"
             >
               Employee accounts are created by your administrator.
-            </motion.p>
-            <Link
-              href="/my-account/login"
-              className="mt-3 flex items-center justify-center gap-1.5 text-sm font-medium text-blue-300 transition-colors hover:text-blue-200"
-            >
-              <UserRound className="h-4 w-4" />
-              Customer? Sign in to your account
-            </Link>
+            </p>
             {alternateOrigin && (
               <a href={alternateOrigin} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-1.5 text-xs text-blue-300 hover:text-blue-200">
                 <ExternalLink className="h-3.5 w-3.5" /> Open an independent login tab
               </a>
             )}
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       </div>
+
+      <style>{`
+        @keyframes orb-move {
+          0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.15; }
+          25% { transform: translate(30px, -30px) scale(1.1); opacity: 0.2; }
+          50% { transform: translate(-20px, 20px) scale(0.9); opacity: 0.12; }
+          75% { transform: translate(10px, -10px) scale(1.05); opacity: 0.18; }
+        }
+        @keyframes particle-float {
+          0%, 100% { transform: translateY(0); opacity: 0; }
+          50% { transform: translateY(-30px); opacity: 0.6; }
+        }
+        @keyframes fade-scale-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        @keyframes fade-down-in { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fade-up-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fade-left-in { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes logo-wiggle {
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(-10deg); }
+          50% { transform: rotate(10deg); }
+          75% { transform: rotate(-5deg); }
+        }
+      `}</style>
     </div>
   );
 }

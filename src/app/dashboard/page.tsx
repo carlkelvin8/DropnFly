@@ -22,8 +22,17 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+
+const RechartsBar = dynamic(() => import("@/components/dashboard/RechartsBar"), {
+  ssr: false,
+  loading: () => <div className="flex-1 min-h-[200px] animate-pulse rounded-lg bg-muted/50" />,
+});
+const RechartsBagBar = dynamic(() => import("@/components/dashboard/RechartsBagBar"), {
+  ssr: false,
+  loading: () => <div className="flex-1 min-h-[200px] animate-pulse rounded-lg bg-muted/50" />,
+});
 
 interface DashboardData {
   capacityUsage: { used: number; total: number; percent: number };
@@ -48,13 +57,6 @@ interface DayActivity {
   bookings: { referenceNumber: string; status: string; checkIn: string; checkOut: string; createdAt: string; numberOfBags: number }[];
 }
 
-const BAG_COLORS: Record<string, string> = {
-  "Extra Small": "#d1d5db",
-  Small: "#3b7ac7",
-  Standard: "#ea7d3d",
-  Large: "#9ca3af",
-};
-const BAG_FALLBACK_COLORS = ["#ea7d3d", "#3b7ac7", "#9ca3af", "#e3f0fb"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function getDaysInMonth(year: number, month: number) {
@@ -357,23 +359,7 @@ export default function DashboardPage() {
             <CardContent className="flex flex-1 flex-col">
               {durationData.length > 0 ? (
                 <>
-                  <div className="flex-1 min-h-[200px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={durationData}>
-                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                        <YAxis allowDecimals={false} />
-                        <Tooltip
-                          formatter={(value, _name, props) => [
-                            `${value} booking${Number(value) !== 1 ? "s" : ""}`,
-                            `Duration: ${props?.payload ? durationLabelMap[props.payload.name] || props.payload.name : ""}`,
-                          ]}
-                          labelFormatter={(label) => `Storage: ${durationLabelMap[label as string] || label}`}
-                          contentStyle={{ borderRadius: "8px", border: "1px solid var(--border)", fontSize: "12px" }}
-                        />
-                        <Bar dataKey="value" fill="#ea7d3d" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  <RechartsBar data={durationData} labelMap={durationLabelMap} />
                   <p className="mt-2 text-[11px] text-muted-foreground text-center">
                     Distribution of luggage storage durations across all delivered bookings.
                   </p>
@@ -395,41 +381,7 @@ export default function DashboardPage() {
             <CardContent className="flex flex-1 flex-col">
               {bagData.length > 0 ? (
                 <>
-                  <div className="flex-1" style={{ minHeight: Math.max(200, bagData.length * 40) }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={bagData} layout="vertical" margin={{ left: 10, right: 30 }}>
-                      <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        tick={{ fontSize: 11 }}
-                        width={90}
-                      />
-                      <Tooltip
-                        formatter={(value, _name, props) => [
-                          `${value} bag${Number(value) !== 1 ? "s" : ""}`,
-                          `Type: ${props?.payload?.name || ""}`,
-                        ]}
-                        contentStyle={{ borderRadius: "8px", border: "1px solid var(--border)", fontSize: "12px" }}
-                      />
-                      <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                        {bagData.map((entry, i) => (
-                          <Cell key={i} fill={BAG_COLORS[entry.name] || BAG_FALLBACK_COLORS[i % BAG_FALLBACK_COLORS.length]} />
-                        ))}
-                        <LabelList
-                          dataKey="value"
-                          position="right"
-                          formatter={(value) => {
-                            const total = bagData.reduce((s, b) => s + b.value, 0);
-                            const pct = total > 0 ? Math.round((Number(value) / total) * 100) : 0;
-                            return `${value} (${pct}%)`;
-                          }}
-                          style={{ fontSize: 11, fontWeight: 600 }}
-                        />
-                      </Bar>
-                    </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  <RechartsBagBar data={bagData} />
                   <p className="mt-2 text-[11px] text-muted-foreground text-center">
                     Breakdown of luggage by size type across all active bookings.
                   </p>

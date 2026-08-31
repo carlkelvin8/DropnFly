@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, ArrowLeft, ArrowRight, Building2, Clock, MapPin, Package, Plane } from "lucide-react";
-import { motion } from "framer-motion";
 import { AIRLINES, NAIA_TERMINALS, today } from "./constants";
 
 interface TimeSlot {
@@ -52,7 +51,8 @@ export function PickupStep({
   storageDays, error, onNext, onPrev,
 }: PickupStepProps) {
   return (
-    <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+    <div key="step2" style={{ animation: "step-in 0.25s ease-out" }}>
+      <style>{`@keyframes step-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`}</style>
       <div className="mb-4 flex items-center gap-2">
         <MapPin className="h-5 w-5 text-blue-600" />
         <h3 className="text-lg font-semibold">Pickup Details</h3>
@@ -228,6 +228,6 @@ export function PickupStep({
           Next Step <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
       </div>
-    </motion.div>
+    </div>
   );
 }

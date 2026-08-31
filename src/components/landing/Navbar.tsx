@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useState, useCallback } from "react";
-import { motion } from "framer-motion";
 import { Luggage, Menu, X, ArrowRight } from "lucide-react";
 import { MobileNav } from "./MobileNav";
 
@@ -18,11 +17,9 @@ export function LandingNavbar() {
   const handleClose = useCallback(() => setMobileOpen(false), []);
 
   return (
-    <motion.header
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.5 }}
+    <header
       className="fixed inset-x-0 top-0 z-50 border-b border-transparent bg-background/80 backdrop-blur-xl"
+      style={{ animation: "slide-down 0.5s cubic-bezier(0.21, 0.47, 0.32, 0.98)" }}
     >
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2">
@@ -64,7 +61,14 @@ export function LandingNavbar() {
         </button>
       </div>
 
+      <style>{`
+        @keyframes slide-down {
+          from { transform: translateY(-20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
+
       <MobileNav open={mobileOpen} onClose={handleClose} links={navLinks} />
-    </motion.header>
+    </header>
   );
 }
