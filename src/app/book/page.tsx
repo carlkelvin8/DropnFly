@@ -116,17 +116,11 @@ export default function BookPage() {
   useEffect(() => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
-    fetch("https://restcountries.com/v3.1/all?fields=name,cca2", { signal: controller.signal })
+    fetch("/api/public/geo", { signal: controller.signal })
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          const countriesByName = new Map(
-            FALLBACK_COUNTRIES.map((name) => [name.toLocaleLowerCase(), { name, code: name }])
-          );
-          for (const country of data as { name: { common: string }; cca2: string }[]) {
-            countriesByName.set(country.name.common.toLocaleLowerCase(), { name: country.name.common, code: country.cca2 });
-          }
-          setCountries([...countriesByName.values()].sort((a, b) => a.name.localeCompare(b.name)));
+        if (Array.isArray(data.countries) && data.countries.length > 0) {
+          setCountries(data.countries);
         } else {
           setCountries(FALLBACK_COUNTRIES.map((name) => ({ name, code: name })).sort((a, b) => a.name.localeCompare(b.name)));
         }
@@ -140,7 +134,7 @@ export default function BookPage() {
     if (!selectedCountry) return;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
-    fetch("https://countriesnow.space/api/v0.1/countries/cities", {
+    fetch("/api/public/geo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ country: selectedCountry }),
@@ -148,7 +142,7 @@ export default function BookPage() {
     })
       .then((res) => res.json())
       .then((data) => {
-        if (data && Array.isArray(data.data) && data.data.length > 0) setCities(data.data.sort());
+        if (Array.isArray(data.cities) && data.cities.length > 0) setCities(data.cities);
         else setCities(FALLBACK_CITIES[selectedCountry] || []);
       })
       .catch(() => setCities(FALLBACK_CITIES[selectedCountry] || []))

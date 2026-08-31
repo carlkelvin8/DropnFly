@@ -105,13 +105,13 @@ export default function NewBookingPage() {
         if (locs.length > 0) setLocationId(locs[0].id);
       })
       .catch(() => {});
-    // Attempt to refresh full country list from API, fallback is already comprehensive
-    setCountriesLoading(true);
-    fetch("https://restcountries.com/v3.1/all?fields=name,cca2")
+    // Attempt to refresh full country list from the server proxy (avoids browser CORS).
+    // Fallback list is already comprehensive; only clear the loading flag on completion.
+    fetch("/api/public/geo")
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setCountries(data.map((c: { name: { common: string } }) => c.name.common).sort((a: string, b: string) => a.localeCompare(b)));
+        if (Array.isArray(data.countries) && data.countries.length > 0) {
+          setCountries(data.countries.map((c: { name: string }) => c.name).sort((a: string, b: string) => a.localeCompare(b)));
         }
       })
       .catch(() => {})
@@ -120,15 +120,15 @@ export default function NewBookingPage() {
 
   useEffect(() => {
     if (!custCountry) return;
-    fetch("https://countriesnow.space/api/v0.1/countries/cities", {
+    fetch("/api/public/geo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ country: custCountry }),
     })
       .then((res) => res.json())
       .then((data) => {
-        if (data && Array.isArray(data.data) && data.data.length > 0) {
-          setCities(data.data.sort());
+        if (Array.isArray(data.cities) && data.cities.length > 0) {
+          setCities(data.cities);
         } else {
           setCities(COUNTRY_CITY_FALLBACK[custCountry] || []);
         }

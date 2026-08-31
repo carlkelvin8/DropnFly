@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { prisma } from "@/lib/prisma";
 import { generateReferenceNumber } from "@/lib/reference";
-import { sendConfirmationEmail, verifyConfirmationEmailService } from "@/lib/email";
+import { sendConfirmationEmail } from "@/lib/email";
 import { notifyBookingCreated, sendCustomerNotification } from "@/lib/notifications";
 import { getSystemSettings, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
@@ -61,16 +61,6 @@ export async function POST(req: Request) {
     }
     if (body.cityOfOrigin && typeof body.cityOfOrigin === "string" && body.cityOfOrigin.length > 100) {
       return NextResponse.json({ error: "City of Origin is too long" }, { status: 400 });
-    }
-
-    try {
-      await verifyConfirmationEmailService();
-    } catch (error) {
-      console.error("Booking email service preflight failed:", error);
-      return NextResponse.json(
-        { error: "Booking is temporarily unavailable because the confirmation email service cannot be reached. Please try again shortly." },
-        { status: 503 }
-      );
     }
 
     const safeCountry = typeof body.countryOfOrigin === "string" ? body.countryOfOrigin.slice(0, 100) : undefined;
@@ -340,33 +330,39 @@ export async function POST(req: Request) {
 
     await grantBookingAccess(booking.id, booking.customerId);
 
-    let confirmationEmailSent = false;
-    if (initialStatus === "CONFIRMED") {
-      for (let attempt = 0; attempt < 3 && !confirmationEmailSent; attempt += 1) {
+    // Send the confirmation email asynchronously so a slow or unreachable SMTP
+    // service never blocks booking creation. The booking is already committed at
+    // this point; the email is a best-effort but crucial side-effect that we
+    // retry in the background.
+    void (async () => {
+      if (initialStatus !== "CONFIRMED") return;
+      const scheduledDate = checkInDate.toLocaleDateString("en-PH", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          confirmationEmailSent = await sendConfirmationEmail({
-          to: normalizedEmail,
-          customerName: name,
-          referenceNumber,
-          qrCodeBase64: qrBase64,
-          pickupLocation,
-          dropOffLocation,
-          scheduledDate: checkInDate.toLocaleDateString("en-PH", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          numberOfBags: booking.numberOfBags,
-          totalPrice: Number(booking.totalPrice),
+          await sendConfirmationEmail({
+            to: normalizedEmail,
+            customerName: name,
+            referenceNumber,
+            qrCodeBase64: qrBase64,
+            pickupLocation,
+            dropOffLocation,
+            scheduledDate,
+            numberOfBags: booking!.numberOfBags,
+            totalPrice: Number(booking!.totalPrice),
           });
+          return;
         } catch (error) {
           console.error(`Booking confirmation email attempt ${attempt + 1} failed:`, error);
         }
       }
-    }
+    })();
 
     if (customer.password) {
       try {
@@ -405,7 +401,7 @@ export async function POST(req: Request) {
         paymentAmount: downPaymentAmount,
         qrCode: qrCode,
         status: booking.status,
-        confirmationEmailSent,
+        confirmationEmailSent: false,
       },
       { status: 201 }
     );
