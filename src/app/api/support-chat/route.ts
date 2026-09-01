@@ -67,5 +67,14 @@ export async function POST(req: Request) {
     data: { updatedAt: new Date() },
   });
 
-  return NextResponse.json({ thread, message: created }, { status: 201 });
+  const updatedThread = await prisma.supportChat.findUnique({
+    where: { id: thread.id },
+    include: {
+      messages: {
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  return NextResponse.json({ thread: updatedThread, message: created }, { status: 201 });
 }

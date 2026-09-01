@@ -177,7 +177,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-2xl space-y-6">
+      <div className="mx-auto w-full max-w-5xl space-y-6">
         <div className="flex items-center gap-4">
           <Skeleton className="h-9 w-9" />
           <Skeleton className="h-8 w-48" />
@@ -206,7 +206,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" asChild>
           <Link href="/dashboard">&larr; Back</Link>
@@ -220,18 +220,18 @@ export default function ProfilePage() {
           <CardDescription>Your account details</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-3 rounded-lg border p-4">
+          <div className="flex min-w-0 items-center gap-3 rounded-lg border p-4">
             <User className="h-5 w-5 text-muted-foreground" />
-            <div>
+            <div className="min-w-0">
               <p className="text-sm text-muted-foreground">Name</p>
               <p className="font-medium">{profile?.name || "N/A"}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 rounded-lg border p-4">
+          <div className="flex min-w-0 items-center gap-3 rounded-lg border p-4">
             <Mail className="h-5 w-5 text-muted-foreground" />
-            <div>
+            <div className="min-w-0">
               <p className="text-sm text-muted-foreground">Email</p>
-              <p className="font-medium">{profile?.email || "N/A"}</p>
+              <p className="break-words font-medium">{profile?.email || "N/A"}</p>
             </div>
           </div>
           <div className="flex items-center gap-3 rounded-lg border p-4">
@@ -285,8 +285,8 @@ export default function ProfilePage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {totpEnabled ? (
-              <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-4">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-4 rounded-lg border border-green-200 bg-green-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
                   <Smartphone className="h-5 w-5 text-green-600" />
                   <div>
                     <p className="text-sm font-medium text-green-800">Enabled</p>
@@ -311,7 +311,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="totpCode">Verification Code</Label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <Input
                       id="totpCode"
                       value={totpCode}
@@ -321,7 +321,7 @@ export default function ProfilePage() {
                       inputMode="numeric"
                       className="font-mono tracking-[0.3em]"
                     />
-                    <Button onClick={handleTotpConfirm} disabled={totpLoading} className="bg-orange-500 text-white hover:bg-orange-600">
+                    <Button onClick={handleTotpConfirm} disabled={totpLoading} className="shrink-0 bg-orange-500 text-white hover:bg-orange-600">
                       {totpLoading ? "Verifying..." : "Verify & Enable"}
                     </Button>
                   </div>
@@ -331,8 +331,8 @@ export default function ProfilePage() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
                   <QrCodeIcon className="h-5 w-5 text-muted-foreground" />
                   <div>
                     <p className="text-sm text-muted-foreground">Status</p>

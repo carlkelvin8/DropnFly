@@ -24,6 +24,18 @@ interface SupportThread {
   messages: SupportMsg[];
 }
 
+function normalizeSupportThread(value: unknown): SupportThread | null {
+  if (!value || typeof value !== "object") return null;
+  const thread = value as Partial<SupportThread>;
+  if (typeof thread.id !== "string") return null;
+  return {
+    id: thread.id,
+    customerName: typeof thread.customerName === "string" ? thread.customerName : null,
+    status: typeof thread.status === "string" ? thread.status : "OPEN",
+    messages: Array.isArray(thread.messages) ? thread.messages : [],
+  };
+}
+
 const SUPPORT_TOKEN_KEY = "dropnfly_support_token";
 
 function TypingIndicator() {
@@ -108,14 +120,14 @@ export default function ChatBot() {
     if (sending) return;
     setSending(true);
     setSendError("");
-    ensureToken();
+    const sessionToken = ensureToken();
     // Pre-register the customer's name so staff can see who is chatting.
     try {
       const res = await fetch("/api/support-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token,
+          token: sessionToken,
           name: customerName.trim() || undefined,
           message: "Hello! I'd like to chat with a support agent.",
         }),
@@ -125,7 +137,8 @@ export default function ChatBot() {
         throw new Error(data.error || "Unable to start the chat.");
       }
       const data = await res.json();
-      if (data.thread) setThread(data.thread);
+      const nextThread = normalizeSupportThread(data.thread);
+      if (nextThread) setThread(nextThread);
       setNameSaved(Boolean(customerName.trim()));
       setSupportMode("chat");
     } catch (err) {
@@ -144,9 +157,10 @@ export default function ChatBot() {
         const res = await fetch(`/api/support-chat?token=${encodeURIComponent(token)}`, { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
-        if (active && data.thread) {
+        const nextThread = normalizeSupportThread(data.thread);
+        if (active && nextThread) {
           setThread((prev) =>
-            prev && prev.messages.length === data.thread.messages.length ? prev : data.thread
+            prev && (prev.messages || []).length === nextThread.messages.length ? prev : nextThread
           );
         }
       } catch {
@@ -171,20 +185,22 @@ export default function ChatBot() {
       isFromCustomer: true,
       createdAt: new Date().toISOString(),
     };
+    const sessionToken = ensureToken();
     setThread((prev) =>
-      prev ? { ...prev, messages: [...prev.messages, optimistic] } : { id: "", customerName: null, status: "OPEN", messages: [optimistic] }
+      prev ? { ...prev, messages: [...(prev.messages || []), optimistic] } : { id: "", customerName: null, status: "OPEN", messages: [optimistic] }
     );
     try {
       const res = await fetch("/api/support-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, name: customerName.trim() || undefined, message: text }),
+        body: JSON.stringify({ token: sessionToken, name: customerName.trim() || undefined, message: text }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Unable to send your message.");
-      if (data.thread) setThread(data.thread);
-      if (!nameSaved && data.thread?.customerName) {
-        setCustomerName(data.thread.customerName);
+      const nextThread = normalizeSupportThread(data.thread);
+      if (nextThread) setThread(nextThread);
+      if (!nameSaved && nextThread?.customerName) {
+        setCustomerName(nextThread.customerName);
         setNameSaved(true);
       }
     } catch (err) {
@@ -345,7 +361,7 @@ export default function ChatBot() {
               >
                 {supportMode === "chat" ? (
                   <div className="space-y-4">
-                    {thread?.messages.map((msg) => {
+                    {(thread?.messages || []).map((msg) => {
                       const isCustomer = msg.isFromCustomer;
                       return (
                         <motion.div
