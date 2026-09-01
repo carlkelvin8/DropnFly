@@ -279,8 +279,48 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
   const maxHourlyCount = Math.max(...hourlyDistribution.map((h) => h.count), 1);
   const maxEmployee = Math.max(...employeePerformance.map((e) => e.totalAssigned), 1);
   const maxStatusRevenue = Math.max(...revenueByStatus.map((x) => x.revenue), 1);
-  const heatmapDays = bookingsByDay.slice(-60);
-  const heatmapLeadingDays = heatmapDays.length > 0 ? new Date(`${heatmapDays[0].date}T00:00:00`).getDay() : 0;
+  const heatmapSource = bookingsByDay.slice(-84);
+  const heatmapCounts = new Map(heatmapSource.map((day) => [day.date, day.count]));
+  const latestHeatmapDate = heatmapSource.length
+    ? new Date(`${heatmapSource[heatmapSource.length - 1].date}T00:00:00`)
+    : new Date();
+  const heatmapEnd = new Date(latestHeatmapDate);
+  heatmapEnd.setDate(heatmapEnd.getDate() + ((7 - heatmapEnd.getDay()) % 7));
+  const heatmapStart = new Date(heatmapEnd);
+  heatmapStart.setDate(heatmapStart.getDate() - 83);
+  const heatmapWeeks = Array.from({ length: 12 }, (_, weekIndex) =>
+    Array.from({ length: 7 }, (_, dayIndex) => {
+      const date = new Date(heatmapStart);
+      date.setDate(date.getDate() + weekIndex * 7 + dayIndex);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      return { date, key, count: heatmapCounts.get(key) ?? 0 };
+    }),
+  );
+  const heatmapMonthLabels = heatmapWeeks.map((week, index) => {
+    const month = week[0].date.getMonth();
+    const previousMonth = index > 0 ? heatmapWeeks[index - 1][0].date.getMonth() : -1;
+    return month !== previousMonth
+      ? week[0].date.toLocaleDateString("en-PH", { month: "short" })
+      : "";
+  });
+  const heatmapPeak = Math.max(...heatmapSource.map((day) => day.count), 0);
+  const heatmapTotal = heatmapSource.reduce((sum, day) => sum + day.count, 0);
+  const heatmapActiveDays = heatmapSource.filter((day) => day.count > 0).length;
+  const heatmapPeakDay = heatmapSource.reduce<DayData | null>(
+    (peak, day) => (!peak || day.count > peak.count ? day : peak),
+    null,
+  );
+  const heatmapLevel = (count: number) => {
+    if (count === 0 || heatmapPeak === 0) return 0;
+    return Math.min(4, Math.max(1, Math.ceil((count / heatmapPeak) * 4)));
+  };
+  const heatmapColors = [
+    "bg-orange-50 dark:bg-orange-950/25",
+    "bg-orange-200 dark:bg-orange-900/70",
+    "bg-orange-300 dark:bg-orange-800",
+    "bg-orange-400 dark:bg-orange-700",
+    "bg-orange-600 dark:bg-orange-500",
+  ];
 
   return (
     <div className="space-y-6">
@@ -532,18 +572,48 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
         </Card>
       </div>
 
-      <Card className="border-t-2 border-t-orange-500">
-        <CardHeader><CardTitle className="text-sm font-medium">Booking Activity Heatmap</CardTitle><CardDescription>Latest 60 days. Darker cells indicate higher booking activity.</CardDescription></CardHeader>
-        <CardContent>
-          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div>
-          <div className="grid grid-cols-7 gap-1" role="img" aria-label="Booking activity for the latest 60 days">
-            {Array.from({ length: heatmapLeadingDays }, (_, index) => <span key={`empty-${index}`} className="aspect-square min-h-6" aria-hidden="true" />)}
-            {heatmapDays.map((day) => {
-              const intensity = day.count === 0 ? 0.06 : 0.25 + (day.count / maxDailyCount) * 0.75;
-              return <div key={day.date} className="flex aspect-square min-h-6 items-center justify-center rounded border border-orange-600/10 text-[9px] font-medium text-orange-950/70" style={{ backgroundColor: `rgba(249, 115, 22, ${intensity})` }} title={`${new Date(`${day.date}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}: ${day.count} bookings`} aria-label={`${day.date}: ${day.count} bookings`}>{new Date(`${day.date}T00:00:00`).getDate()}</div>;
-            })}
+      <Card className="overflow-hidden border-t-2 border-t-orange-500">
+        <CardHeader className="gap-5 pb-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="text-sm font-semibold">Booking Activity Heatmap</CardTitle>
+            <CardDescription className="mt-1">Bookings per day — last 12 weeks</CardDescription>
           </div>
-          <div className="mt-3 flex items-center justify-end gap-1 text-[10px] text-muted-foreground"><span>Less</span>{[0.08, 0.3, 0.5, 0.7, 1].map((opacity) => <span key={opacity} className="h-3 w-3 rounded-sm border border-orange-600/10" style={{ backgroundColor: `rgba(249, 115, 22, ${opacity})` }} />)}<span>More</span></div>
+          <div className="grid grid-cols-3 gap-6 text-center sm:gap-9">
+            <div><p className="text-xl font-bold text-orange-500">{heatmapPeak}</p><p className="text-[10px] text-muted-foreground">Peak Bookings</p></div>
+            <div><p className="text-xl font-bold">{(heatmapTotal / 84).toFixed(1)}</p><p className="text-[10px] text-muted-foreground">Daily Avg</p></div>
+            <div><p className="text-xl font-bold">{heatmapActiveDays}</p><p className="text-[10px] text-muted-foreground">Active Days</p></div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto pb-1">
+            <div className="min-w-[470px] max-w-[660px]">
+              <div className="mb-1 grid grid-cols-[32px_repeat(12,minmax(0,1fr))] gap-1.5 text-[10px] text-muted-foreground">
+                <span aria-hidden="true" />
+                {heatmapMonthLabels.map((month, index) => <span key={`${month}-${index}`}>{month}</span>)}
+              </div>
+              <div className="grid grid-cols-[32px_repeat(12,minmax(0,1fr))] gap-1.5" role="img" aria-label="Booking activity heatmap for the last 12 weeks">
+                <div className="grid grid-rows-7 gap-1.5 text-[10px] leading-4 text-muted-foreground">
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span key={day}>{day}</span>)}
+                </div>
+                {heatmapWeeks.map((week, weekIndex) => (
+                  <div key={weekIndex} className="grid grid-rows-7 gap-1.5">
+                    {week.map((day) => (
+                      <span
+                        key={day.key}
+                        className={`h-4 rounded-[3px] border border-orange-600/5 transition-transform hover:scale-110 ${heatmapColors[heatmapLevel(day.count)]}`}
+                        title={`${day.date.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}: ${day.count} bookings`}
+                        aria-label={`${day.key}: ${day.count} bookings`}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 border-t pt-3 text-[10px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-1.5"><span>Less</span>{heatmapColors.map((color, index) => <span key={color} className={`h-3.5 w-3.5 rounded-[3px] border border-orange-600/5 ${color}`} aria-label={`Intensity level ${index}`} />)}<span>More</span></div>
+            {heatmapPeakDay && <p>Peak: <span className="font-semibold text-orange-500">{heatmapPeakDay.count} bookings</span> on {new Date(`${heatmapPeakDay.date}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</p>}
+          </div>
         </CardContent>
       </Card>
 
