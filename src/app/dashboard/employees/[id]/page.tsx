@@ -95,7 +95,7 @@ export default function EmployeeDetailPage() {
 
   if (!employee) {
     return (
-      <div className="mx-auto max-w-4xl space-y-6">
+      <div className="space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="grid gap-6 md:grid-cols-2">
           <Skeleton className="h-64 w-full" />
@@ -107,7 +107,7 @@ export default function EmployeeDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" asChild>
           <Link href="/dashboard/employees">&larr; Back</Link>
