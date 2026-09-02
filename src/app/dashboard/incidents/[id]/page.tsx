@@ -279,7 +279,10 @@ export default function IncidentDetailPage() {
                 <div>
                   <span className="text-xs text-muted-foreground">Booking</span>
                   <p className="font-mono font-medium">{incident.booking.referenceNumber}</p>
-                  <p className="text-xs text-muted-foreground">Status: {incident.booking.status.replace(/_/g, " ")}</p>
+                  <p className="text-[10px] text-muted-foreground">Status</p>
+                  <p className="text-xs font-medium capitalize">
+                    {(incident.booking.status || "").replace(/_/g, " ")}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -308,7 +311,7 @@ export default function IncidentDetailPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-medium capitalize">
-                            {entry.action.replace(/_/g, " ")}
+                            {(entry.action || "").replace(/_/g, " ")}
                           </span>
                           <span className="text-[10px] text-muted-foreground">
                             {formatRelativeTime(entry.createdAt)}

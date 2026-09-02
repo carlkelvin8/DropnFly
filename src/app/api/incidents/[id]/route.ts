@@ -214,13 +214,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (escalatedTo !== undefined) updateData.escalatedTo = escalatedTo;
     if (status === "RESOLVED" || status === "CLOSED") updateData.resolvedAt = new Date();
 
-    const incident = await prisma.incidentReport.update({
+    await prisma.incidentReport.update({
       where: { id },
       data: updateData,
-      include: {
-        customer: { select: { name: true, email: true } },
-        booking: { select: { referenceNumber: true } },
-      },
     });
 
     const changes: string[] = [];
@@ -247,23 +243,44 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       details: `Updated incident #${id.slice(0, 8)}: ${changes.join(", ")}`,
     });
 
+    const updated = await prisma.incidentReport.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { name: true, email: true, phone: true } },
+        booking: {
+          select: {
+            referenceNumber: true,
+            pickupLocation: true,
+            dropOffLocation: true,
+            status: true,
+            checkIn: true,
+            checkOut: true,
+            totalPrice: true,
+            luggageDetails: true,
+          },
+        },
+        timeline: {
+          orderBy: { createdAt: "desc" },
+          include: { user: { select: { name: true } } },
+        },
+      },
+    });
+
     // Only email the customer when customer-visible fields actually changed
     const customerVisibleChange =
       (status && status !== existing.status) ||
       (resolution !== undefined && resolution !== existing.resolution);
-    if (customerVisibleChange) {
+    if (customerVisibleChange && updated) {
       try {
-        // Include tracking details and ensure investigation email is sent (SMTP-gated inside helper)
-        const fullIncident = await prisma.incidentReport.findUnique({ where: { id }, select: { description: true } });
         await sendIncidentEmail({
-          to: incident.customer.email,
-          customerName: incident.customer.name,
-          referenceNumber: incident.booking.referenceNumber,
-          incidentType: incident.type,
-          status: status || incident.status,
-          resolution: resolution || incident.resolution,
+          to: updated.customer.email,
+          customerName: updated.customer.name,
+          referenceNumber: updated.booking.referenceNumber,
+          incidentType: updated.type,
+          status: status || updated.status,
+          resolution: resolution || updated.resolution,
           incidentId: id,
-          description: fullIncident?.description || null,
+          description: updated.description,
         });
       } catch (emailErr) {
         if (process.env.NODE_ENV === "development") {
@@ -272,7 +289,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     }
 
-    return NextResponse.json(incident);
+    return NextResponse.json(updated);
   } catch {
     return NextResponse.json({ error: "Failed to update incident" }, { status: 500 });
   }
