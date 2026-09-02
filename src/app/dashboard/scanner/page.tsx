@@ -328,6 +328,7 @@ export default function QrScannerPage() {
       setIntakeTag("");
       setIntakeRef("");
       setPhoto(null);
+      loadIntakeQueue();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Intake failed");
     } finally {
