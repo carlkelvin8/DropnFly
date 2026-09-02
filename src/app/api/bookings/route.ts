@@ -235,6 +235,13 @@ export async function POST(req: Request) {
 
     const [priceSettings] = await Promise.all([getBookingPriceSettings()]);
     const computed = computeBookingPrice({ luggageLines, services, discount: 0, settings: priceSettings, storageDays });
+    const declaredBags = parseInt(numberOfBags);
+    if (computed.totalBags <= 0) {
+      return NextResponse.json({ error: "Please select at least one bag" }, { status: 400 });
+    }
+    if (isNaN(declaredBags) || declaredBags !== computed.totalBags) {
+      return NextResponse.json({ error: "Luggage count mismatch" }, { status: 400 });
+    }
     const orderAmount = computed.totalPrice;
     let totalPrice = orderAmount;
 

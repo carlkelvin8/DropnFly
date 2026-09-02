@@ -101,6 +101,8 @@ const statusOptions = [
   { value: "IN_STORAGE", label: "In Storage" },
   { value: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
   { value: "DELIVERED", label: "Delivered" },
+  { value: "CANCELLED", label: "Cancelled" },
+  { value: "NO_SHOW", label: "No Show" },
 ];
 
 const ADDITIONAL_SERVICES = [

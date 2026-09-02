@@ -261,12 +261,15 @@ export default function CustomerBookingDetailPage() {
   const canExtend = !["CANCELLED", "DELIVERED"].includes(booking.status);
   const extraBags = Math.max(0, booking.numberOfBags - 3);
   const extraBagFee = extraBags * 100;
+  const storageDays = booking.checkIn && booking.checkOut
+    ? Math.max(1, Math.ceil((new Date(booking.checkOut).getTime() - new Date(booking.checkIn).getTime()) / (1000 * 60 * 60 * 24)))
+    : 1;
   let luggageSubtotal = 0;
   try {
     const parsed: { type: string; qty: number; price: number }[] = booking.luggageDetails ? JSON.parse(booking.luggageDetails) : [];
     luggageSubtotal = parsed.reduce((sum, item) => sum + item.price * item.qty, 0);
   } catch {}
-  const basePrice = luggageSubtotal > 0 ? luggageSubtotal : booking.totalPrice - extraBagFee + booking.discount;
+  const basePrice = luggageSubtotal > 0 ? luggageSubtotal * storageDays : booking.totalPrice - extraBagFee + booking.discount;
   const additionalServices = (() => {
     const services: string[] = [];
     if (booking.luggageDetails) {
@@ -668,9 +671,15 @@ export default function CustomerBookingDetailPage() {
                 <span className="text-gray-500">Luggage ({Math.min(booking.numberOfBags, 3)} bag{Math.min(booking.numberOfBags, 3) > 1 ? "s" : ""})</span>
                 <span>₱{basePrice.toFixed(2)}</span>
               </div>
+              {storageDays > 1 && (
+                <div className="flex justify-between text-sm text-gray-400">
+                  <span>Storage ({storageDays} days)</span>
+                  <span>×{storageDays}</span>
+                </div>
+              )}
               {extraBags > 0 && (
                 <div className="flex justify-between text-sm text-amber-600">
-                  <span>Extra bag fee ({extraBags} × ₱100)</span>
+                  <span>Extra bag fee ({extraBags} bags)</span>
                   <span>+₱{extraBagFee.toFixed(2)}</span>
                 </div>
               )}

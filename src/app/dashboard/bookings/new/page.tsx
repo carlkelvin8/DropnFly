@@ -238,7 +238,7 @@ export default function NewBookingPage() {
     setLoading(false);
   }
 
-  const today = new Date().toISOString().slice(0, 16);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(new Date()) + "T" + new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -421,7 +421,7 @@ export default function NewBookingPage() {
                       <div className="flex justify-between"><span className="text-gray-600">Total bags:</span><span className="font-bold">{totalBags}</span></div>
                       <div className="flex justify-between"><span className="text-gray-600">Subtotal:</span><span className="font-bold">₱{subtotal.toFixed(2)}</span></div>
                       {excessBags > 0 && (
-                        <div className="flex justify-between text-amber-700"><span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Excess fee ({excessBags} × ₱{EXTRA_BAG_FEE.toFixed(2)})</span><span className="font-bold">+₱{extraFee.toFixed(2)}</span></div>
+                        <div className="flex justify-between text-amber-700"><span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Excess fee ({excessBags} × ₱{excessBagFee})</span><span className="font-bold">+₱{extraFee.toFixed(2)}</span></div>
                       )}
                     </div>
                   )}
@@ -465,7 +465,7 @@ export default function NewBookingPage() {
                   {storageDays > 0 && <div className="flex justify-between text-blue-600"><span>Storage</span><span className="font-medium">{storageDays} day{storageDays > 1 ? "s" : ""}</span></div>}
                   <div className="border-t pt-2 mt-2 space-y-1">
                     <div className="flex justify-between"><span className="text-gray-600">Luggage ({totalBags} bags)</span><span className="font-medium">₱{subtotal.toFixed(2)}</span></div>
-                    {excessBags > 0 && <div className="flex justify-between text-amber-600"><span>Excess fee ({excessBags} × ₱{EXTRA_BAG_FEE.toFixed(2)})</span><span>+₱{extraFee.toFixed(2)}</span></div>}
+                    {excessBags > 0 && <div className="flex justify-between text-amber-600"><span>Excess fee ({excessBags} × ₱{excessBagFee})</span><span>+₱{extraFee.toFixed(2)}</span></div>}
                     {servicesCost > 0 && <div className="flex justify-between text-violet-600"><span>Services</span><span>+₱{servicesCost.toFixed(2)}</span></div>}
                     {promoApplied && <div className="flex justify-between text-green-600"><span>Promo ({promoApplied})</span><span>-₱{promoDiscount.toFixed(2)}</span></div>}
                     <div className="flex justify-between border-t pt-2 font-bold text-base"><span>Total</span><span>₱{grandTotal.toFixed(2)}</span></div>
