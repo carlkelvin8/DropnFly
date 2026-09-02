@@ -8,6 +8,7 @@ import { getSystemSettings, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
 import { isPaymongoConfigured } from "@/lib/paymongo";
 import { grantBookingAccess } from "@/lib/booking-access";
+import { manilaMinutesOfDay, manilaDayRange } from "@/lib/manila-time";
 import type { Prisma, Booking } from "@/generated/prisma/client";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
 
@@ -174,7 +175,7 @@ export async function POST(req: Request) {
       const operatingEnd = setting(settings, "operating_end", defaults.operating_end);
       const [startH, startM] = operatingStart.split(":").map(Number);
       const [endH, endM] = operatingEnd.split(":").map(Number);
-      const slotStartMinutes = date.getHours() * 60 + date.getMinutes();
+      const slotStartMinutes = manilaMinutesOfDay(date);
       const startMinutes = startH * 60 + startM;
       // Normalize a 24-hour operation ("23:59" or "24:00") to the start of the next day so a
       // slot ending exactly at midnight is accepted.
@@ -184,10 +185,7 @@ export async function POST(req: Request) {
       if (slotStartMinutes < startMinutes || slotStartMinutes + durationMin > endMinutes) {
         throw new Error(`Selected ${type} time is outside operating hours`);
       }
-      const dayStart = new Date(date);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayEnd.getDate() + 1);
+      const { start: dayStart, end: dayEnd } = manilaDayRange(date);
       const existing = await db.booking.findMany({
         where: {
           status: { notIn: ["CANCELLED", "DELIVERED"] },
@@ -202,7 +200,7 @@ export async function POST(req: Request) {
       for (const b of existing) {
         const dt = isPickup ? (b as { checkIn: Date }).checkIn : (b as { checkOut: Date | null }).checkOut;
         if (!dt) continue;
-        const t = dt.getHours() * 60 + dt.getMinutes();
+        const t = manilaMinutesOfDay(dt);
         if (t >= slotStartMinutes && t < slotStartMinutes + durationMin) count++;
       }
       if (count >= maxConcurrent) {
@@ -334,12 +332,13 @@ export async function POST(req: Request) {
 
     await grantBookingAccess(booking.id, booking.customerId);
 
-    // Send the confirmation email asynchronously so a slow or unreachable SMTP
-    // service never blocks booking creation. The booking is already committed at
-    // this point; the email is a best-effort but crucial side-effect that we
-    // retry in the background.
-    void (async () => {
-      if (initialStatus !== "CONFIRMED") return;
+    // Send the confirmation email after the booking is committed. We await the
+    // first attempt so the response reflects the real outcome (the confirmation
+    // page then doesn't wrongly warn the customer that the email failed). If the
+    // first attempt fails, we retry in the background (best-effort) rather than
+    // blocking booking creation for the whole retry window.
+    let confirmationEmailSent = false;
+    if (initialStatus === "CONFIRMED") {
       const scheduledDate = checkInDate.toLocaleDateString("en-PH", {
         weekday: "long",
         year: "numeric",
@@ -348,25 +347,43 @@ export async function POST(req: Request) {
         hour: "2-digit",
         minute: "2-digit",
       });
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          await sendConfirmationEmail({
-            to: normalizedEmail,
-            customerName: name,
-            referenceNumber,
-            qrCodeBase64: qrBase64,
-            pickupLocation,
-            dropOffLocation,
-            scheduledDate,
-            numberOfBags: booking!.numberOfBags,
-            totalPrice: Number(booking!.totalPrice),
-          });
-          return;
-        } catch (error) {
-          console.error(`Booking confirmation email attempt ${attempt + 1} failed:`, error);
-        }
+      try {
+        await sendConfirmationEmail({
+          to: normalizedEmail,
+          customerName: name,
+          referenceNumber,
+          qrCodeBase64: qrBase64,
+          pickupLocation,
+          dropOffLocation,
+          scheduledDate,
+          numberOfBags: booking.numberOfBags,
+          totalPrice: Number(booking.totalPrice),
+        });
+        confirmationEmailSent = true;
+      } catch (firstAttemptError) {
+        console.error("Booking confirmation email first attempt failed:", firstAttemptError);
+        void (async () => {
+          for (let attempt = 1; attempt < 3; attempt += 1) {
+            try {
+              await sendConfirmationEmail({
+                to: normalizedEmail,
+                customerName: name,
+                referenceNumber,
+                qrCodeBase64: qrBase64,
+                pickupLocation,
+                dropOffLocation,
+                scheduledDate,
+                numberOfBags: booking.numberOfBags,
+                totalPrice: Number(booking.totalPrice),
+              });
+              return;
+            } catch (error) {
+              console.error(`Booking confirmation email retry ${attempt + 1} failed:`, error);
+            }
+          }
+        })();
       }
-    })();
+    }
 
     if (customer.password) {
       try {
@@ -405,7 +422,7 @@ export async function POST(req: Request) {
         paymentAmount: downPaymentAmount,
         qrCode: qrCode,
         status: booking.status,
-        confirmationEmailSent: false,
+        confirmationEmailSent,
       },
       { status: 201 }
     );

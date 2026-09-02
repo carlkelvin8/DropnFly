@@ -53,20 +53,22 @@ export function SearchableCombobox({
   }, [options, normalizedQuery]);
 
   useEffect(() => {
-    if (highlightedIndex >= 0 && itemRefs.current.has(highlightedIndex)) {
+    if (highlightedIndex >= 0 && highlightedIndex < filtered.length && itemRefs.current.has(highlightedIndex)) {
       itemRefs.current.get(highlightedIndex)?.scrollIntoView({ block: "nearest" });
     }
-  }, [highlightedIndex]);
+  }, [highlightedIndex, filtered.length]);
 
   function handleFocus() {
     if (disabled) return;
     setOpen(true);
     setQuery(value);
+    setHighlightedIndex(-1);
   }
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value;
     setQuery(v);
+    setHighlightedIndex(-1);
     if (!open) setOpen(true);
   }
 
@@ -83,6 +85,7 @@ export function SearchableCombobox({
         e.preventDefault();
         setOpen(true);
         setQuery(value);
+        setHighlightedIndex(-1);
       }
       return;
     }

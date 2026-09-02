@@ -154,6 +154,11 @@ export default function BookPage() {
   }, [selectedCountry]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (selectedCountry) setCitiesLoading(true);
+  }, [selectedCountry]);
+
+  useEffect(() => {
     fetch("/api/public/settings")
       .then((r) => r.json())
       .then((data) => {
@@ -320,6 +325,13 @@ export default function BookPage() {
       if (!deliveryTerminal) errors.push("Please select your Drop-off Terminal");
       if (!deliveryDate) errors.push("Please select your Delivery Date");
       if (!deliverySlot) errors.push("Please select your Delivery Time Slot");
+      if (pickupDate && deliveryDate) {
+        if (deliveryDate < pickupDate) {
+          errors.push("Delivery date must be on or after your Pickup Date");
+        } else if (deliveryDate === pickupDate && pickupSlot && deliverySlot && deliverySlot <= pickupSlot) {
+          errors.push("Delivery time slot must be after your Pickup Time Slot");
+        }
+      }
     } else if (step === 3) {
       if (totalBags === 0) errors.push("Please select at least one bag (Luggage Types)");
     }

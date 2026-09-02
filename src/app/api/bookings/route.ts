@@ -6,6 +6,7 @@ import { decimalsToNumbers } from "@/lib/serialize";
 import type { BookingStatus } from "@/generated/prisma/client";
 import { normalizeReference } from "@/lib/utils";
 import { getSystemSettings, setting } from "@/lib/settings";
+import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -178,7 +179,6 @@ export async function POST(req: Request) {
       checkIn,
       checkOut,
       status,
-      totalPrice: clientTotalPrice,
       paymentMethod,
       downPayment,
       luggageDetails,
@@ -209,73 +209,93 @@ export async function POST(req: Request) {
     if (!customer) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
 
     const checkInDate = new Date(checkIn);
-    let totalPrice: number;
+    if (isNaN(checkInDate.getTime())) {
+      return NextResponse.json({ error: "Invalid check-in date" }, { status: 400 });
+    }
 
-    if (clientTotalPrice) {
-      totalPrice = parseFloat(clientTotalPrice);
-    } else if (checkOut && location) {
-      const checkOutDate = new Date(checkOut);
+    let checkOutDate: Date | null = null;
+    if (checkOut) {
+      checkOutDate = new Date(checkOut);
+      if (isNaN(checkOutDate.getTime())) {
+        return NextResponse.json({ error: "Invalid check-out date" }, { status: 400 });
+      }
       if (checkOutDate <= checkInDate) {
         return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
       }
-      const diffMs = checkOutDate.getTime() - checkInDate.getTime();
-      const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-      totalPrice = Math.max(1, diffDays) * Number(location.pricePerDay) * numberOfBags;
-    } else {
-      totalPrice = 0;
     }
+
+    // Compute the authoritative price server-side from the declared luggage lines and the
+    // admin-configured rates, multiplied by storage duration. We never trust a client-sent
+    // total because it may be calculated from hardcoded prices or miss the storage-day
+    // multiplier (which previously undercharged multi-day walk-in bookings).
+    const { luggageLines, services } = parseLuggageDetails(luggageDetails || "");
+    const storageDays = checkOutDate
+      ? Math.max(1, Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)))
+      : 1;
+
+    const [priceSettings] = await Promise.all([getBookingPriceSettings()]);
+    const computed = computeBookingPrice({ luggageLines, services, discount: 0, settings: priceSettings, storageDays });
+    const orderAmount = computed.totalPrice;
+    let totalPrice = orderAmount;
 
     let discount = 0;
     let promoCodeId: string | null = null;
 
-    if (promoCode) {
+    if (promoCode && orderAmount > 0) {
       const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.toUpperCase() } });
-      if (promo && promo.isActive && promo.usedCount < promo.maxUsage && (!promo.expiresAt || new Date() <= promo.expiresAt)) {
-        const orderAmount = clientTotalPrice ? parseFloat(clientTotalPrice) : 0;
-        if (orderAmount >= Number(promo.minAmount)) {
-          if (promo.type === "PERCENTAGE") {
-            discount = orderAmount * (Number(promo.value) / 100);
-            if (promo.maxDiscount) discount = Math.min(discount, Number(promo.maxDiscount));
-          } else {
-            discount = Number(promo.value);
-          }
+      if (promo && promo.isActive && promo.usedCount < promo.maxUsage && (!promo.expiresAt || new Date() <= promo.expiresAt) && orderAmount >= Number(promo.minAmount)) {
+        if (promo.type === "PERCENTAGE") {
+          discount = orderAmount * (Number(promo.value) / 100);
+          if (promo.maxDiscount) discount = Math.min(discount, Number(promo.maxDiscount));
+        } else {
+          discount = Number(promo.value);
+        }
+        discount = Math.min(orderAmount, Math.max(0, discount));
+        if (discount > 0) {
           promoCodeId = promo.id;
-          await prisma.promoCode.update({
-            where: { id: promo.id },
-            data: { usedCount: { increment: 1 } },
-          });
+          totalPrice = orderAmount - discount;
         }
       }
     }
 
-    const referenceNumber = generateReferenceNumber();
+    const referenceNumber = generateReferenceNumber(setting(settings, "tx_prefix", "DROPFLY"));
 
     const QRCode = (await import("qrcode")).default;
     const qrCode = await QRCode.toDataURL(referenceNumber, { width: 300, margin: 2 });
     const qrBase64 = qrCode.replace(/^data:image\/png;base64,/, "");
 
-    const booking = await prisma.booking.create({
-      data: {
-        referenceNumber,
-        qrCode: qrBase64,
-        userId: session.user.id,
-        customerId,
-        locationId: locationId || null,
-        pickupLocation: body.pickupLocation || "",
-        dropOffLocation: body.dropOffLocation || "",
-        luggageDetails: luggageDetails || null,
-        checkIn: checkInDate,
-        checkOut: body.checkOut ? new Date(body.checkOut) : null,
-        numberOfBags,
-        totalPrice,
-        discount,
-        promoCodeId,
-        status: bookingStatus,
-        payments: downPayment > 0
-          ? { create: { amount: parseFloat(downPayment), method: paymentMethod || "CASH", status: "PAID", paidAt: new Date(), customerId } }
-          : undefined,
-      },
-      include: { customer: { select: { name: true } }, location: { select: { name: true } } },
+    // Wrap the promo-code usage increment and booking creation in a transaction so the
+    // promo's usedCount is rolled back if booking creation fails.
+    const booking = await prisma.$transaction(async (tx) => {
+      if (promoCodeId) {
+        await tx.promoCode.update({
+          where: { id: promoCodeId },
+          data: { usedCount: { increment: 1 } },
+        });
+      }
+      return tx.booking.create({
+        data: {
+          referenceNumber,
+          qrCode: qrBase64,
+          userId: session.user.id,
+          customerId,
+          locationId: locationId || null,
+          pickupLocation: body.pickupLocation || "",
+          dropOffLocation: body.dropOffLocation || "",
+          luggageDetails: luggageDetails || null,
+          checkIn: checkInDate,
+          checkOut: checkOutDate,
+          numberOfBags,
+          totalPrice,
+          discount,
+          promoCodeId,
+          status: bookingStatus,
+          payments: downPayment > 0
+            ? { create: { amount: parseFloat(downPayment), method: paymentMethod || "CASH", status: "PAID", paidAt: new Date(), customerId } }
+            : undefined,
+        },
+        include: { customer: { select: { name: true } }, location: { select: { name: true } } },
+      });
     });
 
     const { logActivity } = await import("@/lib/activity");

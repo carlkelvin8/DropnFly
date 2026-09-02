@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { manilaWeekday, manilaDayStart } from "@/lib/manila-time";
 
 const DEFAULTS = {
   max_concurrent_pickups: "1",
@@ -79,8 +80,9 @@ export async function GET(req: NextRequest) {
 
   const slots = generateSlots(operatingStart, operatingEnd, slotDuration);
 
-  const selectedDate = new Date(dateStr + "T00:00:00+08:00");
-  if (!settings.store_operating_days.split(",").includes(String(selectedDate.getDay()))) {
+  const selectedDate = manilaDayStart(dateStr);
+  const manilaDay = String(manilaWeekday(selectedDate));
+  if (!settings.store_operating_days.split(",").includes(manilaDay)) {
     return NextResponse.json({ date: dateStr, type, maxConcurrent, slotDuration, operatingStart, operatingEnd, slots: [] });
   }
   const nextDate = new Date(selectedDate);

@@ -26,14 +26,14 @@ import {
   Building2,
   Clock,
 } from "lucide-react";
-import { LUGGAGE_TYPES, EXTRA_BAG_FEE, EXTRA_BAG_THRESHOLD, calcSubtotal, calcTotalBags, calcExtraFee, buildLuggageDetails } from "@/lib/luggage-types";
+import { LUGGAGE_TYPES, EXTRA_BAG_FEE, EXTRA_BAG_THRESHOLD, calcTotalBags, buildLuggageDetails } from "@/lib/luggage-types";
 import { NAIA_TERMINALS, FALLBACK_COUNTRIES, FALLBACK_CITIES } from "@/components/booking/constants";
 import { getAirlinesForTerminal } from "@/lib/terminal-airlines";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 
 const ADDITIONAL_SERVICES = [
-  { id: "pick-up-from-customer", name: "Pick-up from Customer", price: 180 },
-  { id: "deliver-to-customer", name: "Deliver to Customer", price: 180 },
+  { id: "pick-up-from-customer", name: "Pick-up from Customer" },
+  { id: "deliver-to-customer", name: "Deliver to Customer" },
 ] as const;
 
 const COUNTRY_FALLBACK = FALLBACK_COUNTRIES;
@@ -78,18 +78,30 @@ export default function NewBookingPage() {
   const [promoDiscount, setPromoDiscount] = useState(0);
   const [promoError, setPromoError] = useState("");
 
-  const totalBags = calcTotalBags(luggageQty);
-  const subtotal = calcSubtotal(luggageQty);
-  const extraFee = calcExtraFee(totalBags);
-  const servicesCost = ADDITIONAL_SERVICES.filter((s) => selectedServices[s.id]).reduce((sum, s) => sum + s.price, 0);
-  const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
-  const downPayment = Math.ceil(grandTotal * (paymentPercent / 100));
-  const excessBags = Math.max(0, totalBags - EXTRA_BAG_THRESHOLD);
+  const [pickupFee, setPickupFee] = useState(180);
+  const [deliveryFee, setDeliveryFee] = useState(180);
+  const [excessBagFee, setExcessBagFee] = useState(EXTRA_BAG_FEE);
+  const [excessBagThreshold, setExcessBagThreshold] = useState(EXTRA_BAG_THRESHOLD);
+  const [luggagePrices, setLuggagePrices] = useState<Record<string, number>>({});
 
   const storageDays =
     checkIn && checkOut
       ? Math.max(1, Math.ceil((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24)))
-      : 0;
+      : 1;
+
+  const totalBags = calcTotalBags(luggageQty);
+  const subtotal = LUGGAGE_TYPES.reduce((sum, lt) => {
+    const qty = luggageQty[lt.id] || 0;
+    const price = luggagePrices[lt.id] ?? lt.price;
+    return sum + qty * price * storageDays;
+  }, 0);
+  const extraFee = totalBags > excessBagThreshold ? (totalBags - excessBagThreshold) * excessBagFee : 0;
+  const svcPickupFee = selectedServices["pick-up-from-customer"] ? pickupFee : 0;
+  const svcDeliveryFee = selectedServices["deliver-to-customer"] ? deliveryFee : 0;
+  const servicesCost = svcPickupFee + svcDeliveryFee;
+  const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
+  const downPayment = Math.ceil(grandTotal * (paymentPercent / 100));
+  const excessBags = Math.max(0, totalBags - excessBagThreshold);
 
   useEffect(() => {
     fetch("/api/locations")
@@ -97,6 +109,18 @@ export default function NewBookingPage() {
       .then((data) => {
         const locs = Array.isArray(data) ? data : [];
         if (locs.length > 0) setLocationId(locs[0].id);
+      })
+      .catch(() => {});
+    fetch("/api/public/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.pricing) {
+          if (data.pricing.pickup_fee) setPickupFee(data.pricing.pickup_fee);
+          if (data.pricing.delivery_fee) setDeliveryFee(data.pricing.delivery_fee);
+          if (data.pricing.excess_bag_fee) setExcessBagFee(data.pricing.excess_bag_fee);
+          if (data.pricing.excess_bag_threshold) setExcessBagThreshold(data.pricing.excess_bag_threshold);
+        }
+        if (data.luggage_prices) setLuggagePrices(data.luggage_prices);
       })
       .catch(() => {});
     // Attempt to refresh full country list from the server proxy (avoids browser CORS).
@@ -406,15 +430,18 @@ export default function NewBookingPage() {
                 <div>
                   <Label className="mb-2 flex items-center gap-1.5 text-sm"><Package className="h-4 w-4 text-violet-500" /> Additional Services</Label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {ADDITIONAL_SERVICES.map((svc) => (
-                      <label key={svc.id} className={`flex items-center justify-between rounded-lg border-2 p-3 transition-all cursor-pointer ${selectedServices[svc.id] ? "border-violet-400 bg-violet-50" : "border-gray-200 hover:border-gray-300"}`}>
-                        <div className="flex items-center gap-2">
-                          <Checkbox checked={!!selectedServices[svc.id]} onCheckedChange={(c) => setSelectedServices((p) => ({ ...p, [svc.id]: !!c }))} />
-                          <span className="text-sm font-medium">{svc.name}</span>
-                        </div>
-                        <span className="text-sm font-bold text-violet-700">+₱{svc.price}</span>
-                      </label>
-                    ))}
+                    {ADDITIONAL_SERVICES.map((svc) => {
+                      const fee = svc.id === "pick-up-from-customer" ? pickupFee : deliveryFee;
+                      return (
+                        <label key={svc.id} className={`flex items-center justify-between rounded-lg border-2 p-3 transition-all cursor-pointer ${selectedServices[svc.id] ? "border-violet-400 bg-violet-50" : "border-gray-200 hover:border-gray-300"}`}>
+                          <div className="flex items-center gap-2">
+                            <Checkbox checked={!!selectedServices[svc.id]} onCheckedChange={(c) => setSelectedServices((p) => ({ ...p, [svc.id]: !!c }))} />
+                            <span className="text-sm font-medium">{svc.name}</span>
+                          </div>
+                          <span className="text-sm font-bold text-violet-700">+₱{fee}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
 
