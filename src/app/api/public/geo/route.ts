@@ -66,7 +66,7 @@ export async function POST(request: Request) {
 
   const fromFallback = FALLBACK_CITIES[country];
   if (fromFallback) {
-    return NextResponse.json({ cities: [...fromFallback].sort() }, { headers: { "Cache-Control": "public, max-age=86400" } });
+    return NextResponse.json({ cities: [...fromFallback].sort() }, { headers: { "Cache-Control": "public, max-age=3600" } });
   }
 
   try {
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         if (cities.length > 0) {
           return NextResponse.json(
             { cities: cities.map(stripDiacritics).sort() },
-            { headers: { "Cache-Control": "public, max-age=86400" } }
+            { headers: { "Cache-Control": "public, max-age=3600" } }
           );
         }
       }
@@ -92,5 +92,5 @@ export async function POST(request: Request) {
     console.error("Cities proxy upstream failed:", error);
   }
 
-  return NextResponse.json({ cities: [] }, { headers: { "Cache-Control": "public, max-age=86400" } });
+  return NextResponse.json({ cities: [] }, { headers: { "Cache-Control": "public, max-age=3600" } });
 }

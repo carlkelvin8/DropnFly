@@ -10,8 +10,8 @@ export function PublicFooter() {
     facebook: "",
     instagram: "",
     twitter: "",
-    operating_start: "08:00",
-    operating_end: "17:00",
+    operating_start: "00:00",
+    operating_end: "23:59",
   });
 
   useEffect(() => {
@@ -24,6 +24,8 @@ export function PublicFooter() {
   }, []);
 
   const { phone, email, operating_start: start, operating_end: end } = footer;
+  const is24h = start === "00:00" && (end === "23:59" || end === "24:00" || end === "00:00");
+  const openLabel = is24h ? "Open 24 hours daily" : `Open ${start}–${end}`;
   const socialLinks = [
     ["Facebook", footer.facebook],
     ["Instagram", footer.instagram],
@@ -50,7 +52,7 @@ export function PublicFooter() {
               <p className="text-muted-foreground">NAIA Terminals 1–4, Pasay City</p>
               <a href={`mailto:${email}`} className="block text-muted-foreground hover:text-blue-600">{email}</a>
               <a href={`tel:${phone.replace(/[^+\d]/g, "")}`} className="block text-muted-foreground hover:text-blue-600">{phone}</a>
-              <p className="text-muted-foreground">Open {start}–{end}</p>
+              <p className="text-muted-foreground">{openLabel}</p>
               {socialLinks.length > 0 && <div className="flex flex-wrap gap-3 pt-1">{socialLinks.map(([label, href]) => <a key={label} href={href} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-blue-600">{label}</a>)}</div>}
             </div>
           </div>

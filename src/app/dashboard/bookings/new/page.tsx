@@ -29,13 +29,7 @@ import {
 import { LUGGAGE_TYPES, EXTRA_BAG_FEE, EXTRA_BAG_THRESHOLD, calcSubtotal, calcTotalBags, calcExtraFee, buildLuggageDetails } from "@/lib/luggage-types";
 import { NAIA_TERMINALS, FALLBACK_COUNTRIES, FALLBACK_CITIES } from "@/components/booking/constants";
 import { getAirlinesForTerminal } from "@/lib/terminal-airlines";
-
-interface Customer {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-}
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 
 const ADDITIONAL_SERVICES = [
   { id: "pick-up-from-customer", name: "Pick-up from Customer", price: 180 },
@@ -127,11 +121,10 @@ export default function NewBookingPage() {
     })
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data.cities) && data.cities.length > 0) {
-          setCities(data.cities);
-        } else {
-          setCities(COUNTRY_CITY_FALLBACK[custCountry] || []);
-        }
+        const apiCities = Array.isArray(data.cities) ? data.cities : [];
+        const fallback = COUNTRY_CITY_FALLBACK[custCountry] || [];
+        // Prefer the complete bundled list whenever it's at least as large as the API result.
+        setCities(fallback.length >= apiCities.length ? fallback : apiCities);
       })
       .catch(() => setCities(COUNTRY_CITY_FALLBACK[custCountry] || []))
       .finally(() => setCitiesLoading(false));
@@ -286,28 +279,26 @@ export default function NewBookingPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="custCountry">Country of Origin</Label>
-                    <select
+                    <SearchableCombobox
                       id="custCountry"
                       value={custCountry}
-                      onChange={(e) => { setCustCountry(e.target.value); setCities([]); setCustCity(""); if (e.target.value) setCitiesLoading(true); }}
-                      className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
-                    >
-                      <option value="">Select country...</option>
-                      {countries.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                      onChange={(v) => { setCustCountry(v); setCities([]); setCustCity(""); if (v) setCitiesLoading(true); }}
+                      options={countries}
+                      loading={countriesLoading}
+                      placeholder="Type to search a country"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="custCity">City of Origin</Label>
-                    <select
+                    <SearchableCombobox
                       id="custCity"
                       value={custCity}
-                      onChange={(e) => setCustCity(e.target.value)}
-                      disabled={!custCountry || cities.length === 0}
-                      className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm disabled:opacity-50"
-                    >
-                      <option value="">{countriesLoading || citiesLoading ? "Loading..." : custCountry ? "Select city..." : "Select country first"}</option>
-                      {cities.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                      onChange={setCustCity}
+                      options={cities}
+                      loading={citiesLoading}
+                      disabled={!custCountry}
+                      placeholder={!custCountry ? "Select country first" : "Type to search a city"}
+                    />
                   </div>
                 </div>
 

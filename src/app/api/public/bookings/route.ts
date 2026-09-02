@@ -164,8 +164,8 @@ export async function POST(req: Request) {
         max_concurrent_deliveries: "1",
         pickup_slot_duration: "60",
         delivery_slot_duration: "60",
-        operating_start: "08:00",
-        operating_end: "17:00",
+        operating_start: "00:00",
+        operating_end: "23:59",
       };
       const isPickup = type === "pickup";
       const maxConcurrent = parseInt(setting(settings, isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries", defaults[isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries"]));
@@ -176,7 +176,11 @@ export async function POST(req: Request) {
       const [endH, endM] = operatingEnd.split(":").map(Number);
       const slotStartMinutes = date.getHours() * 60 + date.getMinutes();
       const startMinutes = startH * 60 + startM;
-      const endMinutes = endH * 60 + endM;
+      // Normalize a 24-hour operation ("23:59" or "24:00") to the start of the next day so a
+      // slot ending exactly at midnight is accepted.
+      let endMinutes = endH * 60 + endM;
+      if (endMinutes === 1439) endMinutes = 1440;
+      if (endMinutes === 0 && (operatingEnd === "24:00" || operatingEnd === "00:00")) endMinutes = 1440;
       if (slotStartMinutes < startMinutes || slotStartMinutes + durationMin > endMinutes) {
         throw new Error(`Selected ${type} time is outside operating hours`);
       }

@@ -12,7 +12,7 @@ const BAG_FALLBACK_COLORS = ["#ea7d3d", "#3b7ac7", "#9ca3af", "#e3f0fb"];
 
 export default function RechartsBagBar({ data }: { data: { name: string; value: number }[] }) {
   return (
-    <div className="flex-1" style={{ minHeight: Math.max(200, data.length * 40) }}>
+    <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} layout="vertical" margin={{ left: 10, right: 30 }}>
           <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />

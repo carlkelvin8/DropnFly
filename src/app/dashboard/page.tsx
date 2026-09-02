@@ -27,11 +27,11 @@ import dynamic from "next/dynamic";
 
 const RechartsBar = dynamic(() => import("@/components/dashboard/RechartsBar"), {
   ssr: false,
-  loading: () => <div className="flex-1 min-h-[200px] animate-pulse rounded-lg bg-muted/50" />,
+  loading: () => <div className="h-64 animate-pulse rounded-lg bg-muted/50" />,
 });
 const RechartsBagBar = dynamic(() => import("@/components/dashboard/RechartsBagBar"), {
   ssr: false,
-  loading: () => <div className="flex-1 min-h-[200px] animate-pulse rounded-lg bg-muted/50" />,
+  loading: () => <div className="h-64 animate-pulse rounded-lg bg-muted/50" />,
 });
 
 interface DashboardData {

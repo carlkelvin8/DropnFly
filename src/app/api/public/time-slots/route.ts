@@ -6,23 +6,36 @@ const DEFAULTS = {
   max_concurrent_deliveries: "1",
   pickup_slot_duration: "60",
   delivery_slot_duration: "60",
-  operating_start: "08:00",
-  operating_end: "17:00",
+  operating_start: "00:00",
+  operating_end: "23:59",
   store_operating_days: "0,1,2,3,4,5,6",
 };
 
+function parseMinutes(value: string): number {
+  const [h, m] = value.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function minutesToHHMM(minutes: number): string {
+  const m = ((minutes % 1440) + 1440) % 1440;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
 function generateSlots(start: string, end: string, durationMin: number) {
+  const startMinutes = parseMinutes(start);
+  // Normalize a 24-hour operation ("23:59" or "24:00") to the start of the next day so a
+  // slot ending exactly at midnight is included.
+  let endMinutes = parseMinutes(end);
+  if (endMinutes === 1439) endMinutes = 1440;
+  if (endMinutes === 0 && (end === "24:00" || end === "00:00")) endMinutes = 1440;
+
   const slots: { start: string; end: string }[] = [];
-  const [startH, startM] = start.split(":").map(Number);
-  const [endH, endM] = end.split(":").map(Number);
-  let h = startH, m = startM;
-  while (h * 60 + m + durationMin <= endH * 60 + endM) {
-    const slotStart = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    m += durationMin;
-    h += Math.floor(m / 60);
-    m = m % 60;
-    const slotEnd = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    slots.push({ start: slotStart, end: slotEnd });
+  let cursor = startMinutes;
+  while (cursor + durationMin <= endMinutes) {
+    slots.push({ start: minutesToHHMM(cursor), end: minutesToHHMM(cursor + durationMin) });
+    cursor += durationMin;
   }
   return slots;
 }

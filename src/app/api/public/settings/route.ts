@@ -86,8 +86,8 @@ export async function GET() {
         instagram: map.footer_instagram || "",
         twitter: map.footer_twitter || "",
         operating_days: map.store_operating_days || "0,1,2,3,4,5,6",
-        operating_start: map.store_operating_start || "08:00",
-        operating_end: map.store_operating_end || "17:00",
+        operating_start: map.store_operating_start || "00:00",
+        operating_end: map.store_operating_end || "23:59",
       },
     });
   } catch {
@@ -100,7 +100,7 @@ export async function GET() {
       luggage_prices: { "extra-small": 50, small: 150, standard: 175, large: 250 },
       pricing: { pickup_fee: 180, delivery_fee: 180, excess_bag_fee: 100, excess_bag_threshold: 3 },
       booking_limits: { max_bags_per_booking: 0, max_storage_days: 0, max_advance_booking_days: 0, min_dp_percentage: 0, min_storage_days: 1 },
-      footer: { phone: "+63 (2) 1234 5678", email: "hello@dropnfly.ph", facebook: "", instagram: "", twitter: "", operating_days: "0,1,2,3,4,5,6", operating_start: "08:00", operating_end: "17:00" },
+      footer: { phone: "+63 (2) 1234 5678", email: "hello@dropnfly.ph", facebook: "", instagram: "", twitter: "", operating_days: "0,1,2,3,4,5,6", operating_start: "00:00", operating_end: "23:59" },
     });
   }
 }

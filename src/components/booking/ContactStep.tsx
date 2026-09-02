@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, ArrowRight, User } from "lucide-react";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
+import { Globe, MapPin, AlertCircle, ArrowRight, User } from "lucide-react";
 
 interface ContactStepProps {
   customerName: string;
@@ -68,36 +69,39 @@ export function ContactStep({
         </div>
         <div className="space-y-2">
           <Label htmlFor="countryOfOrigin">Country of Origin <span className="text-red-500">*</span></Label>
-          <Input
-            id="countryOfOrigin"
-            list="country-options"
-            value={selectedCountry}
-            onChange={(e) => { setSelectedCountry(e.target.value); setCities([]); setSelectedCity(""); }}
-            onBlur={() => markTouched("country")}
-            aria-invalid={isInvalid("country", selectedCountry) || undefined}
-            className={isInvalid("country", selectedCountry) ? "border-red-500 focus-visible:ring-red-500" : ""}
-            required
-            placeholder={countriesLoading ? "Loading countries..." : "Type or select a country"}
-          />
-          <datalist id="country-options">{countries.map((c) => <option key={c.code} value={c.name} />)}</datalist>
+          <div className="flex items-center gap-2">
+            <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <SearchableCombobox
+              id="countryOfOrigin"
+              value={selectedCountry}
+              onChange={(v) => { setSelectedCountry(v); setCities([]); setSelectedCity(""); }}
+              options={countries.map((c) => c.name)}
+              loading={countriesLoading}
+              placeholder={countriesLoading ? "Loading countries..." : "Type to search a country"}
+              className="flex-1"
+            />
+          </div>
           <p className="text-[11px] text-muted-foreground">All countries are accepted. You may type a country even if it is not shown in the suggestions.</p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="cityOfOrigin">City of Origin <span className="text-red-500">*</span></Label>
-          <Input
-            id="cityOfOrigin"
-            list="city-options"
-            value={selectedCity}
-            onChange={(e) => setSelectedCity(e.target.value)}
-            onBlur={() => markTouched("city")}
-            aria-invalid={isInvalid("city", selectedCity) || undefined}
-            className={isInvalid("city", selectedCity) ? "border-red-500 focus-visible:ring-red-500" : ""}
-            disabled={!selectedCountry}
-            required
-            placeholder={!selectedCountry ? "Enter a country first" : citiesLoading ? "Loading cities..." : "Type or select a city"}
-          />
-          <datalist id="city-options">{cities.map((city) => <option key={city} value={city} />)}</datalist>
+          <div className="flex items-center gap-2">
+            <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <SearchableCombobox
+              id="cityOfOrigin"
+              value={selectedCity}
+              onChange={setSelectedCity}
+              options={cities}
+              loading={citiesLoading}
+              disabled={!selectedCountry}
+              placeholder={!selectedCountry ? "Enter a country first" : citiesLoading ? "Loading cities..." : "Type to search a city"}
+              className="flex-1"
+            />
+          </div>
           <p className="text-[11px] text-muted-foreground">All cities are accepted. Suggestions are optional; type the complete city name if it is not listed.</p>
+          {isInvalid("city", selectedCity) && (
+            <p className="text-[11px] text-red-500">Please select your City of Origin</p>
+          )}
         </div>
       </div>
       {error && (

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 
 function toLocalDayKey(d: Date): string {
   const year = d.getFullYear();
@@ -49,10 +50,12 @@ export async function GET(req: Request) {
     bookingsByDay,
     periodBookingStats,
     paidPayments,
-    employeeStats,
     storageLocations,
     bookingsByHour,
     repeatCustomers,
+    luggageDetails,
+    employeeUsers,
+    cityCountryRows,
   ] = await Promise.all([
     prisma.booking.count({ where: periodFilter }),
     prisma.booking.groupBy({
@@ -77,12 +80,6 @@ export async function GET(req: Request) {
         booking: { select: { status: true } },
       },
     }),
-    prisma.bookingAssignment.groupBy({
-      by: ["userId"],
-      where: { createdAt: { gte: since, ...(until ? { lte: until } : {}) } },
-      _count: true,
-      _max: { createdAt: true },
-    }),
     prisma.storageLocation.findMany({
       select: { id: true, name: true, capacity: true },
     }),
@@ -97,7 +94,35 @@ export async function GET(req: Request) {
       GROUP BY c.email
       HAVING COUNT(b.id) > 1
     `,
+    prisma.booking.findMany({
+      where: { ...periodFilter, luggageDetails: { not: null }, status: { not: "CANCELLED" as const } },
+      select: { luggageDetails: true },
+      take: 2000,
+    }),
+    prisma.user.findMany({
+      where: { role: "EMPLOYEE", isActive: true },
+      select: { id: true, name: true, email: true },
+    }),
+    prisma.$queryRaw<Array<{ city: string | null; country: string | null; count: bigint }>>`
+      SELECT c."cityOfOrigin" as city, c."countryOfOrigin" as country, COUNT(b.id) as count
+      FROM "Booking" b
+      INNER JOIN "Customer" c ON c.id = b."customerId"
+      WHERE b."createdAt" >= ${since}${until ? Prisma.sql` AND b."createdAt" <= ${until}` : Prisma.empty}
+      GROUP BY c."cityOfOrigin", c."countryOfOrigin"
+    `,
   ]);
+
+  const employeeStats = employeeUsers.length
+    ? await prisma.bookingAssignment.groupBy({
+        by: ["userId"],
+        where: {
+          userId: { in: employeeUsers.map((u) => u.id) },
+          createdAt: { gte: since, ...(until ? { lte: until } : {}) },
+        },
+        _count: true,
+        _max: { createdAt: true },
+      })
+    : [];
 
   const totalRevenue = paidPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
@@ -149,26 +174,106 @@ export async function GET(req: Request) {
     hourlyDistribution[hour] = (hourlyDistribution[hour] || 0) + 1;
   }
 
-  const userPerformance = await Promise.all(
-    employeeStats.map(async (stat) => {
-      const user = await prisma.user.findUnique({
-        where: { id: stat.userId },
-        select: { name: true, email: true },
-      });
-      return {
-        userId: stat.userId,
-        name: user?.name || "Unknown",
-        email: user?.email || "",
-        totalAssigned: stat._count,
-        lastAssigned: stat._max.createdAt,
-      };
-    })
-  );
+  const employeeNameMap = new Map(employeeUsers.map((u) => [u.id, u]));
+  const userPerformance = employeeStats.map((stat) => {
+    const user = employeeNameMap.get(stat.userId);
+    return {
+      userId: stat.userId,
+      name: user?.name || "Unknown",
+      email: user?.email || "",
+      totalAssigned: stat._count,
+      lastAssigned: stat._max.createdAt,
+    };
+  });
+
+  const bagBreakdown: Record<string, number> = {};
+  for (const b of luggageDetails) {
+    if (!b.luggageDetails) continue;
+    try {
+      const items = JSON.parse(b.luggageDetails) as { type: string; qty: number }[];
+      for (const item of items) {
+        bagBreakdown[item.type] = (bagBreakdown[item.type] || 0) + item.qty;
+      }
+    } catch {}
+  }
+
+  const cityDistributionMap: Record<string, number> = {};
+  const countryDistributionMap: Record<string, number> = {};
+  for (const row of cityCountryRows) {
+    const city = row.city || "Unknown";
+    const country = row.country || "Unknown";
+    cityDistributionMap[city] = (cityDistributionMap[city] || 0) + Number(row.count);
+    countryDistributionMap[country] = (countryDistributionMap[country] || 0) + Number(row.count);
+  }
+  const cityDistribution = Object.entries(cityDistributionMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+  const countryDistribution = Object.entries(countryDistributionMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
 
   const newCustomers = await prisma.customer.count({
     where: { createdAt: { gte: since, ...(until ? { lte: until } : {}) } },
   });
   const totalCustomers = await prisma.customer.count();
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfMonth = new Date(startOfToday.getFullYear(), startOfToday.getMonth(), 1);
+
+  const [
+    walkInsToday,
+    ongoingBags,
+    bagsStoredToday,
+    totalBagsStoredMonthly,
+    outstandingAgg,
+    refundAgg,
+    canceledNoShow,
+    satisfactionAgg,
+  ] = await Promise.all([
+    prisma.booking.count({ where: { createdAt: { gte: startOfToday } } }),
+    prisma.booking.aggregate({
+      where: { status: { in: ["RECEIVED", "IN_STORAGE"] } },
+      _sum: { numberOfBags: true },
+    }),
+    prisma.booking.aggregate({
+      where: { checkIn: { gte: startOfToday } },
+      _sum: { numberOfBags: true },
+    }),
+    prisma.booking.aggregate({
+      where: { createdAt: { gte: startOfMonth } },
+      _sum: { numberOfBags: true },
+    }),
+    prisma.payment.aggregate({
+      where: { status: "PENDING" },
+      _sum: { amount: true },
+    }),
+    prisma.payment.aggregate({
+      where: { status: "REFUNDED" },
+      _count: true,
+      _sum: { amount: true },
+    }),
+    prisma.booking.count({
+      where: { status: { in: ["CANCELLED", "NO_SHOW"] }, ...periodFilter },
+    }),
+    prisma.bookingReview.aggregate({
+      where: { createdAt: { gte: since, ...(until ? { lte: until } : {}) } },
+      _avg: { rating: true },
+    }),
+  ]);
+
+  const financialMetrics = {
+    walkInsToday,
+    ongoingBagsInStorage: ongoingBags._sum.numberOfBags || 0,
+    bagsStoredToday: bagsStoredToday._sum.numberOfBags || 0,
+    totalBagsStoredMonthly: totalBagsStoredMonthly._sum.numberOfBags || 0,
+    storageUtilization: totalCapacity > 0 ? (activeBookings / totalCapacity) * 100 : 0,
+    outstandingBalance: Number(outstandingAgg._sum.amount || 0),
+    refundsIssued: refundAgg._count,
+    refundsAmount: Number(refundAgg._sum.amount || 0),
+    canceledNoShow,
+    customerSatisfaction: satisfactionAgg._avg.rating || 0,
+  };
 
   return NextResponse.json({
     overview: {
@@ -224,5 +329,12 @@ export async function GET(req: Request) {
       repeatCustomers: repeatCustomers.length,
       returnRate: totalCustomers > 0 ? (repeatCustomers.length / totalCustomers) * 100 : 0,
     },
+    bagBreakdown: Object.entries(bagBreakdown)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value),
+    cityDistribution,
+    countryDistribution,
+    financialMetrics,
+    storageUtilization: totalCapacity > 0 ? (activeBookings / totalCapacity) * 100 : 0,
   });
 }

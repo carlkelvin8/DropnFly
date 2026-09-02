@@ -142,8 +142,11 @@ export default function BookPage() {
     })
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data.cities) && data.cities.length > 0) setCities(data.cities);
-        else setCities(FALLBACK_CITIES[selectedCountry] || []);
+        const apiCities = Array.isArray(data.cities) ? data.cities : [];
+        // Prefer the complete bundled list for the country whenever it's at least as large as
+        // the API result, so stale/small cached responses never truncate the options.
+        const fallback = FALLBACK_CITIES[selectedCountry] || [];
+        setCities(fallback.length >= apiCities.length ? fallback : apiCities);
       })
       .catch(() => setCities(FALLBACK_CITIES[selectedCountry] || []))
       .finally(() => { clearTimeout(timeout); setCitiesLoading(false); });

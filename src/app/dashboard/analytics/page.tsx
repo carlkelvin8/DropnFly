@@ -14,10 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import {
-  TrendingUp,
-  Package,
-  Users,
-  DollarSign,
   BarChart3,
   Brain,
   FileText,
@@ -25,11 +21,29 @@ import {
   AlertCircle,
   CreditCard,
   Download,
+  TrendingUp,
+  Package,
+  Users,
+  DollarSign,
+  Luggage,
+  PackagePlus,
+  Archive,
+  Wallet,
+  Undo2,
+  XCircle,
+  Star,
+  Globe2,
+  MapPin,
+  Store,
+  Warehouse,
+  UserPlus,
 } from "lucide-react";
+import { Bar, BarChart, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
-import RechartsPie from "@/components/dashboard/RechartsPie";
 import RechartsLine from "@/components/dashboard/RechartsLine";
+import RechartsStatusBar from "@/components/dashboard/RechartsStatusBar";
+import RechartsHBar from "@/components/dashboard/RechartsHBar";
 
 interface Overview {
   totalBookings: number;
@@ -66,11 +80,17 @@ interface EmployeePerf {
   lastAssigned: string;
 }
 
-interface LocationStats {
-  name: string;
-  capacity: number;
-  used: number;
-  utilization: number;
+interface FinancialMetrics {
+  walkInsToday: number;
+  ongoingBagsInStorage: number;
+  bagsStoredToday: number;
+  totalBagsStoredMonthly: number;
+  storageUtilization: number;
+  outstandingBalance: number;
+  refundsIssued: number;
+  refundsAmount: number;
+  canceledNoShow: number;
+  customerSatisfaction: number;
 }
 
 interface Analytics {
@@ -80,7 +100,6 @@ interface Analytics {
   revenueByStatus: { status: string; revenue: number }[];
   hourlyDistribution: HourData[];
   employeePerformance: EmployeePerf[];
-  storageLocations: LocationStats[];
   bookingFrequency: { daily: number; period: string; fromDate?: string; toDate?: string };
   customerTrends: {
     totalCustomers: number;
@@ -88,6 +107,10 @@ interface Analytics {
     repeatCustomers: number;
     returnRate: number;
   };
+  bagBreakdown: { name: string; value: number }[];
+  cityDistribution: { name: string; value: number }[];
+  countryDistribution: { name: string; value: number }[];
+  financialMetrics: FinancialMetrics;
 }
 
 interface Payment {
@@ -102,16 +125,6 @@ interface Payment {
 }
 
 type Tab = "overview" | "financial" | "reports";
-
-const statusDot: Record<string, string> = {
-  PENDING: "bg-yellow-500",
-  CONFIRMED: "bg-blue-500",
-  RECEIVED: "bg-purple-500",
-  IN_STORAGE: "bg-indigo-500",
-  OUT_FOR_DELIVERY: "bg-orange-500",
-  DELIVERED: "bg-green-500",
-  CANCELLED: "bg-red-500",
-};
 
 const tabs: { id: Tab; label: string; icon: typeof DollarSign }[] = [
   { id: "overview", label: "Graphical Data", icon: BarChart3 },
@@ -260,6 +273,7 @@ export default function AnalyticsPage() {
           payments={payments}
           loading={paymentsLoading}
           overview={data?.overview || null}
+          metrics={data?.financialMetrics || null}
           totalRevenue={totalRevenue}
           pendingCount={pendingPayments.length}
           pendingPayments={pendingPayments}
@@ -273,12 +287,18 @@ export default function AnalyticsPage() {
 }
 
 function OverviewTab({ data }: { data: Analytics; period: string }) {
-  const { bookingsByDay, hourlyDistribution, employeePerformance, customerTrends, revenueByStatus, storageLocations, overview } = data;
-  const maxDailyCount = Math.max(...bookingsByDay.map((d) => d.count), 1);
-  const maxDailyRevenue = Math.max(...bookingsByDay.map((d) => d.revenue), 1);
-  const maxHourlyCount = Math.max(...hourlyDistribution.map((h) => h.count), 1);
+  const {
+    bookingsByDay,
+    hourlyDistribution,
+    employeePerformance,
+    customerTrends,
+    bookingsByStatus,
+    bagBreakdown,
+    cityDistribution,
+    countryDistribution,
+    overview,
+  } = data;
   const maxEmployee = Math.max(...employeePerformance.map((e) => e.totalAssigned), 1);
-  const maxStatusRevenue = Math.max(...revenueByStatus.map((x) => x.revenue), 1);
   const heatmapSource = bookingsByDay.slice(-84);
   const heatmapCounts = new Map(heatmapSource.map((day) => [day.date, day.count]));
   const latestHeatmapDate = heatmapSource.length
@@ -322,180 +342,167 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
     "bg-orange-600 dark:bg-orange-500",
   ];
 
+  const peakHourData = hourlyDistribution.map((h) => ({
+    hourLabel: `${h.hour}:00`,
+    count: h.count,
+  }));
+
   return (
     <div className="space-y-6">
+      {/* Primary KPIs */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
-          { label: "Bookings", value: overview.totalBookings.toLocaleString(), detail: `${overview.activeBookings} currently active`, color: "border-t-blue-500" },
-          { label: "Collected Revenue", value: formatCurrency(overview.totalRevenue), detail: `${formatCurrency(overview.averagePrice)} average payment`, color: "border-t-emerald-500" },
-          { label: "Average Bags", value: overview.averageBags.toFixed(1), detail: "per booking in selected period", color: "border-t-violet-500" },
-          { label: "Storage Utilization", value: `${overview.storageUtilization.toFixed(1)}%`, detail: `${overview.newCustomers} new customers`, color: "border-t-orange-500" },
-        ].map((metric) => (
-          <Card key={metric.label} className={`border-t-2 ${metric.color}`}>
-            <CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-muted-foreground">{metric.label}</CardTitle></CardHeader>
-            <CardContent><p className="text-2xl font-bold">{metric.value}</p><p className="mt-1 text-xs text-muted-foreground">{metric.detail}</p></CardContent>
-          </Card>
-        ))}
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Bookings Over Time */}
-        <Card className="border-t-2 border-t-blue-500">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Bookings Over Time</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-end gap-[3px] rounded-lg bg-muted/20 p-2" style={{ height: 160 }}>
-              {bookingsByDay.slice(-30).map((day, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t bg-gradient-to-t from-blue-600 to-blue-400 transition-all hover:from-blue-700 hover:to-blue-500"
-                  style={{
-                    height: `${(day.count / maxDailyCount) * 100}%`,
-                    minHeight: day.count > 0 ? 4 : 0,
-                  }}
-                  title={`${day.date}: ${day.count} bookings (${formatCurrency(day.revenue)})`}
-                />
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Last {bookingsByDay.length} days &middot;{" "}
-              {data.bookingFrequency.daily.toFixed(1)} avg per day
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Revenue Over Time */}
-        <Card className="border-t-2 border-t-green-500">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Revenue Over Time</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-end gap-[3px] rounded-lg bg-muted/20 p-2" style={{ height: 160 }}>
-              {bookingsByDay.slice(-30).map((day, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t bg-gradient-to-t from-emerald-600 to-emerald-400 transition-all hover:from-emerald-700 hover:to-emerald-500"
-                  style={{
-                    height: `${(day.revenue / maxDailyRevenue) * 100}%`,
-                    minHeight: day.revenue > 0 ? 4 : 0,
-                  }}
-                  title={`${day.date}: ${formatCurrency(day.revenue)}`}
-                />
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Daily revenue for last {bookingsByDay.length} days
-            </p>
-          </CardContent>
-        </Card>
+          { label: "Bookings", value: overview.totalBookings.toLocaleString(), detail: `${overview.activeBookings} currently active`, color: "border-t-blue-500", icon: Package, iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
+          { label: "Collected Revenue", value: formatCurrency(overview.totalRevenue), detail: `${formatCurrency(overview.averagePrice)} average payment`, color: "border-t-emerald-500", icon: DollarSign, iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" },
+          { label: "Average Bags", value: overview.averageBags.toFixed(1), detail: "per booking in selected period", color: "border-t-violet-500", icon: Luggage, iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" },
+          { label: "Storage Utilization", value: `${overview.storageUtilization.toFixed(1)}%`, detail: `${overview.newCustomers} new customers`, color: "border-t-orange-500", icon: Warehouse, iconBg: "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" },
+        ].map((metric) => {
+          const Icon = metric.icon;
+          return (
+            <Card key={metric.label} className={`border-t-2 ${metric.color}`}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-xs font-medium text-muted-foreground">{metric.label}</CardTitle>
+                <div className={`rounded-lg p-2 ${metric.iconBg}`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{metric.value}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{metric.detail}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Hourly Distribution */}
-        <Card className="border-t-2 border-t-emerald-500">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Peak Booking Hours</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-end gap-[3px] rounded-lg bg-muted/20 p-2" style={{ height: 160 }}>
-              {hourlyDistribution.map((h, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t bg-gradient-to-t from-emerald-600 to-emerald-400 transition-all hover:from-emerald-700 hover:to-emerald-500"
-                  style={{
-                    height: `${(h.count / maxHourlyCount) * 100}%`,
-                    minHeight: h.count > 0 ? 4 : 0,
-                  }}
-                  title={`${h.hour}:00 - ${h.count} bookings`}
-                />
-              ))}
-            </div>
-            <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-              <span>00:00</span>
-              <span>12:00</span>
-              <span>23:00</span>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Bookings & Revenue Trend (Line Graph) */}
+      <Card className="border-t-2 border-t-sky-500">
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Bookings & Revenue Trend (Line Graph)</CardTitle>
+          <CardDescription>Daily bookings and collected revenue over the selected period.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RechartsLine
+            data={bookingsByDay.slice(-30).map((d) => ({ date: d.date, bookings: d.count, revenue: d.revenue }))}
+            dataKeys={["bookings", "revenue"]}
+            labels={["Bookings", "Revenue"]}
+            colors={["#3b82f6", "#10b981"]}
+          />
+        </CardContent>
+      </Card>
 
-        {/* Revenue by Status */}
+      {/* Booking Status Breakdown + Baggage Breakdown */}
+      <div className="grid gap-4 md:grid-cols-2">
         <Card className="border-t-2 border-t-indigo-500">
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Revenue by Status</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <BarChart3 className="h-4 w-4" />
+              Booking Status Breakdown
+            </CardTitle>
+            <CardDescription>Count of bookings by current status with proportional share.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-end gap-3 rounded-lg bg-muted/20 p-2" style={{ height: 160 }}>
-              {revenueByStatus.map((s) => (
-                <div
-                  key={s.status}
-                  className="flex h-full flex-1 flex-col items-center justify-end gap-1"
-                >
-                  <span className="text-[10px] font-semibold text-muted-foreground">{formatCurrency(s.revenue)}</span>
-                  <div
-                    className="w-full max-w-[40px] rounded-t bg-gradient-to-t from-indigo-600 to-indigo-400 transition-all hover:from-indigo-700 hover:to-indigo-500"
-                    style={{ height: `${Math.max((s.revenue / maxStatusRevenue) * 100, 4)}%` }}
-                    title={`${s.status}: ${formatCurrency(s.revenue)}`}
+            {bookingsByStatus.length > 0 ? (
+              <RechartsStatusBar
+                data={bookingsByStatus.map((s) => ({ name: s.status, value: s.count }))}
+              />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-t-2 border-t-amber-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Luggage className="h-4 w-4" />
+              Baggage / Luggage Breakdown
+            </CardTitle>
+            <CardDescription>Distribution of stored luggage by size type.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {bagBreakdown.length > 0 ? (
+              <RechartsHBar data={bagBreakdown} unit="bags" />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* City + Country */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-t-2 border-t-cyan-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <MapPin className="h-4 w-4" />
+              Customer City Distribution
+            </CardTitle>
+            <CardDescription>Bookings grouped by customer&apos;s city of origin.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {cityDistribution.length > 0 ? (
+              <RechartsHBar data={cityDistribution} unit="bookings" />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-t-2 border-t-emerald-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Globe2 className="h-4 w-4" />
+              Customer Country Distribution
+            </CardTitle>
+            <CardDescription>Bookings grouped by customer&apos;s country of origin.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {countryDistribution.length > 0 ? (
+              <RechartsHBar data={countryDistribution} unit="bookings" />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Peak Hours + Employee Performance */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-t-2 border-t-emerald-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Store className="h-4 w-4" />
+              Peak Booking Hours
+            </CardTitle>
+            <CardDescription>Bookings by check-in hour across the selected period.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={peakHourData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="hourLabel" tick={{ fontSize: 10 }} interval={2} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                  <Tooltip
+                    cursor={{ fill: "var(--muted)", opacity: 0.5 }}
+                    formatter={(value) => [`${value} booking${Number(value) !== 1 ? "s" : ""}`, "Count"]}
+                    contentStyle={{ borderRadius: "8px", border: "1px solid var(--border)", fontSize: "12px" }}
                   />
-                  <span className="max-w-[70px] truncate text-[9px] text-muted-foreground">{s.status.replace(/_/g, " ")}</span>
-                </div>
-              ))}
+                  <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* New Chart Types: Line, Pie, Donut */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Line Graph - Bookings & Revenue Over Time */}
-        <Card className="md:col-span-2 border-t-2 border-t-sky-500">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Bookings & Revenue Trend (Line Graph)</CardTitle>
-            <CardDescription>Daily bookings and collected revenue over the selected period.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RechartsLine
-              data={bookingsByDay.slice(-30).map((d) => ({ date: d.date, bookings: d.count, revenue: d.revenue }))}
-              dataKeys={["bookings", "revenue"]}
-              labels={["Bookings", "Revenue"]}
-              colors={["#3b82f6", "#10b981"]}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Pie Chart - Booking Status Breakdown */}
-        <Card className="border-t-2 border-t-rose-500">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Booking Status Proportions (Pie Chart)</CardTitle>
-            <CardDescription>Share of each booking status relative to the total.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RechartsPie
-              data={data.bookingsByStatus.map((s) => ({ name: s.status.replace(/_/g, " "), value: s.count }))}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Donut Chart - Revenue by Status */}
-        <Card className="border-t-2 border-t-amber-500">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Revenue Share by Status (Donut Chart)</CardTitle>
-            <CardDescription>Distribution of collected revenue across booking statuses.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RechartsPie
-              data={revenueByStatus.map((s) => ({ name: s.status.replace(/_/g, " "), value: s.revenue }))}
-              isDonut
-              currency
-            />
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
         {/* Employee Performance */}
         <Card className="border-t-2 border-t-violet-500">
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Employee Performance</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Users className="h-4 w-4" />
+              Employee Performance
+            </CardTitle>
+            <CardDescription>Assignments completed by each employee in the selected period.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {employeePerformance.slice(0, 5).map((emp, i) => (
@@ -527,51 +534,55 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
             )}
           </CardContent>
         </Card>
-
-        {/* Customer Trends */}
-        <Card className="border-t-2 border-t-amber-500">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Customer Trends</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
-                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                  <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <p className="text-2xl font-bold">{customerTrends.totalCustomers}</p>
-                <p className="text-xs text-muted-foreground">Total Customers</p>
-              </div>
-              <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
-                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
-                  <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
-                </div>
-                <p className="text-2xl font-bold">
-                  {customerTrends.returnRate.toFixed(1)}%
-                </p>
-                <p className="text-xs text-muted-foreground">Return Rate</p>
-              </div>
-              <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
-                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                  <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <p className="text-2xl font-bold">{customerTrends.newCustomers}</p>
-                <p className="text-xs text-muted-foreground">New (this period)</p>
-              </div>
-              <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
-                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/30">
-                  <Users className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-                </div>
-                <p className="text-2xl font-bold">
-                  {customerTrends.repeatCustomers}
-                </p>
-                <p className="text-xs text-muted-foreground">Repeat Customers</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
+      {/* Customer Trends */}
+      <Card className="border-t-2 border-t-amber-500">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm font-medium">
+            <Users className="h-4 w-4" />
+            Customer Trends
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <p className="text-2xl font-bold">{customerTrends.totalCustomers}</p>
+              <p className="text-xs text-muted-foreground">Total Customers</p>
+            </div>
+            <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
+                <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
+              </div>
+              <p className="text-2xl font-bold">
+                {customerTrends.returnRate.toFixed(1)}%
+              </p>
+              <p className="text-xs text-muted-foreground">Return Rate</p>
+            </div>
+            <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+                <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <p className="text-2xl font-bold">{customerTrends.newCustomers}</p>
+              <p className="text-xs text-muted-foreground">New (this period)</p>
+            </div>
+            <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/30">
+                <Users className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+              </div>
+              <p className="text-2xl font-bold">
+                {customerTrends.repeatCustomers}
+              </p>
+              <p className="text-xs text-muted-foreground">Repeat Customers</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Booking Activity Heatmap */}
       <Card className="overflow-hidden border-t-2 border-t-orange-500">
         <CardHeader className="gap-5 pb-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -616,36 +627,6 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
           </div>
         </CardContent>
       </Card>
-
-      <Card className="border-t-2 border-t-cyan-500">
-        <CardHeader><CardTitle className="text-sm font-medium">Storage Capacity by Location</CardTitle><CardDescription>Active bookings compared with configured capacity.</CardDescription></CardHeader>
-        <CardContent className="space-y-4">
-          {storageLocations.map((location) => (
-            <div key={location.name}>
-              <div className="mb-1.5 flex justify-between text-sm"><span className="font-medium">{location.name}</span><span className="text-muted-foreground">{location.used} / {location.capacity} · {location.utilization.toFixed(1)}%</span></div>
-              <div className="h-2.5 rounded-full bg-muted"><div className={`h-full rounded-full ${location.utilization >= 90 ? "bg-red-500" : location.utilization >= 70 ? "bg-amber-500" : "bg-cyan-500"}`} style={{ width: `${Math.min(location.utilization, 100)}%` }} /></div>
-            </div>
-          ))}
-          {storageLocations.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No storage locations configured.</p>}
-        </CardContent>
-      </Card>
-
-      {/* Booking Status Breakdown */}
-      <Card className="border-t-2 border-t-indigo-500">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Booking Status Breakdown</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex h-52 items-end gap-3 rounded-lg bg-muted/20 p-4">
-            {data.bookingsByStatus.map((s) => (
-              <div key={s.status} className="flex h-full flex-1 flex-col items-center justify-end gap-2">
-                <div className={`w-full max-w-14 rounded-t ${statusDot[s.status] || "bg-gray-400"}`} style={{ height: `${Math.max((s.count / Math.max(...data.bookingsByStatus.map((x) => x.count), 1)) * 100, 3)}%` }} title={`${s.status.replace(/_/g, " ")}: ${s.count}`} />
-                <span className="max-w-20 text-center text-[9px] text-muted-foreground">{s.status.replace(/_/g, " ")}</span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -654,6 +635,7 @@ function FinancialTab({
   payments,
   loading,
   overview,
+  metrics,
   totalRevenue,
   pendingCount,
   pendingPayments,
@@ -661,6 +643,7 @@ function FinancialTab({
   payments: Payment[];
   loading: boolean;
   overview: Overview | null;
+  metrics: FinancialMetrics | null;
   totalRevenue: number;
   pendingCount: number;
   pendingPayments: Payment[];
@@ -678,8 +661,52 @@ function FinancialTab({
   const maxMethodTotal = Math.max(...methodTotals.map(([, amt]) => amt), 1);
   const collectibleAmount = totalRevenue + pendingPayments.reduce((sum, payment) => sum + payment.amount, 0);
 
+  const today = new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric" });
+  const monthLabel = new Date().toLocaleDateString("en-PH", { month: "long" });
+
+  const metricCards = [
+    { label: "Walk-ins Today", sub: `as of ${today}`, value: metrics?.walkInsToday.toLocaleString() || "0", display: "number", color: "border-t-cyan-500", icon: UserPlus, iconBg: "bg-cyan-100 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400" },
+    { label: "Ongoing Bags in Storage", sub: "currently in storage", value: metrics?.ongoingBagsInStorage.toLocaleString() || "0", display: "number", color: "border-t-indigo-500", icon: Luggage, iconBg: "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400" },
+    { label: "Bags Stored Today", sub: `as of ${today}`, value: metrics?.bagsStoredToday.toLocaleString() || "0", display: "number", color: "border-t-blue-500", icon: PackagePlus, iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
+    { label: "Total Bags Stored (Monthly)", sub: `for ${monthLabel}`, value: metrics?.totalBagsStoredMonthly.toLocaleString() || "0", display: "number", color: "border-t-violet-500", icon: Archive, iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" },
+    { label: "Storage Utilization", sub: "of configured capacity", value: `${(metrics?.storageUtilization || 0).toFixed(1)}%`, display: "progress", color: "border-t-orange-500", icon: Warehouse, iconBg: "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" },
+    { label: "Outstanding Balance", sub: "all open (pending) payments", value: formatCurrency(metrics?.outstandingBalance || 0), display: "number", color: "border-t-amber-500", icon: Wallet, iconBg: "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" },
+    { label: "Refunds Issued", sub: metrics ? `${formatCurrency(metrics.refundsAmount)} total` : "no refunds", value: metrics?.refundsIssued.toLocaleString() || "0", display: "number", color: "border-t-rose-500", icon: Undo2, iconBg: "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400" },
+    { label: "Canceled / No-Show", sub: "for selected period", value: metrics?.canceledNoShow.toLocaleString() || "0", display: "number", color: "border-t-red-500", icon: XCircle, iconBg: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" },
+    { label: "Customer Satisfaction", sub: "avg rating · selected period", value: metrics ? `${metrics.customerSatisfaction.toFixed(1)} / 5` : "0.0 / 5", display: "number", color: "border-t-emerald-500", icon: Star, iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" },
+  ];
+
   return (
     <div className="space-y-6">
+      {/* Operational & financial metric grid */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+        {metricCards.map((m) => {
+          const Icon = m.icon;
+          return (
+            <Card key={m.label} className={`border-t-2 ${m.color}`}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{m.label}</CardTitle>
+                <div className={`rounded-lg p-2 ${m.iconBg}`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{m.value}</div>
+                {m.display === "progress" && (
+                  <div className="mt-2 h-2 w-full rounded-full bg-muted">
+                    <div
+                      className="h-2 rounded-full bg-gradient-to-r from-orange-400 to-orange-500"
+                      style={{ width: `${Math.min(Math.max(metrics?.storageUtilization || 0, 0), 100)}%` }}
+                    />
+                  </div>
+                )}
+                <p className={`mt-1 text-xs ${m.display === "progress" ? "text-orange-600" : "text-muted-foreground"}`}>{m.sub}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <Card className="border-t-2 border-t-green-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -761,7 +788,7 @@ function FinancialTab({
                   <div className="h-2.5 w-full rounded-full bg-muted">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400"
-                      style={{ width: `${(amt / maxMethodTotal) * 100}%` }}
+                      style={{ width: `${Math.max((amt / maxMethodTotal) * 100, 2)}%` }}
                     />
                   </div>
                 </div>
@@ -925,22 +952,26 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
   }
 
   const reportTypes = [
-    { id: "descriptive" as const, label: "Descriptive", desc: "Past performance analysis", icon: FileText, color: "border-t-blue-500", iconBg: "bg-blue-100 text-blue-600" },
-    { id: "predictive" as const, label: "Predictive", desc: "Future trend forecasts", icon: TrendingUp, color: "border-t-violet-500", iconBg: "bg-violet-100 text-violet-600" },
-    { id: "financial" as const, label: "Financial", desc: "Revenue & profitability", icon: DollarSign, color: "border-t-emerald-500", iconBg: "bg-emerald-100 text-emerald-600" },
+    { id: "descriptive" as const, label: "Descriptive", desc: "Past performance analysis", icon: FileText, color: "border-blue-500", ring: "ring-blue-500", iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400", bar: "bg-blue-500" },
+    { id: "predictive" as const, label: "Predictive", desc: "Future trend forecasts", icon: TrendingUp, color: "border-violet-500", ring: "ring-violet-500", iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400", bar: "bg-violet-500" },
+    { id: "financial" as const, label: "Financial", desc: "Revenue & profitability", icon: DollarSign, color: "border-emerald-500", ring: "ring-emerald-500", iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400", bar: "bg-emerald-500" },
   ];
+  const selected = reportTypes.find((rt) => rt.id === reportType)!;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">AI Reports</h2>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">AI-Generated Reports</h2>
+          <p className="text-sm text-muted-foreground">Data-backed reports generated on demand by Gemini AI for the selected period.</p>
+        </div>
         <Badge variant="secondary" className="gap-1.5 px-2.5 py-1">
           <Brain className="h-3.5 w-3.5" />
           Gemini AI
         </Badge>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-3">
         {reportTypes.map((rt) => {
           const Icon = rt.icon;
           const isActive = reportType === rt.id;
@@ -948,10 +979,11 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
             <button
               key={rt.id}
               onClick={() => { setReportType(rt.id); setReport(null); setError(""); }}
-              className={`rounded-xl border-2 p-4 text-left transition-all hover:shadow-md ${
-                isActive ? `${rt.color} shadow-md bg-muted/20` : "border-transparent"
+              className={`relative overflow-hidden rounded-xl border-2 p-4 text-left transition-all hover:shadow-md ${
+                isActive ? `${rt.color} bg-muted/30 shadow-md ring-2 ring-offset-1 ${rt.ring}` : "border-muted bg-card hover:border-muted-foreground/30"
               }`}
             >
+              <span className={`absolute inset-x-0 top-0 h-1 ${rt.bar}`} />
               <div className="flex items-center gap-3">
                 <div className={`rounded-lg p-2 ${rt.iconBg}`}>
                   <Icon className="h-5 w-5" />
@@ -966,13 +998,26 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
         })}
       </div>
 
-      <Button onClick={generateReport} disabled={loading} className="w-full sm:w-auto">
-        {loading ? (
-          <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Generating...</>
-        ) : (
-          <><Brain className="mr-2 h-4 w-4" /> Generate {reportTypes.find((r) => r.id === reportType)?.label} Report</>
-        )}
-      </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className={`rounded-lg p-2 ${selected.iconBg}`}>
+            <selected.icon className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="font-semibold text-sm">{selected.label} Report</p>
+            <p className="text-xs text-muted-foreground">
+              Period: {period === "custom" ? `${dateFrom || "—"} to ${dateTo || "—"}` : period.charAt(0).toUpperCase() + period.slice(1)}
+            </p>
+          </div>
+        </div>
+        <Button onClick={generateReport} disabled={loading}>
+          {loading ? (
+            <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Generating...</>
+          ) : (
+            <><Brain className="mr-2 h-4 w-4" /> Generate Report</>
+          )}
+        </Button>
+      </div>
 
       {error && (
         <Card className="border-t-2 border-t-yellow-500">
@@ -981,6 +1026,27 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
             <div>
               <p className="font-medium text-yellow-800">Report unavailable</p>
               <p className="text-sm text-yellow-700">{error}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {loading && (
+        <div className="grid gap-3">
+          <div className="h-32 animate-pulse rounded-xl bg-muted/50" />
+          <div className="h-48 animate-pulse rounded-xl bg-muted/50" />
+        </div>
+      )}
+
+      {!report && !loading && !error && (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-3 py-14 text-center text-muted-foreground">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+              <FileText className="h-7 w-7 text-muted-foreground/60" />
+            </div>
+            <div>
+              <p className="font-medium text-foreground">No report generated yet</p>
+              <p className="text-sm">Pick a report type and click Generate to create your report.</p>
             </div>
           </CardContent>
         </Card>
@@ -1001,13 +1067,14 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
                 </Button>
               </div>
             </div>
-            <CardDescription className="text-sm leading-relaxed">
+            <div className="mt-2 rounded-lg border bg-muted/20 p-3 text-sm leading-relaxed">
+              <span className="mr-2 font-semibold text-primary">Summary</span>
               {report.summary}
-            </CardDescription>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {report.sections.map((section, i) => (
-              <div key={i} className="rounded-lg border bg-muted/20 p-4">
+              <div key={i} className="rounded-lg border bg-card p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
                     {i + 1}

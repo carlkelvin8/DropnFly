@@ -10,7 +10,7 @@ export default function RechartsBar({
   labelMap: Record<string, string>;
 }) {
   return (
-    <div className="flex-1 min-h-[200px]">
+    <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data}>
           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
