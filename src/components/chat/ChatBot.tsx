@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, X, Send, Bot, User, ChevronDown, HeadphonesIcon, ArrowLeft, UserRound } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, ChevronDown, HeadphonesIcon, ArrowLeft, UserRound, RefreshCw } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -113,6 +113,24 @@ export default function ChatBot() {
     ensureToken();
     setSupportMode("connect");
   }, [ensureToken]);
+
+  const renewConversation = useCallback(async () => {
+    const oldToken = token || window.localStorage.getItem(SUPPORT_TOKEN_KEY) || "";
+    if (oldToken) {
+      try {
+        await fetch("/api/support-chat", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: oldToken, action: "close" }),
+        });
+      } catch { /* best-effort close */ }
+    }
+    const fresh = (crypto.randomUUID?.() || `guest-${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "");
+    window.localStorage.setItem(SUPPORT_TOKEN_KEY, fresh);
+    setToken(fresh);
+    setThread(null);
+    setSupportMode("connect");
+  }, [token]);
 
   const LIVE_AGENT_KEYWORDS = /\b(live agent|human|talk to someone|real person|speak to|speak with|talk to a|chat with staff|agent|support staff|customer service|actual person|staff)\b/i;
 
@@ -345,12 +363,23 @@ export default function ChatBot() {
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setOpen(false)}
-                  className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/20"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  {supportMode && (
+                    <button
+                      onClick={renewConversation}
+                      title="New conversation"
+                      className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/20"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setOpen(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/20"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Messages */}

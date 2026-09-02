@@ -81,7 +81,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   });
 
   return (
-    <aside className="flex h-full min-h-screen w-64 flex-col border-r bg-sidebar-background">
+    <aside className="flex h-full w-64 flex-col border-r bg-sidebar-background">
       <div className="flex h-14 items-center border-b px-6">
         <Luggage className="mr-2 h-5 w-5" />
         <span className="font-semibold"><span className="text-blue-600">Drop</span><span className="text-orange-500">nfly</span></span>

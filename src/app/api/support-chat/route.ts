@@ -25,6 +25,36 @@ export async function GET(req: Request) {
   return NextResponse.json({ thread });
 }
 
+export async function PATCH(req: Request) {
+  let body: { token?: unknown; action?: unknown } = {};
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const token = typeof body.token === "string" ? body.token.trim() : "";
+  const action = typeof body.action === "string" ? body.action.trim() : "";
+
+  if (!TOKEN_PATTERN.test(token)) {
+    return NextResponse.json({ error: "Invalid session token" }, { status: 400 });
+  }
+
+  if (action === "close") {
+    const thread = await prisma.supportChat.findUnique({ where: { token } });
+    if (!thread) {
+      return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    }
+    await prisma.supportChat.update({
+      where: { id: thread.id },
+      data: { status: "CLOSED" },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+}
+
 export async function POST(req: Request) {
   const { allowed, retryAfter } = await rateLimit(`support-chat:${requestKey(req)}`, 15, 60 * 1000);
   if (!allowed) {
