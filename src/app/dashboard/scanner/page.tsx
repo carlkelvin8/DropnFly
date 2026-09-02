@@ -135,10 +135,15 @@ export default function QrScannerPage() {
     setIntakeProcessing(true);
     const nextStatus = queueBooking.status === "RECEIVED" ? "IN_STORAGE" : "OUT_FOR_DELIVERY";
     try {
-      const res = await fetch("/api/qr/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ referenceNumber: queueBooking.referenceNumber, status: nextStatus, photo: queuePhoto, note: `Intake queue update to ${nextStatus}` }) });
+      const body = queueBooking.status === "RECEIVED"
+        ? { batchStore: true, referenceNumber: queueBooking.referenceNumber, photo: queuePhoto, note: `Batch storage intake from queue` }
+        : { referenceNumber: queueBooking.referenceNumber, status: nextStatus, photo: queuePhoto, note: `Queue update to ${nextStatus}` };
+      const res = await fetch("/api/qr/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Update failed");
-      toast.success(`Booking updated to ${nextStatus.replace(/_/g, " ")}`);
+      toast.success(queueBooking.status === "RECEIVED"
+        ? `Stored ${json.storedCount || "?"} luggage item(s) — booking now in storage`
+        : `Booking updated to ${nextStatus.replace(/_/g, " ")}`);
       setQueueBooking(null); setQueuePhoto(null); loadIntakeQueue();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Update failed"); }
     finally { setIntakeProcessing(false); }
@@ -593,7 +598,7 @@ export default function QrScannerPage() {
         {queueBooking && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
             <Card className="w-full max-w-md"><CardHeader><CardTitle>Update {queueBooking.referenceNumber}</CardTitle></CardHeader><CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">Move from {queueBooking.status.replace(/_/g, " ")} to {queueBooking.status === "RECEIVED" ? "IN STORAGE" : "OUT FOR DELIVERY"}.</p>
+              <p className="text-sm text-muted-foreground">{queueBooking.status === "RECEIVED" ? `Store all luggage for ${queueBooking.referenceNumber} and move to In Storage.` : `Move from ${queueBooking.status.replace(/_/g, " ")} to OUT FOR DELIVERY.`}</p>
               {queueBooking.status === "RECEIVED" && <div><p className="mb-2 text-sm font-medium">Luggage verification photo (required)</p><input type="file" accept="image/*" capture="environment" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { setQueuePhoto(await imageFileToDataUrl(file)); } catch { toast.error("Could not read photo"); } }} />{queuePhoto && <p className="mt-2 text-xs text-emerald-600">Photo ready for verification</p>}</div>}
               <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => { setQueueBooking(null); setQueuePhoto(null); }}>Cancel</Button><Button disabled={intakeProcessing || (queueBooking.status === "RECEIVED" && !queuePhoto)} onClick={updateQueuedBooking}>{intakeProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Update"}</Button></div>
             </CardContent></Card>

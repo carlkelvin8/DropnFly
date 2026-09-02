@@ -133,6 +133,18 @@ async function handleLuggageIntake({
     }`,
   });
 
+    // Send customer notification for luggage intake
+  const settings = await getSystemSettings();
+  if (setting(settings, "qr_scan_notification", "true") !== "false") {
+    await sendCustomerNotification({
+      customerId: booking.customerId,
+      type: "qr_scan_update",
+      title: "Luggage Stored",
+      message: `Your luggage (tag ${cleanTag}) for booking ${booking.referenceNumber} is now in storage.`,
+      link: `/my-account/bookings/${booking.id}`,
+    }).catch(() => {});
+  }
+
   return NextResponse.json({
     success: true,
     luggage: {
@@ -145,6 +157,117 @@ async function handleLuggageIntake({
     bookingStatus,
     remaining,
     message: `Luggage ${cleanTag} marked in storage`,
+  });
+}
+
+async function handleBatchLuggageStore({
+  session,
+  referenceNumber,
+  photo,
+  note,
+  latitude,
+  longitude,
+}: {
+  session: { user: { id: string } };
+  referenceNumber: string;
+  photo?: string;
+  note?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}) {
+  if (!referenceNumber) {
+    return NextResponse.json({ error: "Reference number is required" }, { status: 400 });
+  }
+  if (!photo) {
+    return NextResponse.json({ error: "A luggage verification photo is required for storage intake" }, { status: 400 });
+  }
+
+  const booking = await prisma.booking.findUnique({
+    where: { referenceNumber: normalizeReference(referenceNumber) },
+    select: {
+      id: true,
+      referenceNumber: true,
+      status: true,
+      customerId: true,
+      pickupLocation: true,
+    },
+  });
+
+  if (!booking) {
+    return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+  }
+  if (!["RECEIVED", "IN_STORAGE"].includes(booking.status)) {
+    return NextResponse.json(
+      { error: `Luggage cannot be stored while booking is ${booking.status}. Complete collection first.` },
+      { status: 400 }
+    );
+  }
+
+  const unstoredItems = await prisma.luggageItem.findMany({
+    where: {
+      bookingId: booking.id,
+      status: { notIn: ["IN_STORAGE", "DELIVERED", "CANCELLED"] },
+    },
+  });
+
+  if (unstoredItems.length === 0) {
+    return NextResponse.json({ error: "No luggage items pending storage for this booking" }, { status: 400 });
+  }
+
+  const location = booking.pickupLocation || null;
+
+  await prisma.$transaction(
+    unstoredItems.map((item) =>
+      prisma.luggageItem.update({
+        where: { id: item.id },
+        data: { status: "IN_STORAGE", location },
+      })
+    )
+  );
+
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: { status: "IN_STORAGE" },
+  });
+
+  await prisma.scanEvent.createMany({
+    data: unstoredItems.map((item) => ({
+      bookingId: booking.id,
+      userId: session.user.id,
+      status: "IN_STORAGE",
+      photo: photo || null,
+      note: note
+        ? `${note} — Batch storage intake (tag ${item.tagNumber})`
+        : `Batch storage intake (tag ${item.tagNumber})`,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null,
+    })),
+  });
+
+  await logActivity({
+    userId: session.user.id,
+    action: "SCAN",
+    entity: "Booking",
+    entityId: booking.id,
+    details: `Batch stored ${unstoredItems.length} luggage item(s) for ${booking.referenceNumber} — booking now in storage`,
+  });
+
+  const settings = await getSystemSettings();
+  if (setting(settings, "qr_scan_notification", "true") !== "false") {
+    await sendCustomerNotification({
+      customerId: booking.customerId,
+      type: "qr_scan_update",
+      title: "Luggage Stored",
+      message: `All your luggage for booking ${booking.referenceNumber} (${unstoredItems.length} item(s)) is now in storage.`,
+      link: `/my-account/bookings/${booking.id}`,
+    }).catch(() => {});
+  }
+
+  return NextResponse.json({
+    success: true,
+    bookingStatus: "IN_STORAGE",
+    storedCount: unstoredItems.length,
+    message: `Batch stored ${unstoredItems.length} luggage item(s) — booking ${booking.referenceNumber} is now in storage`,
   });
 }
 
@@ -165,6 +288,7 @@ export async function POST(req: Request) {
       customerVerified,
       tagNumbers,
       luggageScan,
+      batchStore,
       tagNumber,
     } = await req.json();
 
@@ -172,6 +296,17 @@ export async function POST(req: Request) {
       return handleLuggageIntake({
         session,
         tagNumber,
+        referenceNumber,
+        photo,
+        note,
+        latitude,
+        longitude,
+      });
+    }
+
+    if (batchStore) {
+      return handleBatchLuggageStore({
+        session,
         referenceNumber,
         photo,
         note,
