@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { Printer, ArrowLeft, Luggage } from "lucide-react";
+import { Printer, ArrowLeft, Luggage, Mail, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ interface Booking {
 export default function ReceiptPage() {
   const params = useParams();
   const [booking, setBooking] = useState<Booking | null>(null);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -39,6 +40,27 @@ export default function ReceiptPage() {
 
   function handlePrint() {
     window.print();
+  }
+
+  async function handleSendEmail() {
+    if (!booking) return;
+    const email = booking.customer?.email?.trim();
+    if (!email) {
+      toast.error("This booking has no valid email address on file. Cannot send the receipt.");
+      return;
+    }
+    if (sending) return;
+    setSending(true);
+    try {
+      const res = await fetch(`/api/bookings/${params.id}/receipt/email`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to send receipt");
+      toast.success("Receipt sent successfully via email.");
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Failed to send receipt via email. Please try again.");
+    } finally {
+      setSending(false);
+    }
   }
 
   if (!booking) {
@@ -59,7 +81,11 @@ export default function ReceiptPage() {
         </Button>
         <h1 className="flex-1 text-2xl font-bold">Receipt</h1>
         <Button onClick={handlePrint}>
-          <Printer className="mr-2 h-4 w-4" /> Print
+          <Printer className="mr-2 h-4 w-4" /> Print Receipt
+        </Button>
+        <Button variant="outline" onClick={handleSendEmail} disabled={sending}>
+          {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+          {sending ? "Sending..." : "Send via Email"}
         </Button>
       </div>
 

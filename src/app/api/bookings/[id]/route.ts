@@ -108,7 +108,13 @@ export async function PUT(
       return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
     }
 
-    if (body.numberOfBags !== undefined) {
+    if (body.numberOfBags !== undefined && body.numberOfBags !== existingBooking.numberOfBags) {
+      if (body.allowBaggageChange !== true) {
+        return NextResponse.json(
+          { error: "Baggage quantity cannot be changed here. Use the Additional Baggage feature to add more bags." },
+          { status: 400 }
+        );
+      }
       if (!Number.isInteger(body.numberOfBags) || body.numberOfBags <= 0) return NextResponse.json({ error: "Invalid bag count" }, { status: 400 });
       data.numberOfBags = body.numberOfBags;
       if (body.totalPrice === undefined) {

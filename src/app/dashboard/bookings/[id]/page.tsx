@@ -319,7 +319,7 @@ export default function BookingDetailPage() {
       const res = await fetch(`/api/bookings/${params.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numberOfBags: booking.numberOfBags + addBagQty, luggageDetails: newLuggageDetails, changeNote }),
+        body: JSON.stringify({ numberOfBags: booking.numberOfBags + addBagQty, luggageDetails: newLuggageDetails, changeNote, allowBaggageChange: true }),
       });
       const result = await res.json().catch(() => null);
       if (!res.ok) throw new Error(result?.error || "Failed to add baggage");
@@ -544,7 +544,7 @@ export default function BookingDetailPage() {
     const body: Record<string, unknown> = {};
     for (const [key, val] of formData.entries()) {
       if (key === "checkIn" || key === "checkOut") body[key] = val;
-      else if (key === "numberOfBags") body[key] = parseInt(val as string);
+      else if (key === "numberOfBags") continue;
       else if (key === "pickupTerminal" || key === "pickupAirline" || key === "dropOffTerminal") continue;
       else body[key] = val;
     }
@@ -1862,7 +1862,9 @@ export default function BookingDetailPage() {
                 <div>
                   <Label>Number of Bags</Label>
                   <input name="numberOfBags" type="number" min="1" defaultValue={booking.numberOfBags}
-                    className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                    disabled readOnly
+                    className="mt-1 flex h-9 w-full rounded-md border border-input bg-muted px-3 py-1 text-sm shadow-sm opacity-60" />
+                  <p className="mt-1 text-[10px] text-muted-foreground">Bags cannot be changed here — use “Add Additional Baggage” to add more.</p>
                 </div>
                 <div>
                   <Label>Total Price (automatic)</Label>
