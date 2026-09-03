@@ -51,7 +51,6 @@ export async function GET(req: Request) {
     bookingsByDay,
     periodBookingStats,
     paidPayments,
-    storageLocations,
     bookingsByHour,
     repeatCustomers,
     luggageDetails,
@@ -80,9 +79,6 @@ export async function GET(req: Request) {
         paidAt: true,
         booking: { select: { status: true } },
       },
-    }),
-    prisma.storageLocation.findMany({
-      select: { id: true, name: true, capacity: true },
     }),
     prisma.booking.findMany({
       where: periodFilter,
@@ -132,15 +128,6 @@ export async function GET(req: Request) {
   const activeBookings = await prisma.booking.count({
     where: { status: { notIn: ["DELIVERED", "CANCELLED"] } },
   });
-
-  const bookingsPerLocation = await prisma.booking.groupBy({
-    by: ["locationId"],
-    where: { status: { notIn: ["DELIVERED", "CANCELLED"] } },
-    _count: true,
-  });
-  const usageMap = new Map(
-    bookingsPerLocation.map((b) => [b.locationId, b._count])
-  );
 
   const bookingsPerDay: Record<string, number> = {};
   const revenuePerDay: Record<string, number> = {};
@@ -307,15 +294,6 @@ export async function GET(req: Request) {
     employeePerformance: userPerformance.sort(
       (a, b) => b.totalAssigned - a.totalAssigned
     ),
-    storageLocations: storageLocations.map((loc) => {
-      const used = usageMap.get(loc.id) || 0;
-      return {
-        name: loc.name,
-        capacity: loc.capacity,
-        used,
-        utilization: loc.capacity > 0 ? (used / loc.capacity) * 100 : 0,
-      };
-    }),
     bookingFrequency: {
       daily: actualDays > 0 ? periodBookings / actualDays : 0,
       period,

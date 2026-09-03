@@ -529,7 +529,7 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
             {employeePerformance.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
                 <Users className="h-8 w-8" />
-                <p className="text-sm">No data yet</p>
+                <p className="text-sm">No employee performance data available.</p>
               </div>
             )}
           </CardContent>
@@ -673,8 +673,10 @@ function FinancialTab({
     { label: "Outstanding Balance", sub: "all open (pending) payments", value: formatCurrency(metrics?.outstandingBalance || 0), display: "number", color: "border-t-amber-500", icon: Wallet, iconBg: "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" },
     { label: "Refunds Issued", sub: metrics ? `${formatCurrency(metrics.refundsAmount)} total` : "no refunds", value: metrics?.refundsIssued.toLocaleString() || "0", display: "number", color: "border-t-rose-500", icon: Undo2, iconBg: "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400" },
     { label: "Canceled / No-Show", sub: "for selected period", value: metrics?.canceledNoShow.toLocaleString() || "0", display: "number", color: "border-t-red-500", icon: XCircle, iconBg: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" },
-    { label: "Customer Satisfaction", sub: "avg rating · selected period", value: metrics ? `${metrics.customerSatisfaction.toFixed(1)} / 5` : "0.0 / 5", display: "number", color: "border-t-emerald-500", icon: Star, iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" },
+    { label: "Customer Satisfaction", sub: "avg rating · selected period", value: metrics && metrics.customerSatisfaction > 0 ? `${metrics.customerSatisfaction.toFixed(1)} / 5` : null, display: "number", color: "border-t-emerald-500", icon: Star, iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" },
   ];
+
+  const satisfactionNoData = !metrics || metrics.customerSatisfaction <= 0;
 
   return (
     <div className="space-y-6">
@@ -691,7 +693,11 @@ function FinancialTab({
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{m.value}</div>
+                {m.label === "Customer Satisfaction" && satisfactionNoData ? (
+                  <div className="text-sm font-medium text-muted-foreground">No customer feedback available yet.</div>
+                ) : (
+                  <div className="text-2xl font-bold">{m.value}</div>
+                )}
                 {m.display === "progress" && (
                   <div className="mt-2 h-2 w-full rounded-full bg-muted">
                     <div
