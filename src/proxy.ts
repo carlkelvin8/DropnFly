@@ -38,6 +38,11 @@ export default async function middleware(req: NextRequest) {
   const method = req.method.toUpperCase();
   const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);
 
+  const passThrough = () => {
+    const res = NextResponse.next();
+    res.headers.set("x-pathname", path);
+    return res;
+  };
   if (path.startsWith("/api/") && mutating) {
     const contentLength = Number(req.headers.get("content-length") || "0");
     if (Number.isFinite(contentLength) && contentLength > 10 * 1024 * 1024) {
@@ -61,7 +66,7 @@ export default async function middleware(req: NextRequest) {
   );
 
   if (isPublicRoute) {
-    return NextResponse.next();
+    return passThrough();
   }
 
   const validSession = await hasValidSession(req);
@@ -79,7 +84,7 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  return NextResponse.next();
+  return passThrough();
 }
 
 export const config = {
