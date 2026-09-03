@@ -143,6 +143,7 @@ export default function BookingDetailPage() {
   const [addingLuggage, setAddingLuggage] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [sendingReceipt, setSendingReceipt] = useState(false);
   const [editPickupTerminal, setEditPickupTerminal] = useState("");
   const [editPickupAirline, setEditPickupAirline] = useState("");
 
@@ -574,6 +575,24 @@ export default function BookingDetailPage() {
       toast.success("Booking updated");
     } catch { toast.error("Failed to update booking"); }
     setEditSaving(false);
+  }
+
+  async function handleSendReceiptEmail() {
+    if (!booking?.customer?.email) {
+      toast.error("Customer has no email on file");
+      return;
+    }
+    setSendingReceipt(true);
+    try {
+      const res = await fetch(`/api/bookings/${params.id}/receipt/email`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to send receipt");
+      toast.success(`Receipt emailed to ${booking.customer.email}`);
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Failed to send receipt");
+    } finally {
+      setSendingReceipt(false);
+    }
   }
 
   async function handleAddServices() {
@@ -1140,6 +1159,9 @@ export default function BookingDetailPage() {
                 <Link href={`/dashboard/bookings/${booking.id}/receipt`}>
                   <Printer className="mr-2 h-4 w-4" /> Receipt
                 </Link>
+              </Button>
+              <Button variant="outline" className="w-full justify-start" onClick={handleSendReceiptEmail} disabled={sendingReceipt || !booking.customer?.email}>
+                <Mail className="mr-2 h-4 w-4" /> {sendingReceipt ? "Sending..." : "Send Receipt via Email"}
               </Button>
               <Button variant="outline" className="w-full justify-start" asChild>
                 <Link href={`/dashboard/chat/${booking.id}`}>

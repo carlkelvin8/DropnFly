@@ -404,3 +404,123 @@ export async function sendPaymentConfirmationEmail({
     html,
   });
 }
+
+export async function sendReceiptEmail({
+  to,
+  customerName,
+  referenceNumber,
+  pickupLocation,
+  dropOffLocation,
+  numberOfBags,
+  totalPrice,
+  createdAt,
+  customerEmail,
+  customerPhone,
+  status,
+}: {
+  to: string;
+  customerName: string;
+  referenceNumber: string;
+  pickupLocation: string;
+  dropOffLocation: string;
+  numberOfBags: number;
+  totalPrice: number;
+  createdAt: string;
+  customerEmail: string;
+  customerPhone: string;
+  status: string;
+}) {
+  const config = await getEmailConfig();
+  if (!config.enabled) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[EMAIL] Email notifications are disabled in settings");
+    }
+    return false;
+  }
+
+  const formattedDate = new Date(createdAt).toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const safeStatus = status.replace(/_/g, " ");
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 2px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
+      <div style="background: linear-gradient(135deg, #f97316, #2563eb); color: white; padding: 20px; text-align: center;">
+        <h2 style="margin: 0;">Dropnfly</h2>
+        <p style="margin: 4px 0 0; opacity: 0.9;">Luggage Storage &amp; Delivery</p>
+        <p style="margin: 0; opacity: 0.9;">Metro Manila, Philippines</p>
+      </div>
+      <div style="padding: 24px;">
+        <div style="background: #eff6ff; padding: 16px; text-align: center; border-radius: 8px;">
+          <p style="margin: 0; font-size: 12px; color: #6b7280;">RECEIPT</p>
+          <p style="margin: 4px 0 0; font-size: 18px; font-weight: 700; letter-spacing: 1px;">${referenceNumber}</p>
+        </div>
+        <table style="width: 100%; margin-top: 20px; font-size: 14px;">
+          <tr>
+            <td style="padding: 4px 0; color: #6b7280;">Customer</td>
+            <td style="padding: 4px 0; text-align: right; font-weight: 500;">${sanitizeHtml(customerName)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; color: #6b7280;">Email</td>
+            <td style="padding: 4px 0; text-align: right;">${sanitizeHtml(customerEmail)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; color: #6b7280;">Phone</td>
+            <td style="padding: 4px 0; text-align: right;">${sanitizeHtml(customerPhone)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; color: #6b7280;">Date</td>
+            <td style="padding: 4px 0; text-align: right;">${sanitizeHtml(formattedDate)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; color: #6b7280;">Status</td>
+            <td style="padding: 4px 0; text-align: right; text-transform: capitalize;">${sanitizeHtml(safeStatus)}</td>
+          </tr>
+        </table>
+        <table style="width: 100%; margin-top: 20px; font-size: 14px; border-collapse: collapse;">
+          <thead>
+            <tr style="border-bottom: 1px solid #d1d5db; text-align: left; color: #6b7280;">
+              <th style="padding: 8px 0;">Service</th>
+              <th style="padding: 8px 0; text-align: right;">Qty</th>
+              <th style="padding: 8px 0; text-align: right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom: 1px solid #e5e7eb;">
+              <td style="padding: 12px 0;">
+                <strong>Luggage Storage</strong>
+                <div style="font-size: 12px; color: #6b7280;">${sanitizeHtml(pickupLocation)} &rarr; ${sanitizeHtml(dropOffLocation)}</div>
+              </td>
+              <td style="padding: 12px 0; text-align: right;">${numberOfBags}</td>
+              <td style="padding: 12px 0; text-align: right;">&#8369;${totalPrice.toFixed(2)}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr style="font-weight: 700;">
+              <td style="padding: 12px 0;">Total</td>
+              <td style="padding: 12px 0; text-align: right;">${numberOfBags}</td>
+              <td style="padding: 12px 0; text-align: right;">&#8369;${totalPrice.toFixed(2)}</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #6b7280;">
+          <p style="margin: 0;">Thank you for choosing Dropnfly!</p>
+          <p style="margin: 4px 0 0;">This is your official receipt. Please keep it for your records.</p>
+          <p style="margin: 4px 0 0;"><a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}/track/${referenceNumber}" style="color: #2563eb;">Track your luggage</a></p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  await (await getTransporter()).sendMail({
+    from: config.from,
+    to,
+    subject: `Your Dropnfly Receipt - ${referenceNumber}`,
+    html,
+  });
+  return true;
+}
