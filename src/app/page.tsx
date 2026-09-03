@@ -17,6 +17,7 @@ import {
   CTAFloatingDots,
 } from "@/components/landing/LandingAnimations";
 import { ChatBotClient } from "@/components/landing/ChatBotClient";
+import { PublicFooter } from "@/components/layout/PublicFooter";
 
 const features = [
   { icon: Luggage, title: "Easy Booking", desc: "Schedule pickup in under 60 seconds. No account needed." },
@@ -326,97 +327,7 @@ export default function Home() {
         />
       </main>
 
-      {/* Footer */}
-      <footer className="border-t bg-muted/30">
-        <div className="container mx-auto px-4 py-12">
-          <div className="grid gap-8 md:grid-cols-4">
-            <div className="md:col-span-1">
-              <Link href="/" className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500">
-                  <Luggage className="h-4 w-4 text-white" />
-                </div>
-                <span className="text-base font-bold">
-                  <span className="text-blue-600">Drop</span><span className="text-orange-500">nfly</span>
-                </span>
-              </Link>
-              <p className="mt-3 text-sm text-muted-foreground">
-                On-demand luggage storage and delivery service for modern travelers.
-              </p>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-semibold">Quick Links</h4>
-              <ul className="mt-4 space-y-2.5">
-                <li>
-                  <Link href="/book" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-                    Book a Pickup
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/track" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-                    Track Luggage
-                  </Link>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-semibold">Features</h4>
-              <ul className="mt-4 space-y-2.5">
-                {features.slice(0, 4).map((f) => (
-                  <li key={f.title}>
-                    <a href="#why-choose-us" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-                      {f.title}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-semibold">Contact</h4>
-              <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
-                <li>hello@dropnfly.ph</li>
-                <li>+63 (2) 8123 4567</li>
-                <li>Metro Manila, PH</li>
-              </ul>
-              <div className="mt-4 flex gap-3">
-                <a
-                  href="https://facebook.com/dropnfly"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  aria-label="Follow us on Facebook"
-                >
-                  FB
-                </a>
-                <a
-                  href="https://instagram.com/dropnfly"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  aria-label="Follow us on Instagram"
-                >
-                  IG
-                </a>
-                <a
-                  href="https://twitter.com/dropnfly"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  aria-label="Follow us on Twitter"
-                >
-                  TW
-                </a>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-10 border-t pt-6 text-center text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} Dropnfly. All rights reserved.
-          </div>
-        </div>
-      </footer>
+      <PublicFooter />
 
       <ChatBotClient />
     </div>
