@@ -58,6 +58,8 @@ export default function EmployeeDetailPage() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editPassword, setEditPassword] = useState("");
+  const [bookingPage, setBookingPage] = useState(0);
+  const BOOKINGS_PER_PAGE = 5;
 
   useEffect(() => {
     const abort = new AbortController();
@@ -243,7 +245,7 @@ export default function EmployeeDetailPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {employee.assignedBookings.map((a) => (
+              {employee.assignedBookings.slice(bookingPage * BOOKINGS_PER_PAGE, bookingPage * BOOKINGS_PER_PAGE + BOOKINGS_PER_PAGE).map((a) => (
                 <TableRow key={a.booking.id} className="border-b transition-colors hover:bg-muted/50">
                   <TableCell className="font-mono">{a.booking.referenceNumber}</TableCell>
                   <TableCell>{a.booking.pickupLocation}</TableCell>
@@ -267,6 +269,26 @@ export default function EmployeeDetailPage() {
               )}
             </TableBody>
           </Table>
+          {employee.assignedBookings.length > BOOKINGS_PER_PAGE && (
+            <div className="mt-4 flex items-center justify-between border-t pt-3">
+              <span className="text-xs text-muted-foreground">
+                Showing {bookingPage * BOOKINGS_PER_PAGE + 1}–{Math.min(bookingPage * BOOKINGS_PER_PAGE + BOOKINGS_PER_PAGE, employee.assignedBookings.length)} of {employee.assignedBookings.length} bookings
+              </span>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" disabled={bookingPage === 0} onClick={() => setBookingPage((p) => Math.max(0, p - 1))}>
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={(bookingPage + 1) * BOOKINGS_PER_PAGE >= employee.assignedBookings.length}
+                  onClick={() => setBookingPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
