@@ -107,6 +107,8 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 interface FleetVehicle {
   id: string;
   type: string;
+  plateNumber: string;
+  color: string;
   count: number;
   icon: "bike" | "car" | "truck";
 }
@@ -280,7 +282,7 @@ export default function SettingsPage() {
   function addVehicle() {
     const fleet = getFleet();
     const id = `v_${Date.now()}`;
-    fleet.push({ id, type: "Motorcycle", count: 1, icon: "bike" });
+    fleet.push({ id, type: "Motorcycle", plateNumber: "", color: "", count: 1, icon: "bike" });
     setFleet(fleet);
   }
 
@@ -1118,10 +1120,26 @@ function FleetSection({ fleet, onAdd, onUpdate, onRemove, onReset, dirtyCount, s
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-background shadow-sm">
                       <Icon className="h-5 w-5 text-muted-foreground" />
                     </div>
-                    <div className="flex-1 min-w-[150px]">
+                    <div className="flex-1 min-w-[150px] space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Type of Vehicle</Label>
                       <Input value={v.type}
                         onChange={(e) => onUpdate(v.id, "type", e.target.value)}
-                        className="h-8 text-sm font-medium" placeholder="Vehicle type" />
+                        className="h-8 text-sm font-medium" placeholder="e.g. Motorcycle" />
+                    </div>
+                    <div className="flex-1 min-w-[150px] space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Plate Number</Label>
+                      <Input value={v.plateNumber || ""}
+                        onChange={(e) => onUpdate(v.id, "plateNumber", e.target.value)}
+                        className="h-8 text-sm font-mono uppercase" placeholder="e.g. ABC 1234" />
+                    </div>
+                    <div className="flex-1 min-w-[150px] space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Color</Label>
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-6 shrink-0 rounded border" style={{ backgroundColor: v.color || "#ffffff" }} />
+                        <Input value={v.color || ""}
+                          onChange={(e) => onUpdate(v.id, "color", e.target.value)}
+                          className="h-8 text-sm" placeholder="e.g. Red" />
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Label className="text-xs text-muted-foreground">Count</Label>
