@@ -34,6 +34,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NAIA_TERMINALS } from "@/components/booking/constants";
+import { getAirlinesForTerminal } from "@/lib/terminal-airlines";
 
 interface Booking {
   id: string;
@@ -143,6 +144,7 @@ export default function BookingDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editPickupTerminal, setEditPickupTerminal] = useState("");
+  const [editPickupAirline, setEditPickupAirline] = useState("");
 
   const [editDropOffTerminal, setEditDropOffTerminal] = useState("");
   const [editSessionName, setEditSessionName] = useState<string | null>(null);
@@ -212,12 +214,14 @@ export default function BookingDetailPage() {
     // pre-fill edit fields from booking when not editing
     const pick = booking.pickupLocation || "";
     if (pick.includes(" - ")) {
-      const [t] = pick.split(" - ");
+      const [t, ...rest] = pick.split(" - ");
       setEditPickupTerminal(t.trim());
+      setEditPickupAirline(rest.join(" - ").trim());
     } else {
       // try to detect terminal substring
       const found = NAIA_TERMINALS.find((tt) => pick.includes(tt.value));
       setEditPickupTerminal(found ? found.value : pick);
+      setEditPickupAirline("");
     }
     setEditDropOffTerminal(booking.dropOffLocation || "");
   }, [booking, showEditModal]);
@@ -226,11 +230,13 @@ export default function BookingDetailPage() {
     if (showEditModal && booking) {
       const pick = booking.pickupLocation || "";
       if (pick.includes(" - ")) {
-        const [t] = pick.split(" - ");
+        const [t, ...rest] = pick.split(" - ");
         setEditPickupTerminal(t.trim());
+        setEditPickupAirline(rest.join(" - ").trim());
       } else {
         const found = NAIA_TERMINALS.find((tt) => pick.includes(tt.value));
         setEditPickupTerminal(found ? found.value : pick);
+        setEditPickupAirline("");
       }
       setEditDropOffTerminal(booking.dropOffLocation || "");
     }
@@ -545,7 +551,9 @@ export default function BookingDetailPage() {
       else if (key === "pickupTerminal" || key === "pickupAirline" || key === "dropOffTerminal") continue;
       else body[key] = val;
     }
-    const pickupLocation = editPickupTerminal;
+    const pickupLocation = editPickupAirline
+      ? `${editPickupTerminal} - ${editPickupAirline}`
+      : editPickupTerminal;
     const dropOffLocation = editDropOffTerminal || booking?.dropOffLocation || "";
     if (pickupLocation) body.pickupLocation = pickupLocation;
     if (dropOffLocation) body.dropOffLocation = dropOffLocation;
@@ -1817,11 +1825,22 @@ export default function BookingDetailPage() {
             <form onSubmit={handleEditSave} className="space-y-4">
               <div>
                 <Label>Pickup Terminal</Label>
-                <select value={editPickupTerminal} onChange={(e) => setEditPickupTerminal(e.target.value)}
+                <select value={editPickupTerminal} onChange={(e) => { setEditPickupTerminal(e.target.value); setEditPickupAirline(""); }}
                   className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
                   <option value="">Select terminal...</option>
                   {NAIA_TERMINALS.map((terminal) => <option key={terminal.value} value={terminal.value}>{terminal.label}</option>)}
                 </select>
+              </div>
+
+              <div>
+                <Label>Pickup Airline</Label>
+                <select value={editPickupAirline} onChange={(e) => setEditPickupAirline(e.target.value)}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm disabled:opacity-50"
+                  disabled={!editPickupTerminal}>
+                  <option value="">{editPickupTerminal ? "Select airline..." : "Select terminal first"}</option>
+                  {getAirlinesForTerminal(editPickupTerminal).map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+                {editPickupTerminal && <p className="mt-1 text-[10px] text-muted-foreground">Showing airlines available for {editPickupTerminal}</p>}
               </div>
 
               <div>
