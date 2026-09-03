@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { generateReport } from "@/lib/gemini";
 import { prisma } from "@/lib/prisma";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -25,7 +26,6 @@ export async function GET(req: Request) {
       bookingsByStatus,
       recentBookings,
       employeeCount,
-      locationCapacity,
       customerCount,
       payments,
       luggageCount,
@@ -42,7 +42,6 @@ export async function GET(req: Request) {
         orderBy: { createdAt: "asc" },
       }),
       prisma.user.count({ where: { role: "EMPLOYEE", isActive: true } }),
-      prisma.storageLocation.aggregate({ _sum: { capacity: true } }),
       prisma.customer.count({ where: { createdAt: { gte: since, lte: until } } }),
       prisma.payment.aggregate({ where: paymentWhere, _sum: { amount: true } }),
       prisma.luggageItem.count({ where: { booking: bookingWhere } }),
@@ -51,7 +50,8 @@ export async function GET(req: Request) {
       prisma.booking.groupBy({ by: ["customerId"], where: bookingWhere, having: { customerId: { _count: { gt: 1 } } }, _count: true }),
     ]);
 
-    const totalCapacity = locationCapacity._sum.capacity || 0;
+    const map = await getSystemSettings();
+    const totalCapacity = parseInt(setting(map, "max_simultaneous_bags", "0"));
     const activeBookings = await prisma.booking.count({
       where: { ...bookingWhere, status: { notIn: ["DELIVERED", "CANCELLED"] } },
     });

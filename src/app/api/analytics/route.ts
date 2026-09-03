@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 function toLocalDayKey(d: Date): string {
   const year = d.getFullYear();
@@ -126,10 +127,8 @@ export async function GET(req: Request) {
 
   const totalRevenue = paidPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
-  const totalCapacity = storageLocations.reduce(
-    (acc, loc) => acc + loc.capacity,
-    0
-  );
+  const settings = await getSystemSettings();
+  const totalCapacity = parseInt(setting(settings, "max_simultaneous_bags", "0"));
   const activeBookings = await prisma.booking.count({
     where: { status: { notIn: ["DELIVERED", "CANCELLED"] } },
   });

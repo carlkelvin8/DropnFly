@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 export async function GET() {
   try {
@@ -22,7 +23,6 @@ export async function GET() {
       deliveredBookings,
       monthlyBookings,
       monthlyDelivered,
-      capacityResult,
       bookingCapacity,
       totalUsers,
       bookingDurations,
@@ -42,10 +42,6 @@ export async function GET() {
       }),
       prisma.booking.count({
         where: { status: "DELIVERED", createdAt: { gte: startOfMonth } },
-      }),
-      prisma.storageLocation.aggregate({
-        _sum: { capacity: true },
-        where: { isActive: true },
       }),
       prisma.booking.count({
         where: { status: { in: ["RECEIVED", "IN_STORAGE"] } },
@@ -88,7 +84,8 @@ export async function GET() {
       }),
     ]);
 
-    const capacityTotal = capacityResult._sum.capacity ?? 0;
+    const settings = await getSystemSettings();
+    const capacityTotal = parseInt(setting(settings, "max_simultaneous_bags", "0"));
     const usagePercent = capacityTotal > 0 ? Math.round((bookingCapacity / capacityTotal) * 100) : 0;
     const completionRateWeekly = bookingsThisWeek > 0 ? Math.round((deliveredThisWeek / bookingsThisWeek) * 100) : 0;
 
