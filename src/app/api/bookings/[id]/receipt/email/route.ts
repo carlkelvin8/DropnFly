@@ -77,8 +77,10 @@ export async function POST(
     return NextResponse.json({ ok: true, to: booking.customer.email });
   } catch (e) {
     console.error("[RECEIPT-EMAIL] Failed:", e);
+    const message = e instanceof Error ? e.message : String(e);
+    const safe = message.replace(/\s+/g, " ").slice(0, 300);
     return NextResponse.json(
-      { error: "Failed to send receipt email" },
+      { error: `Failed to send receipt email: ${safe}` },
       { status: 500 }
     );
   }

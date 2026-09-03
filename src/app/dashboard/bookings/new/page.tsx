@@ -71,8 +71,6 @@ export default function NewBookingPage() {
   // Luggage
   const [luggageQty, setLuggageQty] = useState<Record<string, number>>({});
   const [selectedServices, setSelectedServices] = useState<Record<string, boolean>>({});
-  const [paymentMethod, setPaymentMethod] = useState("CASH");
-  const [paymentPercent, setPaymentPercent] = useState(100);
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState("");
   const [promoDiscount, setPromoDiscount] = useState(0);
@@ -100,7 +98,6 @@ export default function NewBookingPage() {
   const svcDeliveryFee = selectedServices["deliver-to-customer"] ? deliveryFee : 0;
   const servicesCost = svcPickupFee + svcDeliveryFee;
   const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
-  const downPayment = Math.ceil(grandTotal * (paymentPercent / 100));
   const excessBags = Math.max(0, totalBags - excessBagThreshold);
 
   useEffect(() => {
@@ -217,8 +214,6 @@ export default function NewBookingPage() {
           numberOfBags: totalBags,
           totalPrice: grandTotal,
           servicesCost,
-          paymentMethod,
-          downPayment,
           promoCode: promoApplied || undefined,
           status: "CONFIRMED",
         }),
@@ -473,31 +468,8 @@ export default function NewBookingPage() {
                 </div>
 
                 <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4 text-sm">
-                  <Label className="mb-1 block">Payment Option</Label>
-                  <p className="mb-3 text-xs text-blue-700">Slide to choose how much to collect now. Minimum of <strong>50%</strong>.</p>
-                  <div className="mb-3 flex items-center gap-4">
-                    <input
-                      type="range"
-                      min={50}
-                      max={100}
-                      step={5}
-                      value={paymentPercent}
-                      onChange={(e) => setPaymentPercent(Number(e.target.value))}
-                      className="w-full accent-blue-600"
-                      aria-label="Down payment percentage"
-                    />
-                    <span className="shrink-0 rounded-lg border border-blue-200 bg-blue-100 px-3 py-1 text-sm font-bold text-blue-700 tabular-nums">
-                      {paymentPercent}%
-                    </span>
-                  </div>
-                  <div className="mb-1 flex justify-between text-[10px] font-medium text-blue-500">
-                    <span>50% (minimum)</span>
-                    <span>100%</span>
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-blue-800"><span>Collect now</span><span className="font-bold">₱{downPayment.toFixed(2)}</span></div>
-                    {paymentPercent < 100 && <div className="flex justify-between text-blue-600"><span>Collect later (remaining)</span><span className="font-medium">₱{(grandTotal - downPayment).toFixed(2)}</span></div>}
-                  </div>
+                  <Label className="mb-1 block">Payment</Label>
+                  <p className="text-xs text-blue-700">This booking is recorded on a zero-payment basis. Payment can be recorded later from the booking page.</p>
                 </div>
 
                 <div className="space-y-2">
@@ -531,16 +503,6 @@ export default function NewBookingPage() {
                     </div>
                   )}
                   {promoError && <p className="text-sm text-red-500">{promoError}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Payment Method</Label>
-                  <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm">
-                    <option value="CASH">Cash</option>
-                    <option value="GCASH">GCash</option>
-                    <option value="MAYA">Maya</option>
-                    <option value="CARD">Card</option>
-                  </select>
                 </div>
 
                 <div className="flex justify-between border-t pt-4">
