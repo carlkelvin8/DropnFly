@@ -43,9 +43,10 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { bookingId, amount, method, status } = body;
+    const safeMethod = ["GCASH", "MAYA", "CARD", "CASH"].includes(method) ? method : "CASH";
 
     const numericAmount = Number(amount);
-    if (!bookingId || !Number.isFinite(numericAmount) || numericAmount <= 0 || !["GCASH", "MAYA", "CARD", "CASH"].includes(method) || !["PENDING", "PAID", "FAILED"].includes(status || "PAID")) {
+    if (!bookingId || !Number.isFinite(numericAmount) || numericAmount <= 0 || !["PENDING", "PAID", "FAILED"].includes(status || "PAID")) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -78,7 +79,7 @@ export async function POST(req: Request) {
           bookingId,
           customerId: booking.customerId,
           amount: numericAmount,
-          method,
+          method: safeMethod,
           status: status || "PAID",
           paidAt: (status || "PAID") === "PAID" ? new Date() : null,
         },

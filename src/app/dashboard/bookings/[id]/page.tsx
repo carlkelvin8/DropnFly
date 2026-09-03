@@ -158,10 +158,8 @@ export default function BookingDetailPage() {
   const dangerFileRef = useRef<HTMLInputElement>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [settleAmount, setSettleAmount] = useState<number>(0);
-  const [settleMethod, setSettleMethod] = useState("CASH");
   const [refundAmount, setRefundAmount] = useState(0);
   const [refundReason, setRefundReason] = useState("");
-  const [refundMethod, setRefundMethod] = useState("CASH");
   const [refunding, setRefunding] = useState(false);
   const [showRefundForm, setShowRefundForm] = useState(false);
   const [logs, setLogs] = useState<{ id: string; action: string; entity: string; details: string | null; createdAt: string; user: { name: string } | null }[]>([]);
@@ -506,7 +504,6 @@ export default function BookingDetailPage() {
         body: JSON.stringify({
           bookingId: params.id,
           amount: parseFloat(formData.get("amount") as string),
-          method: formData.get("method"),
           status: "PAID",
         }),
       });
@@ -529,7 +526,6 @@ export default function BookingDetailPage() {
         body: JSON.stringify({
           bookingId: params.id,
           amount: settleAmount,
-          method: settleMethod,
           status: "PAID",
         }),
       });
@@ -655,7 +651,7 @@ export default function BookingDetailPage() {
       const res = await fetch(`/api/bookings/${params.id}/refund`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: refundAmount, reason: refundReason, paymentMethod: refundMethod }),
+        body: JSON.stringify({ amount: refundAmount, reason: refundReason }),
       });
       if (res.ok) {
         reloadBooking();
@@ -992,19 +988,11 @@ export default function BookingDetailPage() {
                     type="number"
                     value={settleAmount}
                     onChange={(e) => setSettleAmount(parseFloat(e.target.value) || 0)}
+                    min={0}
                     max={balance}
-                    className="flex h-9 w-28 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-                  />
-                  <select
-                    value={settleMethod}
-                    onChange={(e) => setSettleMethod(e.target.value)}
+                    placeholder="Amount"
                     className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-                  >
-                    <option value="CASH">Cash</option>
-                    <option value="GCASH">GCash</option>
-                    <option value="MAYA">Maya</option>
-                    <option value="CARD">Card</option>
-                  </select>
+                  />
                   <Button size="sm" onClick={handleSettleBalance} disabled={paymentSaving || settleAmount <= 0}>
                     {paymentSaving ? "..." : "Pay"}
                   </Button>
@@ -1020,14 +1008,8 @@ export default function BookingDetailPage() {
               <form onSubmit={handleAddPayment} className="flex gap-2 p-3 border rounded-lg bg-muted/30">
                 <input
                   name="amount" type="number" step="0.01" placeholder="Amount" required
-                  className="flex h-9 w-28 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                  className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm"
                 />
-                <select name="method" required className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm">
-                  <option value="CASH">Cash</option>
-                  <option value="GCASH">GCash</option>
-                  <option value="MAYA">Maya</option>
-                  <option value="CARD">Card</option>
-                </select>
                 <Button type="submit" size="sm" disabled={paymentSaving}>
                   {paymentSaving ? "Saving..." : "Save"}
                 </Button>
@@ -1055,17 +1037,8 @@ export default function BookingDetailPage() {
                       type="number" step="0.01" min="0" max={totalPaid}
                       value={refundAmount} onChange={(e) => setRefundAmount(parseFloat(e.target.value) || 0)}
                       placeholder="Amount" required
-                      className="flex h-9 w-28 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-                    />
-                    <select
-                      value={refundMethod} onChange={(e) => setRefundMethod(e.target.value)}
                       className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-                    >
-                      <option value="CASH">Cash</option>
-                      <option value="GCASH">GCash</option>
-                      <option value="MAYA">Maya</option>
-                      <option value="CARD">Card</option>
-                    </select>
+                    />
                   </div>
                   <input
                     value={refundReason} onChange={(e) => setRefundReason(e.target.value)}
