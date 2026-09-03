@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertCircle, ArrowLeft, ChevronRight } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2, ChevronRight } from "lucide-react";
 import { LUGGAGE_TYPES, calcSubtotal, calcTotalBags } from "@/lib/luggage-types";
 
 interface PaymentStepProps {
@@ -28,15 +27,11 @@ interface PaymentStepProps {
   setPromoDiscount: (v: number) => void;
   promoError: string;
   setPromoError: (v: string) => void;
-  paymentPercent: number;
-  setPaymentPercent: (v: number) => void;
   acceptedTerms: boolean;
   setAcceptedTerms: (v: boolean) => void;
   error: string;
   loading: boolean;
   storageDays: number;
-  paymentDemoMode: boolean;
-  minDpPercent: number;
   onPrev: () => void;
   onShowTermsModal: () => void;
   onShowPrivacyModal: () => void;
@@ -48,12 +43,10 @@ export function PaymentStep({
   luggageQty, selectedServices, fees, luggagePrices, discountCodesEnabled,
   promoCode, setPromoCode, promoApplied, setPromoApplied,
   promoDiscount, setPromoDiscount, promoError, setPromoError,
-  paymentPercent, setPaymentPercent, acceptedTerms, setAcceptedTerms,
-  error, loading, storageDays, paymentDemoMode, minDpPercent,
+  acceptedTerms, setAcceptedTerms,
+  error, loading, storageDays,
   onPrev, onShowTermsModal, onShowPrivacyModal,
 }: PaymentStepProps) {
-  const [paymentHover, setPaymentHover] = useState<number | null>(null);
-
   const totalBags = calcTotalBags(luggageQty);
   const billableDays = Math.max(1, storageDays);
   const subtotal = calcSubtotal(luggageQty, luggagePrices) * billableDays;
@@ -63,13 +56,9 @@ export function PaymentStep({
     { id: "deliver-to-customer", name: "Deliver to Customer", price: fees.deliveryFee },
   ];
   const servicesCost = servicesList.filter((s) => selectedServices[s.id]).reduce((sum, s) => sum + s.price, 0);
-  const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
-  const downPayment = paymentDemoMode ? 0 : Math.ceil(grandTotal * (paymentPercent / 100));
-  const remainingBalance = grandTotal - downPayment;
-  const dpMin = Math.max(50, Math.min(100, minDpPercent || 50));
-  const sliderRange = Math.max(1, 100 - dpMin);
-  const sliderProgress = ((paymentPercent - dpMin) / sliderRange) * 100;
-  const paymentChoices = Array.from(new Set([dpMin, 75, 100])).filter((value) => value >= dpMin);
+  const estimatedTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
+  const amountPaid = 0;
+  const remainingBalance = estimatedTotal;
 
   function getPickupLocationText() {
     let text = pickupTerminal;
@@ -85,10 +74,8 @@ export function PaymentStep({
     <div key="step4" style={{ animation: "step-in 0.25s ease-out" }}>
       <style>{`@keyframes step-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`}</style>
       <div className="mb-4 flex items-center gap-2">
-        <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <h3 className="text-lg font-semibold">Payment</h3>
+        <CheckCircle2 className="h-5 w-5 text-green-600" />
+        <h3 className="text-lg font-semibold">Booking Summary</h3>
       </div>
 
       <div className="rounded-lg border bg-muted/30 p-4 text-sm">
@@ -172,87 +159,26 @@ export function PaymentStep({
             </div>
           )}
           <div className="flex justify-between border-t border-border pt-2 text-base font-bold">
-            <span>Grand Total</span>
-            <span className="text-lg">&#x20B1;{grandTotal.toFixed(2)}</span>
+            <span>Estimated Total</span>
+            <span className="text-lg">&#x20B1;{estimatedTotal.toFixed(2)}</span>
           </div>
         </div>
       </div>
 
       <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50/50 p-4 text-sm">
-        <div className="mb-3 flex items-center gap-2">
-          <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m0 0v1.125c0 .621-.504 1.125-1.125 1.125H1.875c-.621 0-1.125-.504-1.125-1.125V6M3.75 6h17.25M3 12h18" />
-          </svg>
-          <h3 className="text-base font-semibold">Payment Option</h3>
-        </div>
-        <p className="mb-3 text-xs text-blue-700">{paymentDemoMode ? "Online payment is not configured. No payment is required at this time." : <>Slide to choose how much to pay now. Minimum of <strong>{dpMin}%</strong> is required to reserve your slot.</>}</p>
-        {!paymentDemoMode && (
-          <div className="mb-4 grid grid-flow-col auto-cols-fr gap-2" aria-label="Quick payment percentage choices">
-            {paymentChoices.map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setPaymentPercent(value)}
-                className={`rounded-lg border px-2 py-2 text-xs font-bold transition-colors ${paymentPercent === value ? "border-blue-600 bg-blue-600 text-white" : "border-blue-200 bg-white text-blue-700 hover:border-blue-400"}`}
-              >
-                {value === dpMin ? `${value}% minimum` : `${value}%`}
-              </button>
-            ))}
-          </div>
-        )}
-        {!paymentDemoMode && (
-          <>
-            <div className="mb-3 flex items-center gap-4">
-              <div
-                className="relative w-full"
-                onPointerMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-                  setPaymentHover(Math.min(100, Math.max(dpMin, Math.round((dpMin + ratio * (100 - dpMin)) / 5) * 5)));
-                }}
-                onPointerLeave={() => setPaymentHover(null)}
-              >
-                <input
-                  type="range"
-                  min={dpMin}
-                  max={100}
-                  step={5}
-                  value={paymentPercent}
-                  onChange={(e) => setPaymentPercent(Number(e.target.value))}
-                  onInput={(e) => setPaymentPercent(Number(e.currentTarget.value))}
-                  className="h-2 w-full cursor-pointer appearance-none rounded-full accent-blue-600"
-                  style={{ touchAction: "pan-y", background: `linear-gradient(to right, #2563eb ${sliderProgress}%, #bfdbfe ${sliderProgress}%)` }}
-                  aria-label="Down payment percentage"
-                />
-                {paymentHover !== null && (
-                  <div
-                    className="pointer-events-none absolute -top-9 -translate-x-1/2 rounded-md bg-blue-700 px-2 py-1 text-[11px] font-bold text-white shadow-lg whitespace-nowrap"
-                    style={{ left: `${((paymentHover - dpMin) / sliderRange) * 100}%` }}
-                  >
-                    ₱{Math.ceil(grandTotal * (paymentHover / 100)).toLocaleString()} ({paymentHover}%)
-                  </div>
-                )}
-              </div>
-              <span className="shrink-0 rounded-lg border border-blue-200 bg-blue-100 px-3 py-1 text-sm font-bold text-blue-700 tabular-nums">
-                {paymentPercent}%
-              </span>
-            </div>
-            <div className="mb-1 flex justify-between text-[10px] font-medium text-blue-500">
-              <span>{dpMin}% (minimum)</span>
-              <span>100%</span>
-            </div>
-          </>
-        )}
         <div className="space-y-1.5">
           <div className="flex justify-between text-blue-800">
-            <span>{paymentDemoMode ? "Due now" : "Pay now"}</span>
-            <span className="font-bold">&#x20B1;{downPayment.toFixed(2)}</span>
+            <span>Amount Paid</span>
+            <span className="font-bold">&#x20B1;0.00</span>
           </div>
-          <div className="flex justify-between text-blue-600">
-            <span>{paymentDemoMode ? "Remaining balance" : "Collect later (remaining)"}</span>
-            <span className="font-medium">&#x20B1;{remainingBalance.toFixed(2)}</span>
+          <div className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 p-3">
+            <span className="font-semibold text-amber-900">Remaining Balance to Pay</span>
+            <span className="font-bold text-amber-800">&#x20B1;{remainingBalance.toFixed(2)}</span>
           </div>
         </div>
+        <p className="mt-3 text-xs text-blue-700">
+          No payment is required during online booking. Your booking will be reserved and the balance can be settled on pickup or as arranged with DropnFly staff. This is a reservation only — it is not marked as paid.
+        </p>
       </div>
 
       {discountCodesEnabled && <div className="mt-6">
@@ -269,7 +195,7 @@ export function PaymentStep({
             setPromoError(""); setPromoDiscount(0); setPromoApplied("");
             if (!promoCode) return;
             try {
-              const res = await fetch("/api/promo-codes/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode, amount: grandTotal }) });
+              const res = await fetch("/api/promo-codes/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode, amount: estimatedTotal }) });
               const data = await res.json();
               if (data.valid) { setPromoDiscount(data.discount); setPromoApplied(promoCode); setPromoCode(""); }
               else setPromoError("Invalid promo code");
@@ -318,7 +244,7 @@ export function PaymentStep({
           {loading ? (
             <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Processing...</span>
           ) : (
-            <span className="flex items-center justify-center gap-2">{paymentDemoMode ? "Confirm Booking" : `Pay ₱${downPayment.toFixed(2)} now`} <ChevronRight className="h-5 w-5" /></span>
+            <span className="flex items-center justify-center gap-2">Book Now <ChevronRight className="h-5 w-5" /></span>
           )}
         </Button>
       </div>

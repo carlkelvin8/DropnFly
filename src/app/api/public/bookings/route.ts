@@ -6,7 +6,6 @@ import { sendConfirmationEmail } from "@/lib/email";
 import { notifyBookingCreated, sendCustomerNotification } from "@/lib/notifications";
 import { getSystemSettings, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
-import { isPaymongoConfigured } from "@/lib/paymongo";
 import { grantBookingAccess } from "@/lib/booking-access";
 import { manilaMinutesOfDay, manilaDayRange } from "@/lib/manila-time";
 import type { Prisma, Booking } from "@/generated/prisma/client";
@@ -73,12 +72,6 @@ export async function POST(req: Request) {
     }
     if (checkInDate < new Date()) {
       return NextResponse.json({ error: "Pickup date must be in the future" }, { status: 400 });
-    }
-    const operatingDays = setting(settings, "store_operating_days", "0,1,2,3,4,5,6").split(",");
-    const manilaWeekday = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", weekday: "short" }).format(checkInDate);
-    const weekdayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(manilaWeekday);
-    if (!operatingDays.includes(String(weekdayIndex))) {
-      return NextResponse.json({ error: "The store is closed on the selected pickup day." }, { status: 400 });
     }
 
     const maxAdvanceDays = parseInt(setting(settings, "max_advance_booking_days", "0"));
@@ -165,26 +158,14 @@ export async function POST(req: Request) {
         max_concurrent_deliveries: "1",
         pickup_slot_duration: "60",
         delivery_slot_duration: "60",
-        operating_start: "00:00",
-        operating_end: "23:59",
       };
       const isPickup = type === "pickup";
       const maxConcurrent = parseInt(setting(settings, isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries", defaults[isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries"]));
       const durationMin = parseInt(setting(settings, isPickup ? "pickup_slot_duration" : "delivery_slot_duration", defaults[isPickup ? "pickup_slot_duration" : "delivery_slot_duration"]));
-      const operatingStart = setting(settings, "operating_start", defaults.operating_start);
-      const operatingEnd = setting(settings, "operating_end", defaults.operating_end);
-      const [startH, startM] = operatingStart.split(":").map(Number);
-      const [endH, endM] = operatingEnd.split(":").map(Number);
+      // The service operates 24 hours a day (customers may have flights at any hour), so the
+      // selected hour is never rejected here based on an operating-hours window. Capacity is
+      // still enforced below to prevent overbooking a slot.
       const slotStartMinutes = manilaMinutesOfDay(date);
-      const startMinutes = startH * 60 + startM;
-      // Normalize a 24-hour operation ("23:59" or "24:00") to the start of the next day so a
-      // slot ending exactly at midnight is accepted.
-      let endMinutes = endH * 60 + endM;
-      if (endMinutes === 1439) endMinutes = 1440;
-      if (endMinutes === 0 && (operatingEnd === "24:00" || operatingEnd === "00:00")) endMinutes = 1440;
-      if (slotStartMinutes < startMinutes || slotStartMinutes + durationMin > endMinutes) {
-        throw new Error(`Selected ${type} time is outside operating hours`);
-      }
       const { start: dayStart, end: dayEnd } = manilaDayRange(date);
       const existing = await db.booking.findMany({
         where: {
@@ -236,23 +217,14 @@ export async function POST(req: Request) {
     const qrSize = Math.min(1000, Math.max(100, parseInt(setting(settings, "qr_image_size", "300")) || 300));
     const qrPrefix = setting(settings, "qr_code_prefix", "DNF");
 
-    const minDpPercent = parseInt(setting(settings, "min_dp_percentage", "0"));
-    const paymentsEnabled = isPaymongoConfigured() && process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
-    // The booking itself is confirmed once its schedule is reserved. Payment
-    // state is tracked independently by Payment records and checkout status.
+    // Online booking is a reservation-only flow: the customer is not required to pay during
+    // booking. No down-payment is collected now; the full estimated cost becomes an outstanding
+    // balance and the booking is NOT marked as paid. Payment is tracked independently.
     const initialStatus = "CONFIRMED";
-    const requiredDownPayment = paymentsEnabled && minDpPercent > 0 ? Math.ceil(pricing.totalPrice * (minDpPercent / 100)) : 0;
     const downPaymentAmount = downPayment == null || downPayment === "" ? 0 : Number(downPayment);
 
     if (!Number.isFinite(downPaymentAmount) || downPaymentAmount < 0 || downPaymentAmount > pricing.totalPrice) {
       return NextResponse.json({ error: "Invalid down payment amount" }, { status: 400 });
-    }
-
-    if (requiredDownPayment > 0 && downPaymentAmount < requiredDownPayment) {
-      return NextResponse.json(
-        { error: `A minimum down payment of ₱${requiredDownPayment.toFixed(2)} (${minDpPercent}%) is required` },
-        { status: 400 }
-      );
     }
 
     let booking: Booking | undefined;

@@ -755,6 +755,10 @@ export default function TrackResultPage() {
               <Button asChild variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
                 <Link href="/book">Book Another Pickup</Link>
               </Button>
+              <Button type="button" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => setChatOpen(!chatOpen)}>
+                <MessageCircle className="mr-2 h-4 w-4" />
+                {chatOpen ? "Close Chat" : "Message Support Team"}
+              </Button>
               <Button type="button" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => setReportOpen(true)}>
                 <AlertTriangle className="mr-2 h-4 w-4" /> File Incident Report
               </Button>

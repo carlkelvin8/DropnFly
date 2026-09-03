@@ -37,7 +37,7 @@ const steps = [
   { num: 1, label: "Contact", icon: User },
   { num: 2, label: "Pickup", icon: MapPin },
   { num: 3, label: "Delivery & Luggage", icon: Luggage },
-  { num: 4, label: "Payment", icon: Check },
+  { num: 4, label: "Confirm", icon: Check },
 ];
 
 function calcStorageDays(pickupDate: string, pickupSlot: string, deliveryDate: string, deliverySlot: string): number {
@@ -48,8 +48,6 @@ function calcStorageDays(pickupDate: string, pickupSlot: string, deliveryDate: s
 }
 
 export default function BookPage() {
-  const paymentsEnabled = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
-  const paymentDemoMode = !paymentsEnabled;
   const router = useRouter();
   const submittingRef = useRef(false);
   const [step, setStep] = useState(1);
@@ -75,13 +73,11 @@ export default function BookPage() {
   const [deliveryTerminal, setDeliveryTerminal] = useState("");
   const [luggageQty, setLuggageQty] = useState<Record<string, number>>({});
   const [selectedServices, setSelectedServices] = useState<Record<string, boolean>>({});
-  const [paymentPercent, setPaymentPercent] = useState(50);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTermsPopup, setShowTermsPopup] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [fees, setFees] = useState({ pickupFee: 180, deliveryFee: 180, excessBagFee: 100, excessBagThreshold: 3 });
-  const [minDpPercent, setMinDpPercent] = useState(50);
   const [maintenance, setMaintenance] = useState<{ enabled: boolean; message: string } | null>(null);
   const [onlineBookingEnabled, setOnlineBookingEnabled] = useState(true);
   const [discountCodesEnabled, setDiscountCodesEnabled] = useState(true);
@@ -175,10 +171,6 @@ export default function BookPage() {
             excessBagThreshold: data.pricing.excess_bag_threshold || 3,
           });
         }
-        if (data.booking_limits && data.booking_limits.min_dp_percentage > 0) {
-          setMinDpPercent(Math.min(100, data.booking_limits.min_dp_percentage));
-          setPaymentPercent(Math.max(50, Math.min(100, data.booking_limits.min_dp_percentage)));
-        }
       })
       .catch(() => {});
   }, []);
@@ -249,7 +241,10 @@ export default function BookPage() {
     const extraFee = numBags > fees.excessBagThreshold ? (numBags - fees.excessBagThreshold) * fees.excessBagFee : 0;
     const servicesCost = servicesList.filter((s) => selectedServices[s.id]).reduce((sum, s) => sum + s.price, 0);
     const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
-    const downPayment = paymentsEnabled ? Math.ceil(grandTotal * (paymentPercent / 100)) : 0;
+    // Online booking is a reservation-only flow: the customer is not required to pay during
+    // booking, so no payment amount is collected now. The full estimated cost becomes an
+    // outstanding balance and is NOT marked as paid.
+    const downPayment = 0;
 
     const data = {
       name: customerName.trim(),
@@ -287,22 +282,6 @@ export default function BookPage() {
     }
 
     const result = await res.json();
-    if (!paymentDemoMode && result.paymentAmount > 0) {
-      const checkout = await fetch("/api/payments/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: result.bookingId, amount: result.paymentAmount }),
-      }).catch(() => null);
-      if (checkout?.ok) {
-        const payment = await checkout.json();
-        if (payment.url) { window.location.assign(payment.url); return; }
-      }
-      // Checkout failed — show error with retry option
-      setError("Payment setup failed. Your booking is confirmed but payment was not processed. Please contact support or retry your payment.");
-      setLoading(false);
-      submittingRef.current = false;
-      return;
-    }
     const emailState = result.confirmationEmailSent ? "sent" : "failed";
     router.push(`/book/confirm/${result.referenceNumber}?email=${emailState}`);
   }
@@ -448,10 +427,8 @@ export default function BookPage() {
                     promoApplied={promoApplied} setPromoApplied={setPromoApplied}
                     promoDiscount={promoDiscount} setPromoDiscount={setPromoDiscount}
                     promoError={promoError} setPromoError={setPromoError}
-                    paymentPercent={paymentPercent} setPaymentPercent={setPaymentPercent}
                     acceptedTerms={acceptedTerms} setAcceptedTerms={setAcceptedTerms}
                     error={error} loading={loading} storageDays={storageDays}
-                    paymentDemoMode={paymentDemoMode} minDpPercent={minDpPercent}
                     onPrev={prevStep}
                     onShowTermsModal={() => setShowTermsModal(true)}
                     onShowPrivacyModal={() => setShowPrivacyModal(true)}

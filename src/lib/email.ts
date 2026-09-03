@@ -261,6 +261,7 @@ export async function sendIncidentEmail({  to,
   siteUrl,
   incidentId,
   description,
+  submittedAt,
 }: {
   to: string;
   customerName: string;
@@ -271,6 +272,7 @@ export async function sendIncidentEmail({  to,
   incidentId: string;
   siteUrl?: string;
   description?: string | null;
+  submittedAt?: Date | string | null;
 }) {
   const baseUrl = siteUrl || process.env.NEXTAUTH_URL || "http://localhost:3000";
   const trackUrl = `${baseUrl}/track/${referenceNumber}`;
@@ -307,7 +309,8 @@ export async function sendIncidentEmail({  to,
       <p style="margin: 0; color: #991b1b;"><strong>Incident Tracking Number:</strong> ${trackingNumber}</p>
       <p style="margin: 8px 0 0; color: #991b1b;"><strong>Booking Reference:</strong> ${sanitizeHtml(referenceNumber)}</p>
       <p style="margin: 8px 0 0; color: #991b1b;"><strong>Status:</strong> ${status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</p>
-      <p style="margin: 8px 0 0; color: #7f1d1d;"><strong>Type:</strong> ${sanitizeHtml(typeLabel)}</p>
+      <p style="margin: 8px 0 0; color: #991b1b;"><strong>Type:</strong> ${sanitizeHtml(typeLabel)}</p>
+      ${submittedAt ? `<p style="margin: 8px 0 0; color: #7f1d1d;"><strong>Submitted:</strong> ${new Date(submittedAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}</p>` : ""}
       ${description ? `<p style="margin: 8px 0 0; color: #7f1d1d;"><strong>Report Details:</strong> ${sanitizeHtml(description)}</p>` : ""}
     </div>
   `;

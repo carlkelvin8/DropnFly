@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { manilaWeekday, manilaDayStart } from "@/lib/manila-time";
+import { manilaDayStart } from "@/lib/manila-time";
 
 const DEFAULTS = {
   max_concurrent_pickups: "1",
@@ -75,16 +75,14 @@ export async function GET(req: NextRequest) {
   const isPickup = type === "pickup";
   const maxConcurrent = parseInt(isPickup ? settings.max_concurrent_pickups : settings.max_concurrent_deliveries);
   const slotDuration = parseInt(isPickup ? settings.pickup_slot_duration : settings.delivery_slot_duration);
-  const operatingStart = settings.operating_start;
-  const operatingEnd = settings.operating_end;
+  // The service operates 24 hours a day (customers may have flights at any hour), so time slots
+  // always span the full day regardless of any stored operating-hours/day settings.
+  const operatingStart = "00:00";
+  const operatingEnd = "23:59";
 
   const slots = generateSlots(operatingStart, operatingEnd, slotDuration);
 
   const selectedDate = manilaDayStart(dateStr);
-  const manilaDay = String(manilaWeekday(selectedDate));
-  if (!settings.store_operating_days.split(",").includes(manilaDay)) {
-    return NextResponse.json({ date: dateStr, type, maxConcurrent, slotDuration, operatingStart, operatingEnd, slots: [] });
-  }
   const nextDate = new Date(selectedDate);
   nextDate.setDate(nextDate.getDate() + 1);
 
