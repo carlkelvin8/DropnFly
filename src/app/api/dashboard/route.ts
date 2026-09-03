@@ -112,24 +112,29 @@ export async function GET() {
       } catch {}
     }
 
-    return NextResponse.json({
-      capacityUsage: { used: bookingCapacity, total: capacityTotal, percent: usagePercent },
-      bookingsThisMonth: monthlyBookings,
-      claimedThisMonth: monthlyDelivered,
-      totalUsers,
-      totalBookings,
-      deliveredBookings,
-      pendingDeliveries,
-      outForDelivery,
-      bookingsThisWeek,
-      bookingsToday,
-      deliveredToday,
-      deliveredThisWeek,
-      completionRateWeekly,
-      pendingToday,
-      durationBuckets,
-      bagDistribution,
-    });
+    return NextResponse.json(
+      {
+        capacityUsage: { used: bookingCapacity, total: capacityTotal, percent: usagePercent },
+        bookingsThisMonth: monthlyBookings,
+        claimedThisMonth: monthlyDelivered,
+        totalUsers,
+        totalBookings,
+        deliveredBookings,
+        pendingDeliveries,
+        outForDelivery,
+        bookingsThisWeek,
+        bookingsToday,
+        deliveredToday,
+        deliveredThisWeek,
+        completionRateWeekly,
+        pendingToday,
+        durationBuckets,
+        bagDistribution,
+      },
+      {
+        headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" },
+      }
+    );
   } catch (e) {
     if (process.env.NODE_ENV === "development") {
       console.error("Dashboard API error:", e);
