@@ -50,7 +50,7 @@ export async function GET() {
 
     const analyticsData = {
       totalBookings,
-      totalRevenue: totalRevenue._sum.totalPrice || 0,
+      totalRevenue: Number(totalRevenue._sum.totalPrice || 0),
       bookingsByStatus,
       bookingsLast30Days: recentBookings.length,
       averageDailyBookings:

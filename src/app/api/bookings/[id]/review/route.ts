@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getCustomerSession } from "@/lib/customer-auth";
+import { canReadBooking } from "@/lib/staff-access";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -9,6 +11,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!session?.user && !customer) return new NextResponse("Unauthorized", { status: 401 });
 
   const { id } = await params;
+  if (customer && !session?.user) {
+    const owned = await prisma.booking.findFirst({ where: { id, customerId: customer.id }, select: { id: true } });
+    if (!owned) return new NextResponse("Forbidden", { status: 403 });
+  }
+  if (session?.user && !(await canReadBooking(session.user, id))) {
+    return new NextResponse("Forbidden", { status: 403 });
+  }
   const review = await prisma.bookingReview.findUnique({
     where: { bookingId: id },
     include: { customer: { select: { name: true } } },
@@ -17,6 +26,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const settings = await getSystemSettings();
+  if (setting(settings, "customer_reviews_enabled", "true") === "false") {
+    return NextResponse.json({ error: "Customer reviews are currently disabled" }, { status: 403 });
+  }
   const { id } = await params;
   const customer = await getCustomerSession();
   if (!customer) return new NextResponse("Unauthorized", { status: 401 });

@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, ExternalLink, Home } from "lucide-react";
+import { CheckCircle, ExternalLink, Home, RefreshCw, AlertTriangle } from "lucide-react";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 
@@ -29,38 +29,75 @@ interface BookingData {
 
 export default function ConfirmPage() {
   const params = useParams();
+  const [emailState] = useState(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("email"));
   const [booking, setBooking] = useState<BookingData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"not-found" | "access-denied" | "network" | "generic" | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     const abort = new AbortController();
     fetch(`/api/public/bookings/${params.reference}`, { signal: abort.signal })
       .then((r) => {
         if (!r.ok) {
-          if (r.status === 404) throw new Error("Booking not found");
-          throw new Error("Failed to load booking");
+          if (r.status === 404) throw new Error("not-found");
+          if (r.status === 401 || r.status === 403) throw new Error("access-denied");
+          throw new Error("generic");
         }
         return r.json();
       })
       .then((data) => { if (!abort.signal.aborted) setBooking(data); })
-      .catch((e: unknown) => { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "Failed to load booking"); });
+      .catch((e: unknown) => {
+        if (abort.signal.aborted) return;
+        if (e instanceof Error && ["not-found", "access-denied", "generic"].includes(e.message)) {
+          setError(e.message as "not-found" | "access-denied" | "generic");
+        } else {
+          setError("network");
+        }
+      });
     return () => abort.abort();
-  }, [params.reference]);
+  }, [params.reference, reloadKey]);
+
+  function retry() {
+    setError(null);
+    setBooking(null);
+    setReloadKey((k) => k + 1);
+  }
 
   if (error) {
+    const errorContent = {
+      "not-found": {
+        title: "Booking not found",
+        message: `We couldn't find a booking with reference "${String(params.reference)}". Check the reference number in your confirmation email and try again.`,
+      },
+      "access-denied": {
+        title: "Access denied",
+        message: "This booking is private. Please verify this booking from the tracking page or sign in to the account used to make it.",
+      },
+      network: {
+        title: "Connection problem",
+        message: "We couldn't reach the server. Please check your internet connection and try again.",
+      },
+      generic: {
+        title: "Something went wrong",
+        message: "We had trouble loading your booking. Please try again in a few moments.",
+      },
+    }[error];
+
     return (
-      <div className="min-h-screen bg-blue-50/50">
+      <div className="min-h-screen bg-blue-50/50 pt-16">
         <PublicHeader showBackToHome />
         <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-24 text-center">
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
-            <Home className="h-8 w-8 text-red-500" />
+            <AlertTriangle className="h-8 w-8 text-red-500" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Booking not found</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            We couldn&apos;t find a booking with reference &quot;{String(params.reference)}&quot;.
-            Check the reference number in your confirmation email and try again.
-          </p>
+          <h1 className="text-2xl font-bold text-foreground">{errorContent.title}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{errorContent.message}</p>
           <div className="mt-6 flex gap-3">
+            {(error === "network" || error === "generic") && (
+              <Button variant="outline" onClick={retry}>
+                <RefreshCw className="mr-2 h-4 w-4" /> Try Again
+              </Button>
+            )}
             <Button asChild className="bg-orange-500 text-white">
               <Link href="/book">Book Luggage</Link>
             </Button>
@@ -77,13 +114,13 @@ export default function ConfirmPage() {
   if (!booking) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-blue-50/50">
+    <div className="min-h-screen bg-blue-50/50 pt-16">
       <PublicHeader showBackToHome />
 
       <main className="mx-auto max-w-3xl px-4 py-12">
@@ -94,10 +131,15 @@ export default function ConfirmPage() {
           <h1 className="text-3xl font-bold text-green-700">
             Booking Confirmed!
           </h1>
-          <p className="mt-2 text-gray-600">
-            A confirmation email has been sent to{" "}
-            <strong>{booking.customer.email}</strong>
-          </p>
+          {emailState === "failed" ? (
+            <p className="mt-2 text-amber-700">
+              Your booking is confirmed, but the confirmation email could not be delivered. Save the reference number below.
+            </p>
+          ) : (
+            <p className="mt-2 text-muted-foreground">
+              A confirmation email has been sent to <strong>{booking.customer.email}</strong>
+            </p>
+          )}
         </div>
 
         <Card className="border-t-4 border-green-500 shadow-lg">
@@ -106,33 +148,33 @@ export default function ConfirmPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="rounded-lg bg-blue-50 p-4 text-center shadow-sm">
-              <p className="text-sm text-gray-600">Reference Number</p>
+              <p className="text-sm text-muted-foreground">Reference Number</p>
               <p className="mt-1 text-2xl font-bold tracking-wider text-blue-700">
                 {booking.referenceNumber}
               </p>
             </div>
 
             <div className="grid gap-4 text-sm md:grid-cols-2">
-              <div className="rounded-lg border bg-gray-50/50 p-3">
-                <p className="text-gray-500">Customer</p>
+              <div className="rounded-lg border bg-muted/50 p-3">
+                <p className="text-muted-foreground">Customer</p>
                 <p className="font-medium">{booking.customer.name}</p>
               </div>
-              <div className="rounded-lg border bg-gray-50/50 p-3">
-                <p className="text-gray-500">Status</p>
-                <p className="font-medium capitalize text-yellow-600">
+              <div className="rounded-lg border bg-muted/50 p-3">
+                <p className="text-muted-foreground">Status</p>
+                <p className={`font-medium capitalize ${booking.status === "CONFIRMED" ? "text-green-600" : "text-yellow-600"}`}>
                   {booking.status.replace("_", " ")}
                 </p>
               </div>
-              <div className="rounded-lg border bg-gray-50/50 p-3">
-                <p className="text-gray-500">Pickup Location</p>
+              <div className="rounded-lg border bg-muted/50 p-3">
+                <p className="text-muted-foreground">Pickup Location</p>
                 <p className="font-medium">{booking.pickupLocation}</p>
               </div>
-              <div className="rounded-lg border bg-gray-50/50 p-3">
-                <p className="text-gray-500">Drop-off Location</p>
+              <div className="rounded-lg border bg-muted/50 p-3">
+                <p className="text-muted-foreground">Drop-off Location</p>
                 <p className="font-medium">{booking.dropOffLocation}</p>
               </div>
-              <div className="rounded-lg border bg-gray-50/50 p-3">
-                <p className="text-gray-500">Scheduled Date</p>
+              <div className="rounded-lg border bg-muted/50 p-3">
+                <p className="text-muted-foreground">Scheduled Date</p>
                 <p className="font-medium">
                   {new Date(booking.checkIn).toLocaleDateString("en-PH", {
                     weekday: "long",
@@ -144,8 +186,8 @@ export default function ConfirmPage() {
                   })}
                 </p>
               </div>
-              <div className="rounded-lg border bg-gray-50/50 p-3">
-                <p className="text-gray-500">Luggage</p>
+              <div className="rounded-lg border bg-muted/50 p-3">
+                <p className="text-muted-foreground">Luggage</p>
                 {(() => {
                   let items: Array<{ type?: string; qty?: number; price?: number; services?: string[] }> = [];
                   try {
@@ -173,7 +215,7 @@ export default function ConfirmPage() {
                           ))}
                         </div>
                       )}
-                      <p className="pt-1 text-xs text-gray-500">Total: {booking.numberOfBags} bag{booking.numberOfBags > 1 ? "s" : ""}</p>
+                      <p className="pt-1 text-xs text-muted-foreground">Total: {booking.numberOfBags} bag{booking.numberOfBags > 1 ? "s" : ""}</p>
                     </div>
                   ) : (
                     <p className="font-medium">{booking.numberOfBags} bag{booking.numberOfBags > 1 ? "s" : ""}</p>
@@ -184,16 +226,16 @@ export default function ConfirmPage() {
 
             {booking.totalPrice > 0 && (
               <div className="rounded-lg border border-green-200 bg-green-50/50 p-3 text-sm">
-                <p className="text-gray-500">Payment</p>
+                <p className="text-muted-foreground">Payment</p>
                 <p className="mt-1 font-medium text-green-700">
                   Total: &#x20B1;{booking.totalPrice.toFixed(2)}
                 </p>
-                <p className="text-xs text-green-600">Booking confirmed. Your down payment is recorded as pending — our team will confirm payment on pickup, or pay securely online from My Account.</p>
+                <p className="text-xs text-green-600">Booking confirmed. Your down payment is recorded as pending — our team will confirm payment on pickup.</p>
               </div>
             )}
 
             <div className="flex justify-center">
-              <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 p-4 shadow-sm">
+              <div className="rounded-xl border-2 border-dashed border-border bg-muted/50 p-4 shadow-sm">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={`data:image/png;base64,${booking.qrCode}`}
@@ -210,7 +252,7 @@ export default function ConfirmPage() {
                   Track My Luggage
                 </Link>
               </Button>
-              <Button asChild variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+              <Button asChild variant="outline">
                 <Link href="/"><Home className="mr-2 h-4 w-4" /> Back to Home</Link>
               </Button>
             </div>

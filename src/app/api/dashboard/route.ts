@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 export async function GET() {
   try {
@@ -14,12 +15,14 @@ export async function GET() {
     const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    const startOfDurations = new Date(now);
+    startOfDurations.setFullYear(startOfDurations.getFullYear() - 1);
+
     const [
       totalBookings,
       deliveredBookings,
       monthlyBookings,
       monthlyDelivered,
-      capacityResult,
       bookingCapacity,
       totalUsers,
       bookingDurations,
@@ -40,17 +43,15 @@ export async function GET() {
       prisma.booking.count({
         where: { status: "DELIVERED", createdAt: { gte: startOfMonth } },
       }),
-      prisma.storageLocation.aggregate({
-        _sum: { capacity: true },
-        where: { isActive: true },
-      }),
       prisma.booking.count({
         where: { status: { in: ["RECEIVED", "IN_STORAGE"] } },
       }),
       prisma.user.count(),
       prisma.booking.findMany({
-        where: { checkOut: { not: null }, status: "DELIVERED" },
+        where: { status: "DELIVERED", checkOut: { not: null, gte: startOfDurations } },
         select: { checkIn: true, checkOut: true },
+        orderBy: { checkOut: "desc" },
+        take: 5000,
       }),
       prisma.booking.findMany({
         where: { luggageDetails: { not: null }, status: { not: "CANCELLED" } },
@@ -83,7 +84,8 @@ export async function GET() {
       }),
     ]);
 
-    const capacityTotal = capacityResult._sum.capacity ?? 0;
+    const settings = await getSystemSettings();
+    const capacityTotal = parseInt(setting(settings, "max_simultaneous_bags", "0"));
     const usagePercent = capacityTotal > 0 ? Math.round((bookingCapacity / capacityTotal) * 100) : 0;
     const completionRateWeekly = bookingsThisWeek > 0 ? Math.round((deliveredThisWeek / bookingsThisWeek) * 100) : 0;
 
@@ -110,26 +112,33 @@ export async function GET() {
       } catch {}
     }
 
-    return NextResponse.json({
-      capacityUsage: { used: bookingCapacity, total: capacityTotal, percent: usagePercent },
-      bookingsThisMonth: monthlyBookings,
-      claimedThisMonth: monthlyDelivered,
-      totalUsers,
-      totalBookings,
-      deliveredBookings,
-      pendingDeliveries,
-      outForDelivery,
-      bookingsThisWeek,
-      bookingsToday,
-      deliveredToday,
-      deliveredThisWeek,
-      completionRateWeekly,
-      pendingToday,
-      durationBuckets,
-      bagDistribution,
-    });
+    return NextResponse.json(
+      {
+        capacityUsage: { used: bookingCapacity, total: capacityTotal, percent: usagePercent },
+        bookingsThisMonth: monthlyBookings,
+        claimedThisMonth: monthlyDelivered,
+        totalUsers,
+        totalBookings,
+        deliveredBookings,
+        pendingDeliveries,
+        outForDelivery,
+        bookingsThisWeek,
+        bookingsToday,
+        deliveredToday,
+        deliveredThisWeek,
+        completionRateWeekly,
+        pendingToday,
+        durationBuckets,
+        bagDistribution,
+      },
+      {
+        headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" },
+      }
+    );
   } catch (e) {
-    console.error("Dashboard API error:", e);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Dashboard API error:", e);
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -6,8 +6,11 @@ export async function GET() {
     await prisma.$queryRaw`SELECT 1`;
     return NextResponse.json({ status: "ok", database: "connected" });
   } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("Health check database failure", error);
+    }
     return NextResponse.json(
-      { status: "error", database: "disconnected", detail: (error as Error).message },
+      { status: "error", database: "disconnected" },
       { status: 500 }
     );
   }

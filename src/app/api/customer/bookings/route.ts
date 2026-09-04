@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCustomerSession } from "@/lib/customer-auth";
 import { prisma } from "@/lib/prisma";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function GET() {
   const session = await getCustomerSession();
@@ -17,5 +18,5 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json(bookings);
+  return NextResponse.json(decimalsToNumbers(bookings));
 }

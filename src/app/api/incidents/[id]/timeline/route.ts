@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendIncidentEmail } from "@/lib/email";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -30,6 +31,37 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       },
       include: { user: { select: { name: true } } },
     });
+
+    // Send investigation update email to customer (async, respects SMTP settings) — only for staff/admin notes
+    void (async () => {
+      try {
+        const incident = await prisma.incidentReport.findUnique({
+          where: { id: incidentId },
+          select: {
+            type: true,
+            status: true,
+            resolution: true,
+            description: true,
+            customer: { select: { name: true, email: true } },
+            booking: { select: { referenceNumber: true } },
+          },
+        });
+        if (incident?.customer?.email) {
+          await sendIncidentEmail({
+            to: incident.customer.email,
+            customerName: incident.customer.name,
+            referenceNumber: incident.booking.referenceNumber,
+            incidentType: incident.type,
+            status: incident.status,
+            resolution: incident.resolution,
+            incidentId,
+            description: `Investigation update: ${description}`,
+          });
+        }
+      } catch (e) {
+        if (process.env.NODE_ENV === "development") console.warn("[EMAIL] incident timeline email failed:", e);
+      }
+    })();
 
     return NextResponse.json(timeline, { status: 201 });
   } catch {

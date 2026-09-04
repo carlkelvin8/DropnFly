@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Home } from "lucide-react";
+import { Luggage, Home, ArrowRight } from "lucide-react";
 
 interface PublicHeaderProps {
   showBackToHome?: boolean;
@@ -9,38 +9,36 @@ interface PublicHeaderProps {
 
 export function PublicHeader({ showBackToHome }: PublicHeaderProps) {
   return (
-    <header className="sticky top-0 z-50 border-b bg-white/90 shadow-sm backdrop-blur-sm">
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 text-xl font-bold text-blue-600">
-          Dropnfly
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-transparent bg-background/80 backdrop-blur-xl">
+      <div className="container mx-auto flex h-16 items-center justify-between px-4">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500 shadow-lg">
+            <Luggage className="h-5 w-5 text-white" />
+          </div>
+          <span className="text-lg font-bold">
+            <span className="text-blue-600">Drop</span><span className="text-orange-500">nfly</span>
+          </span>
         </Link>
-        <nav className="flex items-center gap-4">
+
+        <nav className="flex items-center gap-2">
           {showBackToHome && (
             <Link
               href="/"
-              className="flex items-center gap-1.5 text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
+              className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
-              <Home className="h-4 w-4" />
+              <Home className="mr-1.5 inline h-4 w-4" />
               Home
             </Link>
           )}
-          <Link
-            href="/book"
-            className="text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
-          >
-            Book
-          </Link>
-          <Link
-            href="/track"
-            className="text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
-          >
+          <Link href="/track" className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
             Track
           </Link>
           <Link
-            href="/my-account"
-            className="text-sm font-medium text-gray-600 transition-colors hover:text-blue-600"
+            href="/book"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-orange-500 px-5 text-sm font-medium text-white shadow-lg shadow-orange-500/25 transition-all hover:bg-orange-600 hover:shadow-xl hover:shadow-orange-500/30"
           >
-            My Account
+            Book Now
+            <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </nav>
       </div>

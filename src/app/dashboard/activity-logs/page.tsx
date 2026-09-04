@@ -114,7 +114,7 @@ export default function ActivityLogsPage() {
     if (actionFilter) params.set("action", actionFilter);
     if (search) params.set("search", search);
     params.set("page", String(page));
-    params.set("limit", "30");
+    params.set("limit", "10");
     fetch(`/api/activity-logs?${params}`)
       .then((r) => r.json())
       .then((d) => setData(d))

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { hasStaffRole } from "@/lib/staff-access";
+import { awardDeliveryPoints } from "@/lib/loyalty";
 
 export async function PATCH(req: Request) {
   const session = await auth();
@@ -12,11 +14,24 @@ export async function PATCH(req: Request) {
   try {
     const { ids, action } = await req.json();
 
+    if (!hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (["delete", "cancel"].includes(action) && session.user.role !== "ADMIN") {
+      return NextResponse.json({ error: "Only administrators may delete or cancel bookings" }, { status: 403 });
+    }
+
     if (!Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: "No bookings selected" }, { status: 400 });
     }
 
     const cappedIds = ids.slice(0, 50);
+    const lockedCount = await prisma.booking.count({
+      where: { id: { in: cappedIds }, status: { in: ["CANCELLED", "NO_SHOW"] } },
+    });
+    if (lockedCount > 0) {
+      return NextResponse.json({ error: `${lockedCount} cancelled or no-show booking(s) are locked; remove them from the selection` }, { status: 409 });
+    }
 
     if (action === "delete") {
       await prisma.$transaction([
@@ -26,8 +41,10 @@ export async function PATCH(req: Request) {
         prisma.chatMessage.deleteMany({ where: { bookingId: { in: cappedIds } } }),
         prisma.bookingReview.deleteMany({ where: { bookingId: { in: cappedIds } } }),
         prisma.bookingExtension.deleteMany({ where: { bookingId: { in: cappedIds } } }),
-        prisma.luggageItem.deleteMany({ where: { bookingId: { in: cappedIds } } }),
+        prisma.incidentTimeline.deleteMany({ where: { incident: { bookingId: { in: cappedIds } } } }),
         prisma.incidentReport.deleteMany({ where: { bookingId: { in: cappedIds } } }),
+        prisma.baggageTag.updateMany({ where: { bookingId: { in: cappedIds } }, data: { bookingId: null, luggageItemId: null, status: "AVAILABLE", assignedAt: null } }),
+        prisma.luggageItem.deleteMany({ where: { bookingId: { in: cappedIds } } }),
         prisma.booking.deleteMany({ where: { id: { in: cappedIds } } }),
       ]);
 
@@ -43,8 +60,8 @@ export async function PATCH(req: Request) {
     }
 
     if (action === "confirm") {
-      await prisma.booking.updateMany({
-        where: { id: { in: cappedIds } },
+      const result = await prisma.booking.updateMany({
+        where: { id: { in: cappedIds }, status: { in: ["PENDING", "CONFIRMED"] } },
         data: { status: "CONFIRMED" },
       });
 
@@ -53,63 +70,44 @@ export async function PATCH(req: Request) {
         action: "UPDATE",
         entity: "Booking",
         entityId: cappedIds.join(","),
-        details: `Batch confirmed ${cappedIds.length} booking(s)`,
+        details: `Batch confirmed ${result.count} booking(s)`,
       });
 
-      return NextResponse.json({ success: true, count: cappedIds.length });
+      return NextResponse.json({ success: true, count: result.count });
     }
 
     if (action === "deliver") {
-      const bookings = await prisma.booking.findMany({
-        where: { id: { in: cappedIds } },
+      const deliverable = await prisma.booking.findMany({
+        where: { id: { in: cappedIds }, status: { in: ["IN_STORAGE", "OUT_FOR_DELIVERY"] } },
         select: { id: true, customerId: true, totalPrice: true, referenceNumber: true },
       });
+      const deliverableIds = deliverable.map((b) => b.id);
+
+      if (deliverableIds.length === 0) {
+        return NextResponse.json({ success: true, count: 0, message: "No bookings were in a deliverable state" });
+      }
 
       await prisma.booking.updateMany({
-        where: { id: { in: cappedIds } },
+        where: { id: { in: deliverableIds } },
         data: { status: "DELIVERED" },
       });
 
-      for (const b of bookings) {
-        const existingPoints = await prisma.pointsTransaction.findFirst({
-          where: { reference: b.id, type: "EARNED" },
-        });
-        if (!existingPoints) {
-          const pointsEarned = Math.floor(b.totalPrice / 10);
-          if (pointsEarned > 0) {
-            await Promise.all([
-              prisma.customer.update({
-                where: { id: b.customerId },
-                data: { points: { increment: pointsEarned } },
-              }),
-              prisma.pointsTransaction.create({
-                data: {
-                  customerId: b.customerId,
-                  points: pointsEarned,
-                  type: "EARNED",
-                  reference: b.id,
-                  description: `Earned from booking ${b.referenceNumber}`,
-                },
-              }),
-            ]);
-          }
-        }
-      }
+      for (const booking of deliverable) await awardDeliveryPoints(booking);
 
       await logActivity({
         userId: session.user.id,
         action: "UPDATE",
         entity: "Booking",
-        entityId: cappedIds.join(","),
-        details: `Batch delivered ${cappedIds.length} booking(s)`,
+        entityId: deliverableIds.join(","),
+        details: `Batch delivered ${deliverableIds.length} booking(s)`,
       });
 
-      return NextResponse.json({ success: true, count: cappedIds.length });
+      return NextResponse.json({ success: true, count: deliverableIds.length });
     }
 
     if (action === "cancel") {
-      await prisma.booking.updateMany({
-        where: { id: { in: cappedIds } },
+      const result = await prisma.booking.updateMany({
+        where: { id: { in: cappedIds }, status: { in: ["PENDING", "CONFIRMED", "RECEIVED"] } },
         data: { status: "CANCELLED" },
       });
 
@@ -118,10 +116,10 @@ export async function PATCH(req: Request) {
         action: "UPDATE",
         entity: "Booking",
         entityId: cappedIds.join(","),
-        details: `Batch cancelled ${cappedIds.length} booking(s)`,
+        details: `Batch cancelled ${result.count} booking(s)`,
       });
 
-      return NextResponse.json({ success: true, count: cappedIds.length });
+      return NextResponse.json({ success: true, count: result.count });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
+import { rateLimit, requestKey } from "@/lib/rate-limit";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+
+// Booking references look like PREFIX-YYMMDD-XXXXXX (e.g., DROPFLY-250815-K7M3XQ).
+// The random suffix never contains 0 or 1 (see src/lib/reference.ts).
+const BOOKING_REFERENCE_PATTERN = /\b[A-Z]{2,12}-\d{6}-[A-Z2-9]{6}\b/g;
 
 const SYSTEM_PROMPT = `You are an AI assistant for Dropnfly, an on-demand luggage storage and delivery service based in Metro Manila, Philippines. Your role is to help potential customers understand the service, answer questions, and guide them through booking.
 
@@ -30,14 +35,30 @@ CONVERSATION RULES:
 - Never make promises about specific delivery times — say it depends on location and availability
 - Always use natural, conversational Filipino-English (Taglish) tone — warm and approachable
 - Use "po" when appropriate for politeness
+- Booking references follow the format PREFIX-YYMMDD-XXXXXX (e.g., DROPFLY-250815-K7M3XQ). If a customer shares one, direct them to /track/<reference> for live status and tracking.
 - For complex inquiries, direct users to contact hello@dropnfly.ph or call +63 (2) 8123 4567`;
 
 export async function POST(req: Request) {
-  if (!GEMINI_API_KEY) {
+  const key = requestKey(req);
+  const { allowed, retryAfter } = await rateLimit(`chat:${key}`, 10, 60 * 1000);
+  if (!allowed) {
     return NextResponse.json(
-      { error: "AI assistant is currently unavailable. Please try again later." },
-      { status: 503 }
+      { error: "Too many requests. Please wait before sending another message." },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
     );
+  }
+
+  if (!GEMINI_API_KEY) {
+    const { message = "" } = await req.json();
+    const text = String(message).toLowerCase();
+    let reply = "I can help with booking, tracking, luggage storage, and delivery. For a live conversation, share your DROPFLY booking reference.";
+    const reference = String(message).toUpperCase().match(BOOKING_REFERENCE_PATTERN)?.[0];
+    if (reference) reply = `Thanks! I found your booking reference ${reference}. You can track it anytime at /track/${reference} — the live map and status timeline work even in demo mode.`;
+    else if (text.includes("book")) reply = "You can create a test booking at /book. Online payment is optional in demo mode, so you can complete the full booking flow without PayMongo.";
+    else if (text.includes("track") || text.includes("where")) reply = "Open /track and enter your DROPFLY reference. The demo map and status timeline work even when Mapbox is not configured.";
+    else if (text.includes("price") || text.includes("cost")) reply = "Pricing depends on luggage size, storage duration, and pickup or delivery services. The booking form calculates the exact total before confirmation.";
+    else if (text.includes("human") || text.includes("agent") || text.includes("staff")) reply = "Enter your booking reference and I’ll direct you to the booking chat monitored by the assigned employee and administrators.";
+    return NextResponse.json({ reply, mode: "demo" });
   }
 
   try {
@@ -47,20 +68,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
+    if (!Array.isArray(history) || history.length > 20) {
+      return NextResponse.json({ error: "Invalid history" }, { status: 400 });
+    }
+    const sanitizedHistory = history.slice(-20).map((h: { role: string; content: string }) => ({
+      role: h.role === "user" ? "user" : "model",
+      parts: [{ text: String(h.content || "").slice(0, 4000) }],
+    }));
+
     const contents = [
       { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
       { role: "model", parts: [{ text: "Understood. I am the Dropnfly AI assistant ready to help customers with their luggage storage and delivery needs." }] },
-      ...(history || []).flatMap((h: { role: string; content: string }) => [
-        { role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.content }] },
-      ]),
+      ...sanitizedHistory,
       { role: "user", parts: [{ text: message }] },
     ];
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": GEMINI_API_KEY,
+        },
         body: JSON.stringify({
           contents,
           generationConfig: {
@@ -73,7 +103,9 @@ export async function POST(req: Request) {
 
     if (!res.ok) {
       const err = await res.text();
-      console.error("Gemini API error:", res.status, err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Gemini API error:", res.status, err);
+      }
       return NextResponse.json(
         { error: "Failed to generate response. Please try again." },
         { status: 500 }

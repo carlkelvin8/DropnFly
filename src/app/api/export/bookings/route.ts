@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { hasStaffRole } from "@/lib/staff-access";
 
 export async function GET(req: Request) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -51,11 +52,9 @@ export async function GET(req: Request) {
   });
 
   const escapeCsv = (val: string | number | null | undefined) => {
-    const s = String(val ?? "");
-    if (/^[=+\-@\t]/.test(s) || s.includes(",") || s.includes('"') || s.includes("\n")) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return `"${s}"`;
+    const raw = String(val ?? "");
+    const s = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+    return `"${s.replace(/"/g, '""')}"`;
   };
 
   const header = [
@@ -82,8 +81,8 @@ export async function GET(req: Request) {
   const rows = bookings.map((b) => {
     const totalPaid = b.payments
       .filter((p) => p.status === "PAID")
-      .reduce((sum, p) => sum + p.amount, 0);
-    const balance = b.totalPrice - totalPaid;
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    const balance = Number(b.totalPrice) - totalPaid;
     const rider = b.assignments[0]?.user || null;
     const qrScanned = ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"].includes(b.status);
 
@@ -94,7 +93,7 @@ export async function GET(req: Request) {
       b.pickupLocation,
       b.dropOffLocation,
       b.numberOfBags,
-      b.totalPrice,
+      Number(b.totalPrice),
       totalPaid,
       balance,
       balance === 0 ? "Full" : totalPaid > 0 ? "DP" : "Unpaid",

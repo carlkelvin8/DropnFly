@@ -99,7 +99,8 @@ export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
   const [riderFilter, setRiderFilter] = useState("");
-  const [dateFilter, setDateFilter] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -110,14 +111,15 @@ export default function BookingsPage() {
     if (statusFilter) params.set("status", statusFilter);
     if (paymentFilter) params.set("payment", paymentFilter);
     if (riderFilter) params.set("riderId", riderFilter);
-    if (dateFilter) params.set("date", dateFilter);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
     const qs = params.toString();
     fetch(`/api/bookings${qs ? `?${qs}` : ""}`)
       .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
       .then(setBookings)
       .catch(() => toast.error("Failed to load bookings"))
       .finally(() => setLoading(false));
-  }, [statusFilter, paymentFilter, riderFilter, dateFilter]);
+  }, [statusFilter, paymentFilter, riderFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     fetchBookings();
@@ -178,11 +180,12 @@ export default function BookingsPage() {
     setStatusFilter("");
     setPaymentFilter("");
     setRiderFilter("");
-    setDateFilter(new Date().toISOString().split("T")[0]);
+    setDateFrom("");
+    setDateTo("");
     setPage(1);
   }
 
-  const hasActiveFilters = statusFilter || paymentFilter || riderFilter;
+  const hasActiveFilters = statusFilter || paymentFilter || riderFilter || dateFrom || dateTo;
 
   return (
     <div className="space-y-6">
@@ -226,13 +229,16 @@ export default function BookingsPage() {
             ))}
           </select>
         </div>
-        <div className="w-44">
+        <div className="flex min-w-[300px] items-center gap-2">
           <Input
             type="date"
-            value={dateFilter}
-            onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
-            aria-label="Filter by date"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+            aria-label="Booking date from"
           />
+          <span className="text-xs text-muted-foreground">to</span>
+          <Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} aria-label="Booking date to" />
         </div>
         {hasActiveFilters && (
           <Button variant="ghost" size="icon" onClick={clearFilters} title="Clear all filters">
@@ -313,7 +319,7 @@ export default function BookingsPage() {
                       <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
                         booking.qrScanned
                           ? "bg-green-100 text-green-700"
-                          : "bg-gray-100 text-gray-500"
+                          : "bg-muted text-muted-foreground"
                       }`}>
                         <QrCode className="h-3 w-3" />
                         {booking.qrScanned ? "Scanned" : "Unscanned"}
@@ -344,7 +350,7 @@ export default function BookingsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge[booking.status] || "bg-gray-100 text-gray-700"}`}>
+                      <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge[booking.status] || "bg-muted text-muted-foreground"}`}>
                         {booking.status === "OUT_FOR_DELIVERY" ? "Out for Delivery" :
                          booking.status === "IN_STORAGE" ? "In Storage" :
                          booking.status === "NO_SHOW" ? "No Show" :
@@ -415,7 +421,7 @@ function PaymentBadge({ status, total, paid }: { status: string; total: number; 
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-500">
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-muted-foreground">
       Unpaid
     </span>
   );

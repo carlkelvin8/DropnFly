@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canReadBooking, hasStaffRole } from "@/lib/staff-access";
+import { isBookingLocked } from "@/lib/booking-access";
 
 export async function GET(
   _req: Request,
@@ -10,6 +12,9 @@ export async function GET(
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!(await canReadBooking(session.user, id))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const items = await prisma.luggageItem.findMany({
     where: { bookingId: id },
     orderBy: { createdAt: "asc" },
@@ -23,35 +28,25 @@ export async function POST(
 ) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   try {
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
-    const count = body.count || 1;
+    await req.json().catch(() => ({}));
 
     const booking = await prisma.booking.findUnique({
       where: { id },
-      select: { referenceNumber: true, numberOfBags: true },
+      select: { status: true },
     });
     if (!booking) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    if (isBookingLocked(booking.status)) return NextResponse.json({ error: "This booking is locked" }, { status: 409 });
 
-    const existingCount = await prisma.luggageItem.count({ where: { bookingId: id } });
-    const maxAllowed = booking.numberOfBags;
-    const canCreate = Math.min(count, maxAllowed - existingCount);
-    if (canCreate <= 0) {
-      return NextResponse.json({ error: "All baggage slots already filled" }, { status: 400 });
-    }
-
-    const items = [];
-    for (let i = 0; i < canCreate; i++) {
-      const tagNumber = `TAG-${booking.referenceNumber}-${existingCount + i + 1}`;
-      const item = await prisma.luggageItem.create({
-        data: { bookingId: id, tagNumber },
-      });
-      items.push(item);
-    }
-
-    return NextResponse.json(items, { status: 201 });
+    return NextResponse.json(
+      { error: "Choose an available physical tag from the Baggage Tags section" },
+      { status: 400 }
+    );
   } catch {
     return NextResponse.json({ error: "Failed to create luggage items" }, { status: 500 });
   }

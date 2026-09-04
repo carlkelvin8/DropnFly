@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
 import { logActivity } from "@/lib/activity";
 import type { BookingStatus } from "@/generated/prisma/client";
+import { sendCustomerNotification } from "@/lib/notifications";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 const VALID_STATUS_FLOW = [
   "PENDING",
@@ -40,6 +42,9 @@ async function handleLuggageIntake({
   const cleanTag = cleanTagNumber(tagNumber);
   if (!cleanTag) {
     return NextResponse.json({ error: "Baggage tag number is required" }, { status: 400 });
+  }
+  if (!photo) {
+    return NextResponse.json({ error: "A luggage verification photo is required for storage intake" }, { status: 400 });
   }
 
   const item = await prisma.luggageItem.findUnique({
@@ -128,6 +133,18 @@ async function handleLuggageIntake({
     }`,
   });
 
+    // Send customer notification for luggage intake
+  const settings = await getSystemSettings();
+  if (setting(settings, "qr_scan_notification", "true") !== "false") {
+    await sendCustomerNotification({
+      customerId: booking.customerId,
+      type: "qr_scan_update",
+      title: "Luggage Stored",
+      message: `Your luggage (tag ${cleanTag}) for booking ${booking.referenceNumber} is now in storage.`,
+      link: `/my-account/bookings/${booking.id}`,
+    }).catch(() => {});
+  }
+
   return NextResponse.json({
     success: true,
     luggage: {
@@ -140,6 +157,115 @@ async function handleLuggageIntake({
     bookingStatus,
     remaining,
     message: `Luggage ${cleanTag} marked in storage`,
+  });
+}
+
+async function handleBatchLuggageStore({
+  session,
+  referenceNumber,
+  photo,
+  note,
+  latitude,
+  longitude,
+}: {
+  session: { user: { id: string } };
+  referenceNumber: string;
+  photo?: string;
+  note?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}) {
+  if (!referenceNumber) {
+    return NextResponse.json({ error: "Reference number is required" }, { status: 400 });
+  }
+  if (!photo) {
+    return NextResponse.json({ error: "A luggage verification photo is required for storage intake" }, { status: 400 });
+  }
+
+  const booking = await prisma.booking.findUnique({
+    where: { referenceNumber: normalizeReference(referenceNumber) },
+    select: {
+      id: true,
+      referenceNumber: true,
+      status: true,
+      customerId: true,
+      pickupLocation: true,
+    },
+  });
+
+  if (!booking) {
+    return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+  }
+  if (!["RECEIVED", "IN_STORAGE"].includes(booking.status)) {
+    return NextResponse.json(
+      { error: `Luggage cannot be stored while booking is ${booking.status}. Complete collection first.` },
+      { status: 400 }
+    );
+  }
+
+  const unstoredItems = await prisma.luggageItem.findMany({
+    where: {
+      bookingId: booking.id,
+      status: { notIn: ["IN_STORAGE", "DELIVERED", "CANCELLED"] },
+    },
+  });
+
+  if (unstoredItems.length === 0) {
+    return NextResponse.json({ error: "No luggage items pending storage for this booking" }, { status: 400 });
+  }
+
+  const location = booking.pickupLocation || null;
+
+  await prisma.$transaction(async (tx) => {
+    for (const item of unstoredItems) {
+      await tx.luggageItem.update({
+        where: { id: item.id },
+        data: { status: "IN_STORAGE", location },
+      });
+    }
+    await tx.booking.update({
+      where: { id: booking.id },
+      data: { status: "IN_STORAGE" },
+    });
+    await tx.scanEvent.createMany({
+      data: unstoredItems.map((item) => ({
+        bookingId: booking.id,
+        userId: session.user.id,
+        status: "IN_STORAGE",
+        photo: photo || null,
+        note: note
+          ? `${note} — Batch storage intake (tag ${item.tagNumber})`
+          : `Batch storage intake (tag ${item.tagNumber})`,
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
+      })),
+    });
+  });
+
+  await logActivity({
+    userId: session.user.id,
+    action: "SCAN",
+    entity: "Booking",
+    entityId: booking.id,
+    details: `Batch stored ${unstoredItems.length} luggage item(s) for ${booking.referenceNumber} — booking now in storage`,
+  });
+
+  const settings = await getSystemSettings();
+  if (setting(settings, "qr_scan_notification", "true") !== "false") {
+    await sendCustomerNotification({
+      customerId: booking.customerId,
+      type: "qr_scan_update",
+      title: "Luggage Stored",
+      message: `All your luggage for booking ${booking.referenceNumber} (${unstoredItems.length} item(s)) is now in storage.`,
+      link: `/my-account/bookings/${booking.id}`,
+    }).catch(() => {});
+  }
+
+  return NextResponse.json({
+    success: true,
+    bookingStatus: "IN_STORAGE",
+    storedCount: unstoredItems.length,
+    message: `Batch stored ${unstoredItems.length} luggage item(s) — booking ${booking.referenceNumber} is now in storage`,
   });
 }
 
@@ -160,6 +286,7 @@ export async function POST(req: Request) {
       customerVerified,
       tagNumbers,
       luggageScan,
+      batchStore,
       tagNumber,
     } = await req.json();
 
@@ -167,6 +294,17 @@ export async function POST(req: Request) {
       return handleLuggageIntake({
         session,
         tagNumber,
+        referenceNumber,
+        photo,
+        note,
+        latitude,
+        longitude,
+      });
+    }
+
+    if (batchStore) {
+      return handleBatchLuggageStore({
+        session,
         referenceNumber,
         photo,
         note,
@@ -185,6 +323,9 @@ export async function POST(req: Request) {
 
     if (status === "DELIVERED" && !customerVerified) {
       return NextResponse.json({ error: "Customer QR verification is required before confirming delivery" }, { status: 400 });
+    }
+    if (status === "IN_STORAGE" && !photo) {
+      return NextResponse.json({ error: "A luggage verification photo is required before marking a booking in storage" }, { status: 400 });
     }
 
     const booking = await prisma.booking.findUnique({
@@ -209,21 +350,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Cannot update a cancelled or no-show booking" }, { status: 400 });
     }
 
-    // === Drop-off ownership enforcement ===
-    if (session.user.role === "EMPLOYEE" && ["OUT_FOR_DELIVERY", "DELIVERED"].includes(status)) {
+    // === Assignment enforcement: employees may only scan bookings they are assigned to ===
+    if (session.user.role === "EMPLOYEE") {
       const dropoffAssignments = booking.assignments.filter((a) => a.phase === "DROPOFF");
+      const pickupAssignments = booking.assignments.filter((a) => a.phase === "PICKUP");
       const anyAssignment = booking.assignments.some((a) => a.userId === session.user.id);
       const isDropoffRider = dropoffAssignments.some((a) => a.userId === session.user.id);
-      if (dropoffAssignments.length === 0) {
-        if (!anyAssignment) {
+      const isPickupRider = pickupAssignments.some((a) => a.userId === session.user.id);
+
+      if (["OUT_FOR_DELIVERY", "DELIVERED"].includes(status)) {
+        if (dropoffAssignments.length > 0 && !isDropoffRider) {
           return NextResponse.json(
-            { error: "You are not assigned to this booking. Only the assigned employee can update it." },
+            { error: "Only the assigned drop-off employee can update this booking." },
             { status: 403 }
           );
         }
-      } else if (!isDropoffRider) {
+      } else if (pickupAssignments.length > 0 && !isPickupRider) {
         return NextResponse.json(
-          { error: "Only the assigned drop-off employee can update this booking." },
+          { error: "Only the assigned pick-up employee can update this booking." },
+          { status: 403 }
+        );
+      }
+
+      if (!anyAssignment) {
+        return NextResponse.json(
+          { error: "You are not assigned to this booking. Only the assigned employee can update it." },
           { status: 403 }
         );
       }
@@ -231,8 +382,25 @@ export async function POST(req: Request) {
 
     const currentIdx = VALID_STATUS_FLOW.indexOf(booking.status);
     const newIdx = VALID_STATUS_FLOW.indexOf(status);
-    if (newIdx <= currentIdx && booking.status !== "PENDING") {
+    // Enforce strict sequential flow (no skipping) — mirrors PUT /api/bookings/[id]
+    const NEXT_STATUS: Record<string, string> = {
+      PENDING: "CONFIRMED",
+      CONFIRMED: "RECEIVED",
+      RECEIVED: "IN_STORAGE",
+      IN_STORAGE: "OUT_FOR_DELIVERY",
+      OUT_FOR_DELIVERY: "DELIVERED",
+    };
+    if (booking.status !== "PENDING" && newIdx <= currentIdx) {
       return NextResponse.json({ error: "Cannot move to a previous or same status" }, { status: 400 });
+    }
+    if (VALID_STATUS_FLOW.includes(booking.status) && VALID_STATUS_FLOW.includes(status)) {
+      const expected = NEXT_STATUS[booking.status];
+      if (expected && status !== expected) {
+        // Allow PENDING->CONFIRMED only; otherwise require immediate next
+        if (!(booking.status === "PENDING" && status === "CONFIRMED")) {
+          return NextResponse.json({ error: `Invalid status transition: ${booking.status} → ${status}. Expected next is ${expected}.` }, { status: 400 });
+        }
+      }
     }
 
     // === Luggage collection at physical location: RECEIVED + tag assignment ===
@@ -260,42 +428,31 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Duplicate tag numbers entered" }, { status: 400 });
       }
 
-      const duplicate = await prisma.luggageItem.findFirst({
-        where: {
-          tagNumber: { in: tagList },
-          status: { notIn: ["DELIVERED", "CANCELLED"] },
-        },
+      const physicalTags = await prisma.baggageTag.findMany({
+        where: { tagNumber: { in: tagList }, status: "AVAILABLE", bookingId: null, luggageItemId: null },
       });
-      if (duplicate) {
-        return NextResponse.json({ error: `Tag number ${duplicate.tagNumber} is already assigned to another booking` }, { status: 400 });
+      if (physicalTags.length !== tagList.length) {
+        const available = new Set(physicalTags.map((tag) => tag.tagNumber));
+        const invalid = tagList.filter((tag) => !available.has(tag));
+        return NextResponse.json({ error: `Tag number(s) unavailable or not in inventory: ${invalid.join(", ")}` }, { status: 400 });
       }
 
-      for (const tag of tagList) {
-        const item = await prisma.luggageItem.create({
-          data: {
-            bookingId: booking.id,
-            tagNumber: tag,
-            status: "CHECKED_IN",
-            location: booking.pickupLocation || null,
-          },
-        });
-        createdItems.push({ id: item.id, tagNumber: item.tagNumber, bookingId: item.bookingId });
-
-        const physicalTag = await prisma.baggageTag.findUnique({ where: { tagNumber: tag } });
-        if (physicalTag) {
-          await prisma.baggageTag.update({
-            where: { id: physicalTag.id },
+      // Atomic tag assignment — avoids partial inventory if one tag fails
+      await prisma.$transaction(async (tx) => {
+        for (const tag of tagList) {
+          const item = await tx.luggageItem.create({
             data: {
-              status: "ASSIGNED",
               bookingId: booking.id,
-              luggageItemId: item.id,
-              assignedAt: new Date(),
+              tagNumber: tag,
+              status: "CHECKED_IN",
+              location: booking.pickupLocation || null,
             },
           });
-        } else {
-          await prisma.baggageTag.create({
+          createdItems.push({ id: item.id, tagNumber: item.tagNumber, bookingId: item.bookingId });
+
+          await tx.baggageTag.update({
+            where: { tagNumber: tag },
             data: {
-              tagNumber: tag,
               status: "ASSIGNED",
               bookingId: booking.id,
               luggageItemId: item.id,
@@ -303,7 +460,7 @@ export async function POST(req: Request) {
             },
           });
         }
-      }
+      });
     }
 
     const [updatedBooking] = await Promise.all([
@@ -347,12 +504,23 @@ export async function POST(req: Request) {
           : `QR scan: status updated to ${status} for ${booking.referenceNumber}`,
     });
 
+    const settings = await getSystemSettings();
+    if (setting(settings, "qr_scan_notification", "true") !== "false") {
+      await sendCustomerNotification({
+        customerId: booking.customerId,
+        type: "qr_scan_update",
+        title: "Luggage Status Updated",
+        message: `Booking ${booking.referenceNumber} is now ${status.replace(/_/g, " ").toLowerCase()}.`,
+        link: `/my-account/bookings/${booking.id}`,
+      });
+    }
+
     if (status === "DELIVERED") {
       const existingPoints = await prisma.pointsTransaction.findFirst({
         where: { reference: booking.id, type: "EARNED" },
       });
       if (!existingPoints) {
-        const pointsEarned = Math.floor(updatedBooking.totalPrice / 10);
+        const pointsEarned = Math.floor(Number(updatedBooking.totalPrice) / 10);
         if (pointsEarned > 0) {
           await Promise.all([
             prisma.customer.update({

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Card,
   CardContent,
@@ -28,6 +29,7 @@ import {
   Camera,
   CheckCircle2,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PublicHeader } from "@/components/layout/PublicHeader";
@@ -63,7 +65,7 @@ interface ChatMessage {
   message: string;
   isFromCustomer: boolean;
   createdAt: string;
-  sender?: { name: string };
+  sender?: { name: string; role?: string } | null;
 }
 
 const statusConfig: Record<string, { label: string; color: "default" | "secondary" | "success" | "warning" | "destructive" | "outline"; step: number }> = {
@@ -107,7 +109,9 @@ export default function TrackResultPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [scanEvents, setScanEvents] = useState<{ status: string; photo: string | null; note: string | null; scannedAt: string; user: { name: string } | null }[]>([]);
   const [showPhotoModal, setShowPhotoModal] = useState<string | null>(null);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatBoxRef = useRef<HTMLDivElement>(null);
+  const chatStickToBottomRef = useRef(true);
+  const lastChatMessageIdRef = useRef<string | null>(null);
   const verifyFileRef = useRef<HTMLInputElement>(null);
   const [verifyPhoto, setVerifyPhoto] = useState<string | null>(null);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
@@ -115,6 +119,27 @@ export default function TrackResultPage() {
   const [verifyError, setVerifyError] = useState("");
   const [scanReload, setScanReload] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportType, setReportType] = useState("lost_baggage");
+  const [reportDescription, setReportDescription] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+
+  async function submitIncidentReport() {
+    if (!reportDescription.trim()) return;
+    setReportSubmitting(true);
+    try {
+      const response = await fetch(`/api/public/bookings/${params.reference}/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: reportType, description: reportDescription }),
+      });
+      if (!response.ok) throw new Error();
+      setReportOpen(false);
+      setReportDescription("");
+    } finally {
+      setReportSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30000);
@@ -128,47 +153,50 @@ export default function TrackResultPage() {
 
   useEffect(() => {
     const abort = new AbortController();
-    fetch(`/api/public/bookings/${params.reference}`, { signal: abort.signal })
+    fetch(`/api/public/bookings/${params.reference}/status`, { signal: abort.signal })
       .then((res) => {
         if (!res.ok) throw new Error("Not found");
         return res.json();
       })
-      .then((data) => { if (!abort.signal.aborted) setBooking(data); })
+      .then((data) => {
+        if (abort.signal.aborted) return;
+        setBooking(data.booking);
+        setRider(data.rider ?? null);
+        setScanEvents(Array.isArray(data.scans) ? data.scans : []);
+      })
       .catch(() => { if (!abort.signal.aborted) setNotFound(true); });
-    return () => abort.abort();
-  }, [params.reference]);
-
-  useEffect(() => {
-    const abort = new AbortController();
-    fetch(`/api/public/bookings/${params.reference}/rider`, { signal: abort.signal })
-      .then((res) => res.json())
-      .then((data) => { if (!abort.signal.aborted) setRider(data.rider); })
-      .catch(() => {});
-    return () => abort.abort();
-  }, [params.reference]);
-
-  useEffect(() => {
-    const abort = new AbortController();
-    fetch(`/api/bookings/by-ref/${params.reference}/scans`, { signal: abort.signal })
-      .then((res) => res.json())
-      .then((data) => { if (!abort.signal.aborted && Array.isArray(data)) setScanEvents(data); })
-      .catch(() => {});
     return () => abort.abort();
   }, [params.reference, scanReload]);
 
   useEffect(() => {
     if (!chatOpen || !params.reference) return;
-    const abort = new AbortController();
-    fetch(`/api/public/bookings/${params.reference}/chat`, { signal: abort.signal })
+    let active = true;
+    const loadMessages = () => fetch(`/api/public/bookings/${params.reference}/chat`)
       .then((res) => res.json())
-      .then((data) => { if (!abort.signal.aborted) setChatMessages(data); })
+      .then((data) => {
+        if (!active || !Array.isArray(data)) return;
+        const lastId = data.length ? String(data[data.length - 1].id) : "";
+        if (lastId === lastChatMessageIdRef.current) return;
+        lastChatMessageIdRef.current = lastId;
+        setChatMessages(data);
+      })
       .catch(() => {});
-    return () => abort.abort();
+    void loadMessages();
+    const poll = window.setInterval(loadMessages, 2000);
+    return () => { active = false; window.clearInterval(poll); };
   }, [chatOpen, params.reference]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
+    const el = chatBoxRef.current;
+    if (!el || !chatStickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [chatMessages, chatOpen]);
+
+  function handleChatScroll() {
+    const el = chatBoxRef.current;
+    if (!el) return;
+    chatStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function sendChat() {
     const text = chatInput.trim();
@@ -234,11 +262,11 @@ export default function TrackResultPage() {
 
   if (notFound) {
     return (
-      <div className="min-h-screen bg-blue-50/50">
+      <div className="min-h-screen bg-blue-50/50 pt-16">
         <PublicHeader showBackToHome />
         <div className="flex flex-col items-center justify-center gap-4 py-24">
           <h1 className="text-2xl font-bold">Booking Not Found</h1>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             No booking found with reference &quot;{params.reference}&quot;
           </p>
           <div className="flex gap-3">
@@ -258,7 +286,7 @@ export default function TrackResultPage() {
   if (!booking) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     );
   }
@@ -267,7 +295,7 @@ export default function TrackResultPage() {
   const currentStep = config.step;
 
   return (
-    <div className="min-h-screen bg-blue-50/50">
+    <div className="min-h-screen bg-blue-50/50 pt-16">
       <PublicHeader showBackToHome />
 
       <main className="mx-auto max-w-3xl px-4 py-8">
@@ -296,7 +324,7 @@ export default function TrackResultPage() {
               <div className="flex items-center gap-4">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-600 text-lg font-bold text-white shadow-md">
                   {rider.profilePic ? (
-                    <img src={rider.profilePic} alt={rider.name} className="h-14 w-14 rounded-full object-cover" />
+                    <Image unoptimized width={56} height={56} src={rider.profilePic} alt={rider.name} className="h-14 w-14 rounded-full object-cover" />
                   ) : (
                     rider.name.charAt(0)
                   )}
@@ -338,7 +366,7 @@ export default function TrackResultPage() {
                     <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
                       {rider.profilePic && (
                         <div className="flex justify-center">
-                          <img src={rider.profilePic} alt={rider.name} className="h-24 w-24 rounded-full border-4 border-green-200 object-cover shadow-md" />
+                          <Image unoptimized width={96} height={96} src={rider.profilePic} alt={rider.name} className="h-24 w-24 rounded-full border-4 border-green-200 object-cover shadow-md" />
                         </div>
                       )}
                       <div className="text-center">
@@ -381,7 +409,7 @@ export default function TrackResultPage() {
                   onClick={() => setChatOpen(!chatOpen)}
                 >
                   <MessageCircle className="mr-1.5 h-4 w-4" />
-                  {chatOpen ? "Close Chat" : "Message Rider"}
+                  {chatOpen ? "Close Chat" : "Message Support Team"}
                 </Button>
               </div>
             </CardContent>
@@ -401,7 +429,7 @@ export default function TrackResultPage() {
                 <CardHeader className="flex flex-row items-center justify-between pb-3">
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <MessageCircle className="h-4 w-4 text-blue-600" />
-                    Chat with {rider?.name || "Rider"}
+                    Chat with {chatMessages.slice().reverse().find((message) => !message.isFromCustomer && message.sender)?.sender?.name || "DropnFly Support Team"}
                   </CardTitle>
                   <button
                     onClick={() => setChatOpen(false)}
@@ -411,7 +439,7 @@ export default function TrackResultPage() {
                   </button>
                 </CardHeader>
                 <CardContent>
-                  <div className="mb-3 max-h-60 overflow-y-auto space-y-3 rounded-lg border bg-muted/20 p-3">
+                  <div ref={chatBoxRef} onScroll={handleChatScroll} className="mb-3 max-h-60 overflow-y-auto space-y-3 rounded-lg border bg-muted/20 p-3">
                     {chatMessages.length === 0 && (
                       <p className="py-8 text-center text-sm text-muted-foreground">
                         No messages yet. Start a conversation with your rider.
@@ -430,10 +458,13 @@ export default function TrackResultPage() {
                           }`}
                         >
                           {msg.message}
+                          {!msg.isFromCustomer && (
+                            <p className="mt-1 text-[10px] opacity-70">{msg.sender?.name || "DropnFly staff"}{msg.sender?.role ? ` · ${msg.sender.role.toLowerCase()}` : ""}</p>
+                          )}
                         </div>
                       </div>
                     ))}
-                    <div ref={chatEndRef} />
+                    <div />
                   </div>
                   <div className="flex items-center gap-2">
                     <input
@@ -478,7 +509,7 @@ export default function TrackResultPage() {
               </p>
               {verifyPhoto ? (
                 <div className="relative overflow-hidden rounded-xl border">
-                  <img src={verifyPhoto} alt="Drop-off verification" className="h-40 w-full object-cover" />
+                  <Image unoptimized width={800} height={320} src={verifyPhoto} alt="Drop-off verification" className="h-40 w-full object-cover" />
                   <button
                     onClick={() => setVerifyPhoto(null)}
                     className="absolute top-2 right-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"
@@ -543,7 +574,7 @@ export default function TrackResultPage() {
 
             {currentStep >= 0 && (
               <div className="relative">
-                <div className="absolute left-[23px] top-2 h-[calc(100%-16px)] w-0.5 bg-gradient-to-b from-blue-500 to-gray-200" />
+                <div className="absolute left-[23px] top-2 h-[calc(100%-16px)] w-0.5 bg-gradient-to-b from-blue-500 to-border" />
                 <div className="space-y-0">
                   {steps.map((step, i) => {
                     const Icon = step.icon;
@@ -559,7 +590,7 @@ export default function TrackResultPage() {
                             className={`flex h-12 w-12 items-center justify-center rounded-full border-2 shadow-sm transition-all ${
                               isActive
                                 ? "border-blue-600 bg-orange-500 text-white shadow-md shadow-blue-200"
-                                : "border-gray-300 bg-white text-gray-400"
+                                : "border-border bg-card text-muted-foreground/60"
                             } ${isCurrent ? "ring-4 ring-blue-200" : ""}`}
                           >
                             <Icon className="h-5 w-5" />
@@ -568,7 +599,7 @@ export default function TrackResultPage() {
                         <div className="flex flex-col justify-center pt-2.5 min-w-0 flex-1">
                           <p
                             className={`text-sm font-semibold ${
-                              isActive ? "text-blue-800" : "text-gray-400"
+                              isActive ? "text-blue-800" : "text-muted-foreground/60"
                             }`}
                           >
                             {step.label}
@@ -584,7 +615,7 @@ export default function TrackResultPage() {
                           {scan && (
                             <div className="mt-1 space-y-1">
                               {scan.scannedAt && (
-                                <p className="text-[10px] text-gray-400">
+                                <p className="text-[10px] text-muted-foreground/60">
                                   {new Date(scan.scannedAt).toLocaleString("en-PH")}
                                   {scan.user && ` · ${scan.user.name}`}
                                 </p>
@@ -592,7 +623,7 @@ export default function TrackResultPage() {
                               <div className="flex flex-wrap gap-1.5 mt-1">
                                 {scan.photo && (
                                   <button onClick={() => setShowPhotoModal(scan.photo!)}>
-                                    <img
+                                    <Image unoptimized width={80} height={80}
                                       src={scan.photo}
                                       alt="Proof"
                                       className="h-10 w-10 rounded border object-cover hover:opacity-80 transition-opacity"
@@ -600,7 +631,7 @@ export default function TrackResultPage() {
                                   </button>
                                 )}
                                 {scan.note && (
-                                  <p className="text-[10px] text-gray-500 italic w-full">{scan.note}</p>
+                                  <p className="text-[10px] text-muted-foreground italic w-full">{scan.note}</p>
                                 )}
                               </div>
                             </div>
@@ -614,8 +645,15 @@ export default function TrackResultPage() {
             )}
 
             {currentStep < 0 && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-center">
+              <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
                 <p className="text-sm font-medium text-red-600">This booking was cancelled.</p>
+                {scanEvents.filter((event) => event.status === "CANCELLED").map((event, index) => (
+                  <div key={`${event.scannedAt}-${index}`} className="rounded-lg border border-red-200 bg-white p-3 text-left">
+                    <p className="text-xs font-semibold text-red-700">Cancellation proof</p>
+                    {event.note && <p className="mt-1 text-xs text-muted-foreground">{event.note}</p>}
+                    {event.photo && <button className="mt-2" onClick={() => setShowPhotoModal(event.photo)}><Image unoptimized width={120} height={80} src={event.photo} alt="Cancellation proof" className="h-20 w-28 rounded object-cover" /></button>}
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
@@ -627,24 +665,24 @@ export default function TrackResultPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 text-sm md:grid-cols-2">
-              <div className="flex items-start gap-3 rounded-lg border bg-gray-50/50 p-3">
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
                 <MapPin className="mt-0.5 h-4 w-4 text-blue-500" />
                 <div>
-                  <p className="text-gray-500">Pickup Location</p>
+                  <p className="text-muted-foreground">Pickup Location</p>
                   <p className="font-medium">{booking.pickupLocation}</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 rounded-lg border bg-gray-50/50 p-3">
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
                 <MapPin className="mt-0.5 h-4 w-4 text-indigo-500" />
                 <div>
-                  <p className="text-gray-500">Drop-off Location</p>
+                  <p className="text-muted-foreground">Drop-off Location</p>
                   <p className="font-medium">{booking.dropOffLocation}</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 rounded-lg border bg-gray-50/50 p-3">
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
                 <Calendar className="mt-0.5 h-4 w-4 text-blue-500" />
                 <div>
-                  <p className="text-gray-500">Scheduled Date</p>
+                  <p className="text-muted-foreground">Scheduled Date</p>
                   <p className="font-medium">
                     {new Date(booking.checkIn).toLocaleDateString("en-PH", {
                       weekday: "long",
@@ -657,10 +695,10 @@ export default function TrackResultPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 rounded-lg border bg-gray-50/50 p-3">
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
                 <Luggage className="mt-0.5 h-4 w-4 text-indigo-500" />
                 <div>
-                  <p className="text-gray-500">Number of Luggage</p>
+                  <p className="text-muted-foreground">Number of Luggage</p>
                   <p className="font-medium">{booking.numberOfBags}</p>
                 </div>
               </div>
@@ -681,7 +719,7 @@ export default function TrackResultPage() {
               );
               return (
                 <div className="mt-4 border-t pt-4">
-                  <p className="text-sm text-gray-500">Luggage Details</p>
+                  <p className="text-sm text-muted-foreground">Luggage Details</p>
                   {luggageItems.length > 0 ? (
                     <div className="mt-1 space-y-1">
                       {luggageItems.map((item, i) => (
@@ -706,7 +744,7 @@ export default function TrackResultPage() {
             })()}
 
             <div className="mt-6 flex flex-wrap justify-center gap-3 border-t pt-4">
-              {hasRecentLocation && (
+              {rider && (
                 <Button asChild className="bg-orange-500 text-white shadow-lg transition-all hover:bg-orange-600 hover:shadow-xl">
                   <Link href={`/track/map/${params.reference}`}>
                     <Navigation className="mr-2 h-4 w-4" />
@@ -717,7 +755,14 @@ export default function TrackResultPage() {
               <Button asChild variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
                 <Link href="/book">Book Another Pickup</Link>
               </Button>
-              <Button asChild variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50">
+              <Button type="button" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => setChatOpen(!chatOpen)}>
+                <MessageCircle className="mr-2 h-4 w-4" />
+                {chatOpen ? "Close Chat" : "Message Support Team"}
+              </Button>
+              <Button type="button" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => setReportOpen(true)}>
+                <AlertTriangle className="mr-2 h-4 w-4" /> File Incident Report
+              </Button>
+              <Button asChild variant="outline" className="border-border text-foreground hover:bg-muted">
                 <Link href="/"><Home className="mr-2 h-4 w-4" /> Back to Home</Link>
               </Button>
             </div>
@@ -730,11 +775,23 @@ export default function TrackResultPage() {
       {showPhotoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setShowPhotoModal(null)}>
           <div className="relative max-w-lg max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
-            <img src={showPhotoModal} alt="Photo proof" className="max-h-[80vh] w-auto rounded-lg shadow-2xl" />
+            <Image unoptimized width={1000} height={1000} src={showPhotoModal} alt="Photo proof" className="max-h-[80vh] w-auto rounded-lg shadow-2xl" />
             <button onClick={() => setShowPhotoModal(null)}
-              className="absolute -top-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-700 shadow-lg hover:bg-gray-100">
+              className="absolute -top-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-background text-foreground shadow-lg hover:bg-muted">
               <X className="h-4 w-4" />
             </button>
+          </div>
+        </div>
+      )}
+      {reportOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setReportOpen(false); }}>
+          <div className="w-full max-w-md space-y-4 rounded-xl bg-background p-6 shadow-2xl">
+            <div><h2 className="font-semibold">File an incident report</h2><p className="text-sm text-muted-foreground">This will be sent directly to DropnFly staff for review.</p></div>
+            <select value={reportType} onChange={(event) => setReportType(event.target.value)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
+              <option value="lost_baggage">Lost baggage</option><option value="damaged_baggage">Damaged baggage</option><option value="service_complaint">Service complaint</option><option value="other">Other</option>
+            </select>
+            <textarea value={reportDescription} onChange={(event) => setReportDescription(event.target.value)} rows={5} maxLength={4000} placeholder="Describe what happened..." className="w-full rounded-md border bg-background p-3 text-sm" />
+            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setReportOpen(false)}>Cancel</Button><Button onClick={submitIncidentReport} disabled={reportSubmitting || !reportDescription.trim()}>{reportSubmitting ? "Submitting..." : "Submit Report"}</Button></div>
           </div>
         </div>
       )}

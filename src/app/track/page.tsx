@@ -28,25 +28,40 @@ function cleanScanInput(ref: string): string {
 export default function TrackPage() {
   const router = useRouter();
   const [reference, setReference] = useState("");
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (reference.trim()) {
-      router.push(`/track/${reference.trim().toUpperCase()}`);
+    if (!reference.trim() || !email.trim()) return;
+    setLoading(true);
+    setError("");
+    const response = await fetch("/api/public/bookings/access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reference, email }),
+    }).catch(() => null);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setError(body?.error || "Unable to verify booking details");
+      setLoading(false);
+      return;
     }
+    router.push(`/track/${reference.trim().toUpperCase()}`);
   }
 
   function handleScan(raw: string) {
     const cleanRef = cleanScanInput(raw);
     setScanning(false);
     if (cleanRef) {
-      router.push(`/track/${cleanRef}`);
+      setReference(cleanRef);
     }
   }
 
   return (
-    <div className="min-h-screen bg-blue-50/50">
+    <div className="min-h-screen bg-blue-50/50 pt-16">
       <PublicHeader showBackToHome />
 
       <main className="mx-auto max-w-xl px-4 py-16">
@@ -57,8 +72,8 @@ export default function TrackPage() {
           <h1 className="text-3xl font-bold text-blue-700">
             Track My Luggage
           </h1>
-          <p className="mt-2 text-gray-600">
-            Enter your booking reference number to check your luggage status
+          <p className="mt-2 text-muted-foreground">
+            Verify your booking reference and email to check your luggage status
           </p>
         </div>
 
@@ -73,7 +88,7 @@ export default function TrackPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="reference">Booking Reference</Label>
-                <div className="flex gap-2">
+                <div>
                   <Input
                     id="reference"
                     placeholder="e.g. DROPFLY-ABC123"
@@ -82,12 +97,17 @@ export default function TrackPage() {
                     className="font-mono uppercase"
                     required
                   />
-                  <Button type="submit" className="bg-orange-500 text-white shadow-md hover:bg-orange-600">
-                    <Search className="mr-2 h-4 w-4" />
-                    Track
-                  </Button>
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Booking Email</Label>
+                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              </div>
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <Button type="submit" disabled={loading} className="w-full bg-orange-500 text-white shadow-md hover:bg-orange-600">
+                <Search className="mr-2 h-4 w-4" />
+                {loading ? "Verifying..." : "Track"}
+              </Button>
             </form>
 
             {scanning ? (
@@ -103,13 +123,13 @@ export default function TrackPage() {
               <button
                 type="button"
                 onClick={() => setScanning(true)}
-                className="w-full rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 p-6 text-center transition-all hover:border-blue-400 hover:bg-blue-50"
+                className="w-full rounded-xl border-2 border-dashed border-border bg-muted/30 p-6 text-center transition-all hover:border-blue-400 hover:bg-blue-50"
               >
                 <Camera className="mx-auto mb-2 h-8 w-8 text-blue-500" />
-                <p className="text-sm font-medium text-gray-700">
+                <p className="text-sm font-medium text-foreground">
                   Scan QR Code from your confirmation email
                 </p>
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-muted-foreground/60">
                   Use your camera to scan — we&apos;ll look up the booking instantly
                 </p>
               </button>

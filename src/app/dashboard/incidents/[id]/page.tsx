@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Card,
   CardContent,
@@ -124,8 +125,9 @@ export default function IncidentDetailPage() {
         setIncident(d);
         setEditStatus(d.status);
         setEditPriority(d.priority);
-        setEditNotes(d.internalNotes || "");
-        setEditResolution(d.resolution || "");
+        // Senior: start with empty boxes so previous text doesn't linger; history is dedicated below
+        setEditNotes("");
+        setEditResolution("");
         setEditEscalatedTo(d.escalatedTo || "");
       })
       .catch(() => toast.error("Failed to load incident"))
@@ -149,8 +151,9 @@ export default function IncidentDetailPage() {
       setIncident(updated);
       setEditStatus(updated.status);
       setEditPriority(updated.priority);
-      setEditNotes(updated.internalNotes || "");
-      setEditResolution(updated.resolution || "");
+      // Clear boxes so previous text doesn't linger — history is dedicated above
+      setEditNotes("");
+      setEditResolution("");
       setEditEscalatedTo(updated.escalatedTo || "");
       toast.success(action === "accept" ? "Report accepted — booking status updated" : "Report dismissed — booking unchanged");
     } catch (e) {
@@ -175,13 +178,22 @@ export default function IncidentDetailPage() {
           escalatedTo: editEscalatedTo || null,
         }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || "Failed to save");
+      }
       const updated = await res.json();
       setIncident(updated);
       setEditEscalatedTo(updated.escalatedTo || "");
-      toast.success("Incident updated");
-    } catch {
-      toast.error("Failed to save changes");
+      // Senior: clear text boxes after save so previous input doesn't linger; history is in timeline
+      setEditNotes("");
+      setEditResolution("");
+      // Also update status/priority to reflect saved values for next edit
+      setEditStatus(updated.status);
+      setEditPriority(updated.priority);
+      toast.success("Incident updated — notes/resolution saved to history and emailed if customer-visible");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save changes");
     } finally {
       setSaving(false);
     }
@@ -253,7 +265,7 @@ export default function IncidentDetailPage() {
               {reportPhoto && (
                 <div>
                   <p className="mb-1 text-xs text-muted-foreground">Evidence photo</p>
-                  <img
+                  <Image unoptimized width={800} height={600}
                     src={reportPhoto}
                     alt="Report evidence"
                     className="max-h-60 w-full rounded-lg border object-cover"
@@ -278,7 +290,10 @@ export default function IncidentDetailPage() {
                 <div>
                   <span className="text-xs text-muted-foreground">Booking</span>
                   <p className="font-mono font-medium">{incident.booking.referenceNumber}</p>
-                  <p className="text-xs text-muted-foreground">Status: {incident.booking.status.replace(/_/g, " ")}</p>
+                  <p className="text-[10px] text-muted-foreground">Status</p>
+                  <p className="text-xs font-medium capitalize">
+                    {(incident.booking.status || "").replace(/_/g, " ")}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -307,7 +322,7 @@ export default function IncidentDetailPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-medium capitalize">
-                            {entry.action.replace(/_/g, " ")}
+                            {(entry.action || "").replace(/_/g, " ")}
                           </span>
                           <span className="text-[10px] text-muted-foreground">
                             {formatRelativeTime(entry.createdAt)}
@@ -322,6 +337,94 @@ export default function IncidentDetailPage() {
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Dedicated Internal Notes History (admin only) — senior */}
+          <Card className="border-t-2 border-t-slate-500 shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Flag className="h-4 w-4 text-slate-600" /> Internal Notes History
+                <Badge variant="secondary" className="ml-auto text-[10px]">Admin only</Badge>
+              </CardTitle>
+              <CardDescription className="text-xs">All internal notes — private, never emailed to customer. For back-tracking.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const notes = incident.timeline.filter((e) => e.action === "internal_note");
+                const current = incident.internalNotes ? [{ id: "current", action: "internal_note", description: `Current: ${incident.internalNotes}`, createdAt: incident.submittedAt, user: null }] : [];
+                const all = [...notes];
+                if (all.length === 0 && !incident.internalNotes) {
+                  return <p className="py-4 text-center text-xs text-muted-foreground">No internal notes yet. Add one in Admin Actions — it will appear here and stay for back-tracking.</p>;
+                }
+                return (
+                  <div className="space-y-2">
+                    {incident.internalNotes && (
+                      <div className="rounded-lg border bg-slate-50 p-3 dark:bg-slate-900/30">
+                        <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Current internal note</p>
+                        <p className="mt-1 text-xs leading-relaxed">{incident.internalNotes}</p>
+                      </div>
+                    )}
+                    {all.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-medium text-muted-foreground">History ({all.length})</p>
+                        {all.map((e) => (
+                          <div key={e.id} className="rounded-lg border bg-card p-3">
+                            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                              <span className="font-medium text-foreground">{e.description.replace(/^Internal note.*?:\s*/, "")}</span>
+                              <span className="ml-auto whitespace-nowrap">{formatRelativeTime(e.createdAt)}{e.user ? ` by ${e.user.name}` : ""}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">{e.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">History will appear here after you save a note.</p>
+                    )}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+
+          {/* Dedicated Resolution History (visible to customer) — senior */}
+          <Card className="border-t-2 border-t-emerald-500 shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <CheckCircle className="h-4 w-4 text-emerald-600" /> Resolution History
+                <Badge variant="outline" className="ml-auto border-emerald-200 text-[10px] text-emerald-700">Visible to customer</Badge>
+              </CardTitle>
+              <CardDescription className="text-xs">All resolutions sent to customer — each is emailed. For back-tracking.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const resolutions = incident.timeline.filter((e) => e.action === "resolved");
+                if (resolutions.length === 0 && !incident.resolution) {
+                  return <p className="py-4 text-center text-xs text-muted-foreground">No resolution yet. Submit one in Admin Actions — it will be emailed to the customer and saved here.</p>;
+                }
+                return (
+                  <div className="space-y-2">
+                    {incident.resolution && (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                        <p className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">Current resolution (customer-visible)</p>
+                        <p className="mt-1 text-xs leading-relaxed text-emerald-900 dark:text-emerald-200">{incident.resolution}</p>
+                        <p className="mt-1 text-[10px] text-emerald-700">Emailed to {incident.customer.email} on status updates.</p>
+                      </div>
+                    )}
+                    {resolutions.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-medium text-muted-foreground">History ({resolutions.length})</p>
+                        {resolutions.map((e) => (
+                          <div key={e.id} className="rounded-lg border bg-card p-3">
+                            <p className="text-xs leading-relaxed">{e.description.replace(/^Resolution.*?:\s*/, "")}</p>
+                            <p className="mt-1 text-[10px] text-muted-foreground">{formatRelativeTime(e.createdAt)}{e.user ? ` by ${e.user.name}` : ""} — emailed</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </div>

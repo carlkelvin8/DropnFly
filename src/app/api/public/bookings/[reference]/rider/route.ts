@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
+import { canAccessBooking } from "@/lib/booking-access";
 
 export async function GET(
   _req: Request,
@@ -10,15 +11,19 @@ export async function GET(
 
   const booking = await prisma.booking.findUnique({
     where: { referenceNumber: normalizeReference(reference) },
-    select: { id: true },
+    select: { id: true, customerId: true, status: true },
   });
 
   if (!booking) {
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
+  if (!(await canAccessBooking(booking))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const assignment = await prisma.bookingAssignment.findFirst({
-    where: { bookingId: booking.id },
+    where: {
+      bookingId: booking.id,
+      phase: booking.status === "OUT_FOR_DELIVERY" || booking.status === "DELIVERED" ? "DROPOFF" : "PICKUP",
+    },
     orderBy: { createdAt: "desc" },
     include: {
       user: {

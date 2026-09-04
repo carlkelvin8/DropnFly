@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { canReadBooking } from "@/lib/staff-access";
+import { isBookingLocked } from "@/lib/booking-access";
 
 export async function POST(
   req: Request,
@@ -14,6 +16,7 @@ export async function POST(
 
   try {
     const { id } = await params;
+    if (!(await canReadBooking(session.user, id))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const { photo } = await req.json();
 
     if (!photo) {
@@ -27,6 +30,9 @@ export async function POST(
     const booking = await prisma.booking.findUnique({ where: { id } });
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
+    if (isBookingLocked(booking.status)) {
+      return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
     }
 
     if (booking.luggagePhotos.length >= 10) {
@@ -65,6 +71,7 @@ export async function DELETE(
 
   try {
     const { id } = await params;
+    if (!(await canReadBooking(session.user, id))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const { index } = await req.json();
 
     if (typeof index !== "number" || index < 0) {
@@ -74,6 +81,9 @@ export async function DELETE(
     const booking = await prisma.booking.findUnique({ where: { id } });
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
+    if (isBookingLocked(booking.status)) {
+      return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
     }
 
     const photos = [...booking.luggagePhotos];

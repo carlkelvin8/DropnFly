@@ -4,17 +4,23 @@ import { useEffect, useRef } from "react";
 
 interface LocationUpdaterProps {
   enabled: boolean;
+  onStatusChange?: (status: "requesting" | "active" | "denied" | "error") => void;
 }
 
-export function LocationUpdater({ enabled }: LocationUpdaterProps) {
+export function LocationUpdater({ enabled, onStatusChange }: LocationUpdaterProps) {
   const watchIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!enabled || !navigator.geolocation) return;
+    if (!enabled) return;
+    if (!navigator.geolocation) {
+      onStatusChange?.("error");
+      return;
+    }
+    onStatusChange?.("requesting");
 
     async function sendLocation(position: GeolocationPosition) {
       try {
-        await fetch("/api/tracking/location", {
+        const response = await fetch("/api/tracking/location", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -23,14 +29,16 @@ export function LocationUpdater({ enabled }: LocationUpdaterProps) {
             accuracy: position.coords.accuracy,
           }),
         });
+        if (!response.ok) throw new Error("Location update failed");
+        onStatusChange?.("active");
       } catch {
-        // silently fail
+        onStatusChange?.("error");
       }
     }
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       sendLocation,
-      () => {},
+      (error) => onStatusChange?.(error.code === error.PERMISSION_DENIED ? "denied" : "error"),
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
     );
 
@@ -39,7 +47,7 @@ export function LocationUpdater({ enabled }: LocationUpdaterProps) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
     };
-  }, [enabled]);
+  }, [enabled, onStatusChange]);
 
   return null;
 }

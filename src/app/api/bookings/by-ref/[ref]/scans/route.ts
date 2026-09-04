@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
 import { auth } from "@/lib/auth";
+import { canReadBooking } from "@/lib/staff-access";
 
 export async function GET(
   _req: Request,
@@ -21,6 +22,9 @@ export async function GET(
 
   if (!booking) {
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+  }
+  if (!(await canReadBooking(session.user, booking.id))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const scans = await prisma.scanEvent.findMany({

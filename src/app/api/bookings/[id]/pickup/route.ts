@@ -40,12 +40,15 @@ export async function POST(
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
+    if (["CANCELLED", "NO_SHOW"].includes(booking.status)) {
+      return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
+    }
 
     if (action === "start") {
       if (booking.pickupStartedAt) {
         return NextResponse.json({ error: "Pickup has already been started" }, { status: 400 });
       }
-      if (["CANCELLED", "NO_SHOW", "DELIVERED"].includes(booking.status)) {
+      if (booking.status === "DELIVERED") {
         return NextResponse.json({ error: "This booking cannot start pickup" }, { status: 400 });
       }
 

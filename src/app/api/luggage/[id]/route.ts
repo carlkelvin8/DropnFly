@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { isBookingLocked } from "@/lib/booking-access";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -9,6 +10,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!["ADMIN", "STAFF"].includes(session.user.role)) return new NextResponse("Forbidden", { status: 403 });
 
   try {
+    const existing = await prisma.luggageItem.findUnique({
+      where: { id },
+      select: { booking: { select: { status: true } } },
+    });
+    if (!existing) return NextResponse.json({ error: "Luggage item not found" }, { status: 404 });
+    if (isBookingLocked(existing.booking.status)) return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
     const body = await req.json();
     const data: Record<string, string | Date | null> = {};
 
@@ -34,6 +41,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   if (!["ADMIN", "STAFF"].includes(session.user.role)) return new NextResponse("Forbidden", { status: 403 });
 
   try {
+    const existing = await prisma.luggageItem.findUnique({
+      where: { id },
+      select: { booking: { select: { status: true } } },
+    });
+    if (!existing) return NextResponse.json({ error: "Luggage item not found" }, { status: 404 });
+    if (isBookingLocked(existing.booking.status)) return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
     await prisma.luggageItem.delete({ where: { id } });
     return new NextResponse(null, { status: 204 });
   } catch (e: unknown) {

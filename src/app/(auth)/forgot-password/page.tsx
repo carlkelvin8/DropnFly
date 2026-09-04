@@ -12,21 +12,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Mail, ArrowLeft, Copy, Check } from "lucide-react";
+import { Mail, ArrowLeft } from "lucide-react";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [resetUrl, setResetUrl] = useState("");
-  const [note, setNote] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [sent, setSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setResetUrl("");
+    setSent(false);
 
     const res = await fetch("/api/auth/forgot-password", {
       method: "POST",
@@ -40,16 +38,9 @@ export default function ForgotPasswordPage() {
       setError(data.error || "Something went wrong");
       setLoading(false);
     } else {
-      setResetUrl(data.resetUrl);
-      setNote(data.note);
+      setSent(true);
       setLoading(false);
     }
-  }
-
-  async function copyToClipboard() {
-    await navigator.clipboard.writeText(resetUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   }
 
   return (
@@ -73,24 +64,11 @@ export default function ForgotPasswordPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {resetUrl ? (
+            {sent ? (
               <div className="space-y-4">
                 <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">
-                  <p className="mb-2 font-medium">Reset link generated</p>
-                  <p>{note}</p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Reset URL</Label>
-                  <div className="flex items-center gap-2 rounded-lg border bg-white p-3 text-xs break-all">
-                    <span className="flex-1 text-muted-foreground">{resetUrl}</span>
-                    <button
-                      type="button"
-                      onClick={copyToClipboard}
-                      className="shrink-0 text-blue-600 hover:text-blue-800"
-                    >
-                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                    </button>
-                  </div>
+                  <p className="mb-2 font-medium">Check your email</p>
+                  <p>If an account exists, a single-use reset link has been sent.</p>
                 </div>
                 <Link
                   href="/login"
@@ -136,7 +114,7 @@ export default function ForgotPasswordPage() {
                 </Button>
               </form>
             )}
-            {!resetUrl && (
+            {!sent && (
               <p className="mt-4 text-center text-sm text-muted-foreground">
                 Remember your password?{" "}
                 <Link href="/login" className="font-medium text-blue-600 transition-colors hover:text-blue-800">

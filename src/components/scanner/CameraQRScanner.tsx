@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
-import { Camera, X, SwitchCamera, QrCode } from "lucide-react";
+import { Camera, X, SwitchCamera, QrCode, Upload } from "lucide-react";
 
 interface CameraQRScannerProps {
   onScan: (result: string) => void;
@@ -18,6 +18,7 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const mountedRef = useRef(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     onScanRef.current = onScan;
@@ -27,6 +28,7 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
   const [error, setError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [scanned, setScanned] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const stopCamera = useCallback(async () => {
     try {
@@ -93,7 +95,9 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
       })
       .catch((e) => {
         if (!mountedRef.current) return;
-        console.error("Camera error:", e);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Camera error:", e);
+        }
         const msg = e instanceof Error ? e.message : String(e);
         if (msg.includes("NotAllowedError") || msg.includes("Permission")) {
           setError("Camera permission denied. Please allow camera access in your browser settings.");
@@ -110,6 +114,41 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
   const switchCamera = useCallback(async () => {
     await stopCamera();
     setFacingMode((prev) => (prev === "environment" ? "user" : "environment"));
+  }, [stopCamera]);
+
+  const scanUploadedImage = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image containing a QR code.");
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+    setScanned(false);
+    handledRef.current = false;
+
+    try {
+      await stopCamera();
+      const { Html5Qrcode } = await import("html5-qrcode");
+      if (!mountedRef.current) return;
+
+      const scanner = new Html5Qrcode("qr-reader-container");
+      scannerRef.current = scanner;
+      const decodedText = await scanner.scanFile(file, true);
+      if (!mountedRef.current || handledRef.current) return;
+
+      handledRef.current = true;
+      setScanned(true);
+      onScanRef.current(decodedText);
+      if (navigator.vibrate) navigator.vibrate(200);
+    } catch {
+      if (mountedRef.current) {
+        setError("No readable QR code was found in that image. Try a clearer screenshot or photo.");
+      }
+    } finally {
+      if (mountedRef.current) setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   }, [stopCamera]);
 
   useEffect(() => {
@@ -195,8 +234,30 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
       </div>
 
       {/* Footer */}
-      <div className="bg-gradient-to-t from-black/70 to-transparent p-3 text-center">
-        <p className="text-xs text-white/50">Point your camera at the booking QR code</p>
+      <div className="space-y-2 bg-gradient-to-t from-black/70 to-transparent p-3 text-center">
+        <p className="text-xs text-white/50">Point your camera at the booking QR code or upload a saved screenshot.</p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          aria-label="Upload QR code image"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void scanUploadedImage(file);
+          }}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          {uploading ? "Reading QR..." : "Upload QR Image"}
+        </Button>
       </div>
 
       <style jsx global>{`

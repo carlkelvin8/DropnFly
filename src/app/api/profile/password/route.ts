@@ -10,8 +10,8 @@ export async function PUT(req: Request) {
   }
   try {
     const { currentPassword, newPassword } = await req.json();
-    if (!currentPassword || !newPassword || newPassword.length < 6) {
-      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+    if (!currentPassword || typeof newPassword !== "string" || newPassword.length < 10 || newPassword.length > 128) {
+      return NextResponse.json({ error: "Password must be between 10 and 128 characters" }, { status: 400 });
     }
     const user = await prisma.user.findUnique({ where: { id: session.user.id } });
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -20,7 +20,7 @@ export async function PUT(req: Request) {
     if (!valid) return NextResponse.json({ error: "Current password is incorrect" }, { status: 400 });
     
     const hashed = await bcrypt.hash(newPassword, 12);
-    await prisma.user.update({ where: { id: session.user.id }, data: { password: hashed, passwordChangedAt: new Date() } });
+    await prisma.user.update({ where: { id: session.user.id }, data: { password: hashed, passwordChangedAt: new Date(), authVersion: { increment: 1 } } });
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: "Failed to update password" }, { status: 500 });

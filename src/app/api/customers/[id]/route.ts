@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { hasStaffRole } from "@/lib/staff-access";
+import { customerSchema } from "@/lib/validations";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -22,13 +25,14 @@ export async function GET(
         },
       },
     },
+    omit: { password: true },
   });
 
   if (!customer) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(customer);
+  return NextResponse.json(decimalsToNumbers(customer));
 }
 
 export async function PUT(
@@ -36,20 +40,24 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {
     const { id } = await params;
     const body = await req.json();
+    const parsed = customerSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message || "Invalid customer data" },
+        { status: 400 }
+      );
+    }
     const customer = await prisma.customer.update({
       where: { id },
-      data: {
-        name: body.name,
-        email: body.email,
-        phone: body.phone,
-      },
+      data: parsed.data,
+      omit: { password: true },
     });
 
     return NextResponse.json(customer);
@@ -68,13 +76,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {
     const { id } = await params;
-    await prisma.customer.delete({ where: { id } });
+    await prisma.customer.update({ where: { id }, data: { isActive: false, authVersion: { increment: 1 } } });
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json(

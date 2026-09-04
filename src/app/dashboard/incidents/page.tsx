@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRelativeTime } from "@/lib/utils";
+import { Pagination } from "@/components/ui/pagination";
 import {
   AlertTriangle,
   ChevronRight,
@@ -72,6 +73,8 @@ const typeIcons: Record<string, string> = {
   other: "📋",
 };
 
+const INCIDENTS_PER_PAGE = 8;
+
 export default function IncidentsPage() {
   const [data, setData] = useState<IncidentsResponse | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
@@ -84,7 +87,12 @@ export default function IncidentsPage() {
     if (statusFilter) params.set("status", statusFilter);
     if (priorityFilter) params.set("priority", priorityFilter);
     params.set("page", String(page));
-    fetch(`/api/incidents?${params}`)
+    params.set("limit", String(INCIDENTS_PER_PAGE));
+
+    // Fire-and-forget auto-flag in the background so it never blocks the list.
+    fetch("/api/incidents/auto-flag", { method: "POST" }).catch(() => null);
+
+    fetch(`/api/incidents?${params}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => setData(d))
       .catch(() => {})
@@ -133,19 +141,19 @@ export default function IncidentsPage() {
       <Card className="border-t-2 border-t-red-500 shadow-md">
         <CardContent className="p-0">
           {loading ? (
-            <div className="space-y-3 p-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
+            <div className="space-y-3 p-4 min-h-[520px]">
+              {Array.from({ length: INCIDENTS_PER_PAGE }).map((_, i) => (
+                <Skeleton key={i} className="h-[64px] w-full" />
               ))}
             </div>
           ) : data?.incidents.length === 0 ? (
-            <div className="flex flex-col items-center py-12 text-muted-foreground">
+            <div className="flex min-h-[520px] flex-col items-center justify-center py-12 text-muted-foreground">
               <AlertTriangle className="mb-2 h-8 w-8" />
               <p className="text-sm font-medium">No incidents found</p>
               <p className="text-xs">All clear — no reported issues{data ? " match your filters" : ""}</p>
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y min-h-[520px]">
               {data?.incidents.map((inc) => (
                 <Link
                   key={inc.id}
@@ -193,19 +201,12 @@ export default function IncidentsPage() {
         </CardContent>
       </Card>
 
-      {data && data.totalPages > 1 && (
+      {data && (
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            Page {data.page} of {data.totalPages} ({data.total} entries)
+            Showing {(data.page - 1) * data.limit + 1}–{Math.min(data.page * data.limit, data.total)} of {data.total} {data.total === 1 ? "entry" : "entries"} · Page {data.page} of {data.totalPages || 1}
           </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={data.page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" disabled={data.page >= data.totalPages} onClick={() => setPage((p) => p + 1)}>
-              Next
-            </Button>
-          </div>
+          <Pagination currentPage={data.page} totalPages={data.totalPages} onPageChange={setPage} />
         </div>
       )}
     </div>

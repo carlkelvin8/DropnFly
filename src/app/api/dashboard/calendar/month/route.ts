@@ -29,6 +29,9 @@ export async function GET(req: NextRequest) {
 
     const bookings = await prisma.booking.findMany({
       where: {
+        ...(session.user.role === "EMPLOYEE"
+          ? { assignments: { some: { userId: session.user.id } } }
+          : {}),
         OR: [
           { checkIn: { gte: startOfMonth, lt: startOfNextMonth } },
           { checkOut: { gte: startOfMonth, lt: startOfNextMonth } },
@@ -51,7 +54,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ activeDates: dateMap });
   } catch (e) {
-    console.error("Calendar month API error:", e);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Calendar month API error:", e);
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

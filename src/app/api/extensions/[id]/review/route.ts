@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { isBookingLocked } from "@/lib/booking-access";
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,8 +14,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const { status } = body;
     if (!["APPROVED", "REJECTED"].includes(status)) return new NextResponse("Invalid status", { status: 400 });
 
-    const extension = await prisma.bookingExtension.findUnique({ where: { id } });
+    const extension = await prisma.bookingExtension.findUnique({
+      where: { id },
+      include: { booking: { select: { status: true } } },
+    });
     if (!extension) return new NextResponse("Extension not found", { status: 404 });
+    if (isBookingLocked(extension.booking.status)) return new NextResponse("Cancelled and no-show bookings are locked", { status: 409 });
     if (extension.status !== "PENDING") return new NextResponse("Already reviewed", { status: 400 });
 
     const updated = await prisma.bookingExtension.update({

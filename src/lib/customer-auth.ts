@@ -1,9 +1,18 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { cookies } from "next/headers";
 
-const secret = new TextEncoder().encode(
-  process.env.CUSTOMER_JWT_SECRET || process.env.AUTH_SECRET || "customer-jwt-secret-dropnfly"
-);
+function getSecret() {
+  const secret = process.env.CUSTOMER_JWT_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("CUSTOMER_JWT_SECRET must be set in production");
+    }
+    return new TextEncoder().encode(
+      process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dev-only-customer-secret"
+    );
+  }
+  return new TextEncoder().encode(secret);
+}
 
 const COOKIE_NAME = "customer_token";
 
@@ -11,18 +20,19 @@ export interface CustomerJWT extends JWTPayload {
   id: string;
   email: string;
   name: string;
+  authVersion: number;
 }
 
 export async function signCustomerToken(payload: CustomerJWT) {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("30d")
-    .sign(secret);
+    .sign(getSecret());
 }
 
 export async function verifyCustomerToken(token: string): Promise<CustomerJWT | null> {
   try {
-    const { payload } = await jwtVerify(token, secret);
+    const { payload } = await jwtVerify(token, getSecret());
     return payload as unknown as CustomerJWT;
   } catch {
     return null;
@@ -33,7 +43,18 @@ export async function getCustomerSession(): Promise<CustomerJWT | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
-  return verifyCustomerToken(token);
+  const payload = await verifyCustomerToken(token);
+  if (!payload?.id) return null;
+
+  // JWTs are not sufficient authorization by themselves: account deactivation
+  // and deletion must take effect immediately, not after the 30-day expiry.
+  const { prisma } = await import("@/lib/prisma");
+  const customer = await prisma.customer.findUnique({
+    where: { id: payload.id },
+    select: { id: true, email: true, name: true, isActive: true, emailVerifiedAt: true, authVersion: true },
+  });
+  if (!customer?.isActive || !customer.emailVerifiedAt || customer.email !== payload.email || customer.authVersion !== payload.authVersion) return null;
+  return { ...payload, id: customer.id, email: customer.email, name: customer.name, authVersion: customer.authVersion };
 }
 
 export async function setCustomerCookie(token: string) {
@@ -49,5 +70,12 @@ export async function setCustomerCookie(token: string) {
 
 export async function clearCustomerCookie() {
   const cookieStore = await cookies();
-  cookieStore.delete(COOKIE_NAME);
+  // Use explicit maxAge 0 + path to ensure browser deletes cookie with same attributes
+  cookieStore.set(COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 0,
+    path: "/",
+  });
 }

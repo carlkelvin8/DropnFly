@@ -14,10 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import {
-  TrendingUp,
-  Package,
-  Users,
-  DollarSign,
   BarChart3,
   Brain,
   FileText,
@@ -25,9 +21,29 @@ import {
   AlertCircle,
   CreditCard,
   Download,
+  TrendingUp,
+  Package,
+  Users,
+  DollarSign,
+  Luggage,
+  PackagePlus,
+  Archive,
+  Wallet,
+  Undo2,
+  XCircle,
+  Star,
+  Globe2,
+  MapPin,
+  Store,
+  Warehouse,
+  UserPlus,
 } from "lucide-react";
+import { Bar, BarChart, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
+import RechartsLine from "@/components/dashboard/RechartsLine";
+import RechartsStatusBar from "@/components/dashboard/RechartsStatusBar";
+import RechartsHBar from "@/components/dashboard/RechartsHBar";
 
 interface Overview {
   totalBookings: number;
@@ -64,11 +80,17 @@ interface EmployeePerf {
   lastAssigned: string;
 }
 
-interface LocationStats {
-  name: string;
-  capacity: number;
-  used: number;
-  utilization: number;
+interface FinancialMetrics {
+  walkInsToday: number;
+  ongoingBagsInStorage: number;
+  bagsStoredToday: number;
+  totalBagsStoredMonthly: number;
+  storageUtilization: number;
+  outstandingBalance: number;
+  refundsIssued: number;
+  refundsAmount: number;
+  canceledNoShow: number;
+  customerSatisfaction: number;
 }
 
 interface Analytics {
@@ -78,7 +100,6 @@ interface Analytics {
   revenueByStatus: { status: string; revenue: number }[];
   hourlyDistribution: HourData[];
   employeePerformance: EmployeePerf[];
-  storageLocations: LocationStats[];
   bookingFrequency: { daily: number; period: string; fromDate?: string; toDate?: string };
   customerTrends: {
     totalCustomers: number;
@@ -86,6 +107,10 @@ interface Analytics {
     repeatCustomers: number;
     returnRate: number;
   };
+  bagBreakdown: { name: string; value: number }[];
+  cityDistribution: { name: string; value: number }[];
+  countryDistribution: { name: string; value: number }[];
+  financialMetrics: FinancialMetrics;
 }
 
 interface Payment {
@@ -101,16 +126,6 @@ interface Payment {
 
 type Tab = "overview" | "financial" | "reports";
 
-const statusDot: Record<string, string> = {
-  PENDING: "bg-yellow-500",
-  CONFIRMED: "bg-blue-500",
-  RECEIVED: "bg-purple-500",
-  IN_STORAGE: "bg-indigo-500",
-  OUT_FOR_DELIVERY: "bg-orange-500",
-  DELIVERED: "bg-green-500",
-  CANCELLED: "bg-red-500",
-};
-
 const tabs: { id: Tab; label: string; icon: typeof DollarSign }[] = [
   { id: "overview", label: "Graphical Data", icon: BarChart3 },
   { id: "financial", label: "Financial Oversight", icon: DollarSign },
@@ -125,6 +140,8 @@ export default function AnalyticsPage() {
   const [period, setPeriod] = useState("month");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState("");
 
   useEffect(() => {
     const abort = new AbortController();
@@ -134,21 +151,33 @@ export default function AnalyticsPage() {
       if (dateFrom) params.set("from", dateFrom);
       if (dateTo) params.set("to", dateTo);
     }
-    fetch(`/api/analytics?${params.toString()}`, { signal: abort.signal })
-      .then((r) => r.json())
-      .then((json) => { if (!abort.signal.aborted) setData(json); })
-      .catch(() => {});
+    fetch(`/api/analytics?${params.toString()}`, { signal: abort.signal, cache: "no-store" })
+      .then(async (r) => {
+        const json = await r.json();
+        if (!r.ok) throw new Error(json.error || "Failed to load analytics");
+        return json;
+      })
+      .then((json) => { if (!abort.signal.aborted) { setData(json); setAnalyticsError(""); } })
+      .catch((error) => { if (!abort.signal.aborted) setAnalyticsError(error instanceof Error ? error.message : "Failed to load analytics"); })
+      .finally(() => { if (!abort.signal.aborted) setAnalyticsLoading(false); });
     return () => abort.abort();
   }, [period, dateFrom, dateTo]);
 
   useEffect(() => {
     if (tab !== "financial") return;
-    fetch("/api/payments")
+    const params = new URLSearchParams();
+    const today = new Date();
+    const days = period === "week" ? 7 : period === "year" ? 365 : 30;
+    const effectiveFrom = period === "custom" ? dateFrom : new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10);
+    const effectiveTo = period === "custom" ? dateTo : today.toISOString().slice(0, 10);
+    if (effectiveFrom) params.set("from", effectiveFrom);
+    if (effectiveTo) params.set("to", effectiveTo);
+    fetch(`/api/payments?${params}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((p) => setPayments(Array.isArray(p) ? p : []))
       .catch(() => toast.error("Failed to load payments"))
       .finally(() => setPaymentsLoading(false));
-  }, [tab]);
+  }, [tab, period, dateFrom, dateTo]);
 
   const totalRevenue = payments.filter((p) => p.status === "PAID").reduce((sum, p) => sum + p.amount, 0);
   const pendingPayments = payments.filter((p) => p.status === "PENDING");
@@ -225,10 +254,14 @@ export default function AnalyticsPage() {
 
       {tab === "overview" && (
         <>
-          {!data ? (
+          {analyticsLoading ? (
             <div className="flex h-64 items-center justify-center text-muted-foreground">
               Loading analytics...
             </div>
+          ) : analyticsError ? (
+            <Card className="border-red-200"><CardContent className="flex h-48 flex-col items-center justify-center gap-2 text-red-600"><AlertCircle className="h-8 w-8" /><p className="font-medium">Analytics could not be loaded</p><p className="text-sm">{analyticsError}</p></CardContent></Card>
+          ) : !data ? (
+            <div className="flex h-64 items-center justify-center text-muted-foreground">No analytics data available.</div>
           ) : (
             <OverviewTab data={data} period={period} />
           )}
@@ -240,6 +273,8 @@ export default function AnalyticsPage() {
           payments={payments}
           loading={paymentsLoading}
           overview={data?.overview || null}
+          metrics={data?.financialMetrics || null}
+          customerTrends={data?.customerTrends || null}
           totalRevenue={totalRevenue}
           pendingCount={pendingPayments.length}
           pendingPayments={pendingPayments}
@@ -247,205 +282,200 @@ export default function AnalyticsPage() {
         />
       )}
 
-      {tab === "reports" && <ReportsTab />}
+      {tab === "reports" && <ReportsTab period={period} dateFrom={dateFrom} dateTo={dateTo} />}
     </div>
   );
 }
 
-function OverviewTab({ data, period }: { data: Analytics; period: string }) {
-  const { overview, bookingsByDay, hourlyDistribution, employeePerformance, customerTrends, storageLocations, revenueByStatus } = data;
-  const maxDailyCount = Math.max(...bookingsByDay.map((d) => d.count), 1);
-  const maxDailyRevenue = Math.max(...bookingsByDay.map((d) => d.revenue), 1);
-  const maxHourlyCount = Math.max(...hourlyDistribution.map((h) => h.count), 1);
+function OverviewTab({ data }: { data: Analytics; period: string }) {
+  const {
+    bookingsByDay,
+    hourlyDistribution,
+    employeePerformance,
+    bookingsByStatus,
+    bagBreakdown,
+    cityDistribution,
+    countryDistribution,
+  } = data;
   const maxEmployee = Math.max(...employeePerformance.map((e) => e.totalAssigned), 1);
-  const maxStatusRevenue = Math.max(...revenueByStatus.map((x) => x.revenue), 1);
+  const heatmapSource = bookingsByDay.slice(-84);
+  const heatmapCounts = new Map(heatmapSource.map((day) => [day.date, day.count]));
+  const latestHeatmapDate = heatmapSource.length
+    ? new Date(`${heatmapSource[heatmapSource.length - 1].date}T00:00:00`)
+    : new Date();
+  const heatmapEnd = new Date(latestHeatmapDate);
+  heatmapEnd.setDate(heatmapEnd.getDate() + ((7 - heatmapEnd.getDay()) % 7));
+  const heatmapStart = new Date(heatmapEnd);
+  heatmapStart.setDate(heatmapStart.getDate() - 83);
+  const heatmapWeeks = Array.from({ length: 12 }, (_, weekIndex) =>
+    Array.from({ length: 7 }, (_, dayIndex) => {
+      const date = new Date(heatmapStart);
+      date.setDate(date.getDate() + weekIndex * 7 + dayIndex);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      return { date, key, count: heatmapCounts.get(key) ?? 0 };
+    }),
+  );
+  const heatmapMonthLabels = heatmapWeeks.map((week, index) => {
+    const month = week[0].date.getMonth();
+    const previousMonth = index > 0 ? heatmapWeeks[index - 1][0].date.getMonth() : -1;
+    return month !== previousMonth
+      ? week[0].date.toLocaleDateString("en-PH", { month: "short" })
+      : "";
+  });
+  const heatmapPeak = Math.max(...heatmapSource.map((day) => day.count), 0);
+  const heatmapTotal = heatmapSource.reduce((sum, day) => sum + day.count, 0);
+  const heatmapActiveDays = heatmapSource.filter((day) => day.count > 0).length;
+  const heatmapPeakDay = heatmapSource.reduce<DayData | null>(
+    (peak, day) => (!peak || day.count > peak.count ? day : peak),
+    null,
+  );
+  const heatmapLevel = (count: number) => {
+    if (count === 0 || heatmapPeak === 0) return 0;
+    return Math.min(4, Math.max(1, Math.ceil((count / heatmapPeak) * 4)));
+  };
+  const heatmapColors = [
+    "bg-orange-50 dark:bg-orange-950/25",
+    "bg-orange-200 dark:bg-orange-900/70",
+    "bg-orange-300 dark:bg-orange-800",
+    "bg-orange-400 dark:bg-orange-700",
+    "bg-orange-600 dark:bg-orange-500",
+  ];
+
+  const peakHourData = hourlyDistribution.map((h) => ({
+    hourLabel: `${h.hour}:00`,
+    count: h.count,
+  }));
 
   return (
     <div className="space-y-6">
-      {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-t-2 border-t-blue-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
-            <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
-              <Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{overview.totalBookings}</div>
-            <p className="text-xs text-muted-foreground">
-              {overview.activeBookings} active
-            </p>
-          </CardContent>
-        </Card>
+      {/* Bookings & Revenue Trend (Line Graph) */}
+      <Card className="border-t-2 border-t-sky-500">
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Bookings & Revenue Trend (Line Graph)</CardTitle>
+          <CardDescription>Daily bookings and collected revenue over the selected period.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RechartsLine
+            data={bookingsByDay.slice(-30).map((d) => ({ date: d.date, bookings: d.count, revenue: d.revenue }))}
+            dataKeys={["bookings", "revenue"]}
+            labels={["Bookings", "Revenue"]}
+            colors={["#3b82f6", "#10b981"]}
+          />
+        </CardContent>
+      </Card>
 
-        <Card className="border-t-2 border-t-green-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
-            <div className="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
-              <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {formatCurrency(overview.totalRevenue)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Avg {formatCurrency(overview.averagePrice)} per booking
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-t-2 border-t-violet-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Customers</CardTitle>
-            <div className="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
-              <Users className="h-4 w-4 text-violet-600 dark:text-violet-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{overview.totalCustomers}</div>
-            <p className="text-xs text-muted-foreground">
-              {overview.newCustomers} new this {period}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-t-2 border-t-cyan-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Storage Utilization
-            </CardTitle>
-            <div className="rounded-lg bg-cyan-100 p-2 dark:bg-cyan-900/30">
-              <BarChart3 className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {overview.storageUtilization.toFixed(1)}%
-            </div>
-            <div className="mt-2 h-2 rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all"
-                style={{ width: `${Math.min(overview.storageUtilization, 100)}%` }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* Booking Status Breakdown + Baggage Breakdown */}
       <div className="grid gap-4 md:grid-cols-2">
-        {/* Bookings Over Time */}
-        <Card className="border-t-2 border-t-blue-500">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Bookings Over Time</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-end gap-[3px] rounded-lg bg-muted/20 p-2" style={{ height: 160 }}>
-              {bookingsByDay.slice(-30).map((day, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t bg-gradient-to-t from-blue-600 to-blue-400 transition-all hover:from-blue-700 hover:to-blue-500"
-                  style={{
-                    height: `${(day.count / maxDailyCount) * 100}%`,
-                    minHeight: day.count > 0 ? 4 : 0,
-                  }}
-                  title={`${day.date}: ${day.count} bookings (${formatCurrency(day.revenue)})`}
-                />
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Last {bookingsByDay.length} days &middot;{" "}
-              {data.bookingFrequency.daily.toFixed(1)} avg per day
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Revenue Over Time */}
-        <Card className="border-t-2 border-t-green-500">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Revenue Over Time</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-end gap-[3px] rounded-lg bg-muted/20 p-2" style={{ height: 160 }}>
-              {bookingsByDay.slice(-30).map((day, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t bg-gradient-to-t from-emerald-600 to-emerald-400 transition-all hover:from-emerald-700 hover:to-emerald-500"
-                  style={{
-                    height: `${(day.revenue / maxDailyRevenue) * 100}%`,
-                    minHeight: day.revenue > 0 ? 4 : 0,
-                  }}
-                  title={`${day.date}: ${formatCurrency(day.revenue)}`}
-                />
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Daily revenue for last {bookingsByDay.length} days
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Hourly Distribution */}
-        <Card className="border-t-2 border-t-emerald-500">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Peak Booking Hours</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-end gap-[3px] rounded-lg bg-muted/20 p-2" style={{ height: 160 }}>
-              {hourlyDistribution.map((h, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t bg-gradient-to-t from-emerald-600 to-emerald-400 transition-all hover:from-emerald-700 hover:to-emerald-500"
-                  style={{
-                    height: `${(h.count / maxHourlyCount) * 100}%`,
-                    minHeight: h.count > 0 ? 4 : 0,
-                  }}
-                  title={`${h.hour}:00 - ${h.count} bookings`}
-                />
-              ))}
-            </div>
-            <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-              <span>00:00</span>
-              <span>12:00</span>
-              <span>23:00</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Revenue by Status */}
         <Card className="border-t-2 border-t-indigo-500">
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Revenue by Status</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <BarChart3 className="h-4 w-4" />
+              Booking Status Breakdown
+            </CardTitle>
+            <CardDescription>Count of bookings by current status with proportional share.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-end gap-3 rounded-lg bg-muted/20 p-2" style={{ height: 160 }}>
-              {revenueByStatus.map((s) => (
-                <div
-                  key={s.status}
-                  className="flex h-full flex-1 flex-col items-center justify-end gap-1"
-                >
-                  <span className="text-[10px] font-semibold text-muted-foreground">{formatCurrency(s.revenue)}</span>
-                  <div
-                    className="w-full max-w-[40px] rounded-t bg-gradient-to-t from-indigo-600 to-indigo-400 transition-all hover:from-indigo-700 hover:to-indigo-500"
-                    style={{ height: `${Math.max((s.revenue / maxStatusRevenue) * 100, 4)}%` }}
-                    title={`${s.status}: ${formatCurrency(s.revenue)}`}
-                  />
-                  <span className="max-w-[70px] truncate text-[9px] text-muted-foreground">{s.status.replace(/_/g, " ")}</span>
-                </div>
-              ))}
-            </div>
+            {bookingsByStatus.length > 0 ? (
+              <RechartsStatusBar
+                data={bookingsByStatus.map((s) => ({ name: s.status, value: s.count }))}
+              />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-t-2 border-t-amber-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Luggage className="h-4 w-4" />
+              Baggage / Luggage Breakdown
+            </CardTitle>
+            <CardDescription>Distribution of stored luggage by size type.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {bagBreakdown.length > 0 ? (
+              <RechartsHBar data={bagBreakdown} unit="bags" />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
+            )}
           </CardContent>
         </Card>
       </div>
 
+      {/* City + Country */}
       <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-t-2 border-t-cyan-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <MapPin className="h-4 w-4" />
+              Customer City Distribution
+            </CardTitle>
+            <CardDescription>Bookings grouped by customer&apos;s city of origin.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {cityDistribution.length > 0 ? (
+              <RechartsHBar data={cityDistribution} unit="bookings" />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-t-2 border-t-emerald-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Globe2 className="h-4 w-4" />
+              Customer Country Distribution
+            </CardTitle>
+            <CardDescription>Bookings grouped by customer&apos;s country of origin.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {countryDistribution.length > 0 ? (
+              <RechartsHBar data={countryDistribution} unit="bookings" />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Peak Hours + Employee Performance */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-t-2 border-t-emerald-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Store className="h-4 w-4" />
+              Peak Booking Hours
+            </CardTitle>
+            <CardDescription>Bookings by check-in hour across the selected period.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={peakHourData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="hourLabel" tick={{ fontSize: 10 }} interval={2} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
+                  <Tooltip
+                    cursor={{ fill: "var(--muted)", opacity: 0.5 }}
+                    formatter={(value) => [`${value} booking${Number(value) !== 1 ? "s" : ""}`, "Count"]}
+                    contentStyle={{ borderRadius: "8px", border: "1px solid var(--border)", fontSize: "12px" }}
+                  />
+                  <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Employee Performance */}
         <Card className="border-t-2 border-t-violet-500">
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Employee Performance</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Users className="h-4 w-4" />
+              Employee Performance
+            </CardTitle>
+            <CardDescription>Assignments completed by each employee in the selected period.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {employeePerformance.slice(0, 5).map((emp, i) => (
@@ -472,19 +502,151 @@ function OverviewTab({ data, period }: { data: Analytics; period: string }) {
             {employeePerformance.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
                 <Users className="h-8 w-8" />
-                <p className="text-sm">No data yet</p>
+                <p className="text-sm">No employee performance data available.</p>
               </div>
             )}
           </CardContent>
         </Card>
+      </div>
 
-        {/* Customer Trends */}
+      {/* Booking Activity Heatmap */}
+      <Card className="overflow-hidden border-t-2 border-t-orange-500">
+        <CardHeader className="gap-5 pb-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="text-sm font-semibold">Booking Activity Heatmap</CardTitle>
+            <CardDescription className="mt-1">Bookings per day — last 12 weeks</CardDescription>
+          </div>
+          <div className="grid grid-cols-3 gap-6 text-center sm:gap-9">
+            <div><p className="text-xl font-bold text-orange-500">{heatmapPeak}</p><p className="text-[10px] text-muted-foreground">Peak Bookings</p></div>
+            <div><p className="text-xl font-bold">{(heatmapTotal / 84).toFixed(1)}</p><p className="text-[10px] text-muted-foreground">Daily Avg</p></div>
+            <div><p className="text-xl font-bold">{heatmapActiveDays}</p><p className="text-[10px] text-muted-foreground">Active Days</p></div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto pb-1">
+            <div className="min-w-[470px] max-w-[660px]">
+              <div className="mb-1 grid grid-cols-[32px_repeat(12,minmax(0,1fr))] gap-1.5 text-[10px] text-muted-foreground">
+                <span aria-hidden="true" />
+                {heatmapMonthLabels.map((month, index) => <span key={`${month}-${index}`}>{month}</span>)}
+              </div>
+              <div className="grid grid-cols-[32px_repeat(12,minmax(0,1fr))] gap-1.5" role="img" aria-label="Booking activity heatmap for the last 12 weeks">
+                <div className="grid grid-rows-7 gap-1.5 text-[10px] leading-4 text-muted-foreground">
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span key={day}>{day}</span>)}
+                </div>
+                {heatmapWeeks.map((week, weekIndex) => (
+                  <div key={weekIndex} className="grid grid-rows-7 gap-1.5">
+                    {week.map((day) => (
+                      <span
+                        key={day.key}
+                        className={`h-4 rounded-[3px] border border-orange-600/5 transition-transform hover:scale-110 ${heatmapColors[heatmapLevel(day.count)]}`}
+                        title={`${day.date.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}: ${day.count} bookings`}
+                        aria-label={`${day.key}: ${day.count} bookings`}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 border-t pt-3 text-[10px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-1.5"><span>Less</span>{heatmapColors.map((color, index) => <span key={color} className={`h-3.5 w-3.5 rounded-[3px] border border-orange-600/5 ${color}`} aria-label={`Intensity level ${index}`} />)}<span>More</span></div>
+            {heatmapPeakDay && <p>Peak: <span className="font-semibold text-orange-500">{heatmapPeakDay.count} bookings</span> on {new Date(`${heatmapPeakDay.date}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</p>}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function FinancialTab({
+  payments,
+  loading,
+  overview,
+  metrics,
+  customerTrends,
+  totalRevenue,
+  pendingCount,
+  pendingPayments,
+}: {
+  payments: Payment[];
+  loading: boolean;
+  overview: Overview | null;
+  metrics: FinancialMetrics | null;
+  customerTrends: Analytics["customerTrends"] | null;
+  totalRevenue: number;
+  pendingCount: number;
+  pendingPayments: Payment[];
+  period: string;
+}) {
+  const paidPayments = payments.filter((p) => p.status === "PAID");
+  const refundedPayments = payments.filter((p) => p.status === "REFUNDED");
+  const methodTotals = Array.from(
+    paidPayments.reduce((map, p) => {
+      const key = p.method || "OTHER";
+      map.set(key, (map.get(key) || 0) + p.amount);
+      return map;
+    }, new Map<string, number>())
+  ).sort((a, b) => b[1] - a[1]);
+  const maxMethodTotal = Math.max(...methodTotals.map(([, amt]) => amt), 1);
+  const collectibleAmount = totalRevenue + pendingPayments.reduce((sum, payment) => sum + payment.amount, 0);
+
+  const today = new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric" });
+  const monthLabel = new Date().toLocaleDateString("en-PH", { month: "long" });
+
+  const metricCards = [
+    { label: "Walk-ins Today", sub: `as of ${today}`, value: metrics?.walkInsToday.toLocaleString() || "0", display: "number", color: "border-t-cyan-500", icon: UserPlus, iconBg: "bg-cyan-100 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400" },
+    { label: "Ongoing Bags in Storage", sub: "currently in storage", value: metrics?.ongoingBagsInStorage.toLocaleString() || "0", display: "number", color: "border-t-indigo-500", icon: Luggage, iconBg: "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400" },
+    { label: "Bags Stored Today", sub: `as of ${today}`, value: metrics?.bagsStoredToday.toLocaleString() || "0", display: "number", color: "border-t-blue-500", icon: PackagePlus, iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
+    { label: "Total Bags Stored (Monthly)", sub: `for ${monthLabel}`, value: metrics?.totalBagsStoredMonthly.toLocaleString() || "0", display: "number", color: "border-t-violet-500", icon: Archive, iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" },
+    { label: "Storage Utilization", sub: "of configured capacity", value: `${(metrics?.storageUtilization || 0).toFixed(1)}%`, display: "progress", color: "border-t-orange-500", icon: Warehouse, iconBg: "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" },
+    { label: "Outstanding Balance", sub: "all open (pending) payments", value: formatCurrency(metrics?.outstandingBalance || 0), display: "number", color: "border-t-amber-500", icon: Wallet, iconBg: "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" },
+    { label: "Refunds Issued", sub: metrics ? `${formatCurrency(metrics.refundsAmount)} total` : "no refunds", value: metrics?.refundsIssued.toLocaleString() || "0", display: "number", color: "border-t-rose-500", icon: Undo2, iconBg: "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400" },
+    { label: "Canceled / No-Show", sub: "for selected period", value: metrics?.canceledNoShow.toLocaleString() || "0", display: "number", color: "border-t-red-500", icon: XCircle, iconBg: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" },
+    { label: "Customer Satisfaction", sub: "avg rating · selected period", value: metrics && metrics.customerSatisfaction > 0 ? `${metrics.customerSatisfaction.toFixed(1)} / 5` : null, display: "number", color: "border-t-emerald-500", icon: Star, iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" },
+  ];
+
+  const satisfactionNoData = !metrics || metrics.customerSatisfaction <= 0;
+
+  return (
+    <div className="space-y-6">
+      {/* Moved from Graphical Data: numeric KPIs belong in Financial Oversight */}
+      {overview && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[
+            { label: "Bookings", value: overview.totalBookings.toLocaleString(), detail: `${overview.activeBookings} currently active`, color: "border-t-blue-500", icon: Package, iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
+            { label: "Collected Revenue", value: formatCurrency(overview.totalRevenue), detail: `${formatCurrency(overview.averagePrice)} average payment`, color: "border-t-emerald-500", icon: DollarSign, iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" },
+            { label: "Average Bags", value: overview.averageBags.toFixed(1), detail: "per booking in selected period", color: "border-t-violet-500", icon: Luggage, iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" },
+            { label: "Storage Utilization", value: `${overview.storageUtilization.toFixed(1)}%`, detail: `${overview.newCustomers} new customers`, color: "border-t-orange-500", icon: Warehouse, iconBg: "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" },
+          ].map((metric) => {
+            const Icon = metric.icon;
+            return (
+              <Card key={metric.label} className={`border-t-2 ${metric.color}`}>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground">{metric.label}</CardTitle>
+                  <div className={`rounded-lg p-2 ${metric.iconBg}`}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{metric.value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{metric.detail}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {customerTrends && (
         <Card className="border-t-2 border-t-amber-500">
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Customer Trends</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Users className="h-4 w-4" />
+              Customer Trends
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
                 <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
                   <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -496,9 +658,7 @@ function OverviewTab({ data, period }: { data: Analytics; period: string }) {
                 <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
                   <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
                 </div>
-                <p className="text-2xl font-bold">
-                  {customerTrends.returnRate.toFixed(1)}%
-                </p>
+                <p className="text-2xl font-bold">{customerTrends.returnRate.toFixed(1)}%</p>
                 <p className="text-xs text-muted-foreground">Return Rate</p>
               </div>
               <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
@@ -512,108 +672,47 @@ function OverviewTab({ data, period }: { data: Analytics; period: string }) {
                 <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/30">
                   <Users className="h-5 w-5 text-violet-600 dark:text-violet-400" />
                 </div>
-                <p className="text-2xl font-bold">
-                  {customerTrends.repeatCustomers}
-                </p>
+                <p className="text-2xl font-bold">{customerTrends.repeatCustomers}</p>
                 <p className="text-xs text-muted-foreground">Repeat Customers</p>
               </div>
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Operational & financial metric grid */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+        {metricCards.map((m) => {
+          const Icon = m.icon;
+          return (
+            <Card key={m.label} className={`border-t-2 ${m.color}`}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{m.label}</CardTitle>
+                <div className={`rounded-lg p-2 ${m.iconBg}`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {m.label === "Customer Satisfaction" && satisfactionNoData ? (
+                  <div className="text-sm font-medium text-muted-foreground">No customer feedback available yet.</div>
+                ) : (
+                  <div className="text-2xl font-bold">{m.value}</div>
+                )}
+                {m.display === "progress" && (
+                  <div className="mt-2 h-2 w-full rounded-full bg-muted">
+                    <div
+                      className="h-2 rounded-full bg-gradient-to-r from-orange-400 to-orange-500"
+                      style={{ width: `${Math.min(Math.max(metrics?.storageUtilization || 0, 0), 100)}%` }}
+                    />
+                  </div>
+                )}
+                <p className={`mt-1 text-xs ${m.display === "progress" ? "text-orange-600" : "text-muted-foreground"}`}>{m.sub}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      {/* Booking Status Breakdown */}
-      <Card className="border-t-2 border-t-indigo-500">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Booking Status Breakdown</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {data.bookingsByStatus.map((s) => (
-              <Badge
-                key={s.status}
-                variant="secondary"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium"
-              >
-                <span className={`h-2 w-2 rounded-full ${statusDot[s.status] || "bg-gray-400"}`} />
-                {s.status.replace(/_/g, " ")}
-                <span className="ml-0.5 rounded-full bg-background px-2 py-0.5 text-xs font-bold">
-                  {s.count}
-                </span>
-              </Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Storage Locations Utilization */}
-      <Card className="border-t-2 border-t-cyan-500">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Storage Locations Utilization</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {storageLocations.length === 0 && (
-            <div className="py-8 text-center text-muted-foreground">
-              <BarChart3 className="mx-auto mb-2 h-8 w-8 text-gray-300" />
-              <p className="text-sm">No storage data yet</p>
-            </div>
-          )}
-          {storageLocations.map((loc) => (
-            <div key={loc.name}>
-              <div className="mb-1.5 flex justify-between text-sm">
-                <span className="font-medium">{loc.name}</span>
-                <span className="text-muted-foreground">
-                  {loc.used}/{loc.capacity} slots &middot; {loc.utilization.toFixed(0)}%
-                </span>
-              </div>
-              <div className="h-2.5 w-full rounded-full bg-muted">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    loc.utilization > 85
-                      ? "bg-gradient-to-r from-red-500 to-rose-500"
-                      : loc.utilization > 60
-                        ? "bg-gradient-to-r from-amber-400 to-orange-500"
-                        : "bg-gradient-to-r from-cyan-400 to-blue-500"
-                  }`}
-                  style={{ width: `${Math.min(loc.utilization, 100)}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function FinancialTab({
-  payments,
-  loading,
-  overview,
-  totalRevenue,
-  pendingCount,
-  pendingPayments,
-}: {
-  payments: Payment[];
-  loading: boolean;
-  overview: Overview | null;
-  totalRevenue: number;
-  pendingCount: number;
-  pendingPayments: Payment[];
-  period: string;
-}) {
-  const paidPayments = payments.filter((p) => p.status === "PAID");
-  const methodTotals = Array.from(
-    payments.reduce((map, p) => {
-      const key = p.method || "OTHER";
-      map.set(key, (map.get(key) || 0) + p.amount);
-      return map;
-    }, new Map<string, number>())
-  ).sort((a, b) => b[1] - a[1]);
-  const maxMethodTotal = Math.max(...methodTotals.map(([, amt]) => amt), 1);
-
-  return (
-    <div className="space-y-6">
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <Card className="border-t-2 border-t-green-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -689,13 +788,13 @@ function FinancialTab({
                   <div className="mb-1.5 flex justify-between text-sm">
                     <span className="font-medium">{method}</span>
                     <span className="font-semibold text-muted-foreground">
-                      {formatCurrency(amt)} &middot; {((amt / maxMethodTotal) * 100).toFixed(0)}%
+                      {formatCurrency(amt)} &middot; {totalRevenue > 0 ? ((amt / totalRevenue) * 100).toFixed(0) : 0}%
                     </span>
                   </div>
                   <div className="h-2.5 w-full rounded-full bg-muted">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400"
-                      style={{ width: `${(amt / maxMethodTotal) * 100}%` }}
+                      style={{ width: `${Math.max((amt / maxMethodTotal) * 100, 2)}%` }}
                     />
                   </div>
                 </div>
@@ -724,11 +823,15 @@ function FinancialTab({
               </span>
             </div>
             <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+              <span className="text-muted-foreground">Refunded</span>
+              <span className="font-bold text-red-600">{formatCurrency(refundedPayments.reduce((sum, payment) => sum + payment.amount, 0))}</span>
+            </div>
+            <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
               <span className="text-muted-foreground">Collection rate</span>
               <span className="font-bold">
-                {payments.length === 0
+                {collectibleAmount === 0
                   ? "0%"
-                  : `${((totalRevenue / payments.reduce((sum, p) => sum + p.amount, 0)) * 100).toFixed(1)}%`}
+                  : `${((totalRevenue / collectibleAmount) * 100).toFixed(1)}%`}
               </span>
             </div>
           </CardContent>
@@ -752,7 +855,7 @@ function FinancialTab({
               <p>No payments yet</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="max-h-[460px] overflow-auto">
               <table className="w-full text-sm">
                 <thead className="border-b bg-muted/50">
                   <tr>
@@ -768,7 +871,7 @@ function FinancialTab({
                   {payments.slice(0, 10).map((p) => (
                     <tr key={p.id} className="hover:bg-muted/30">
                       <td className="px-4 py-3 font-medium">{p.booking.referenceNumber}</td>
-                      <td className="px-4 py-3">{p.customer.name}</td>
+                      <td className="px-4 py-3">{p.customer.name.split(" ").map((part) => `${part.charAt(0)}${"•".repeat(Math.max(part.length - 1, 1))}`).join(" ")}</td>
                       <td className="px-4 py-3 font-semibold">{formatCurrency(p.amount)}</td>
                       <td className="px-4 py-3">{p.method}</td>
                       <td className="px-4 py-3">
@@ -791,27 +894,31 @@ function FinancialTab({
   );
 }
 
-function ReportsTab() {
+function ReportsTab({ period, dateFrom, dateTo }: { period: string; dateFrom: string; dateTo: string }) {
   return (
     <div className="space-y-8">
-      <AiReportsSection />
-      <CsvReportsSection />
+      <AiReportsSection period={period} dateFrom={dateFrom} dateTo={dateTo} />
+      <CsvReportsSection period={period} dateFrom={dateFrom} dateTo={dateTo} />
     </div>
   );
 }
 
-function AiReportsSection() {
+function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFrom: string; dateTo: string }) {
   const [reportType, setReportType] = useState<"descriptive" | "predictive" | "financial">("descriptive");
   const [report, setReport] = useState<{ title: string; summary: string; sections: { heading: string; content: string }[]; generatedAt: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   async function generateReport() {
     setLoading(true);
     setError("");
     setReport(null);
     try {
-      const res = await fetch(`/api/analytics/reports?type=${reportType}`);
+      const params = new URLSearchParams({ type: reportType, period });
+      if (period === "custom" && dateFrom) params.set("from", dateFrom);
+      if (period === "custom" && dateTo) params.set("to", dateTo);
+      const res = await fetch(`/api/analytics/reports?${params}`);
       if (!res.ok) {
         const err = await res.json();
         setError(err.error || "Failed to generate report");
@@ -826,23 +933,51 @@ function AiReportsSection() {
     }
   }
 
+  async function downloadPdf() {
+    if (!report) return;
+    setPdfLoading(true);
+    try {
+      const res = await fetch("/api/analytics/reports/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(report),
+      });
+      if (!res.ok) throw new Error();
+      const url = URL.createObjectURL(await res.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `dropnfly-${reportType}-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success("PDF report downloaded");
+    } catch {
+      toast.error("Failed to download PDF report");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   const reportTypes = [
-    { id: "descriptive" as const, label: "Descriptive", desc: "Past performance analysis", icon: FileText, color: "border-t-blue-500", iconBg: "bg-blue-100 text-blue-600" },
-    { id: "predictive" as const, label: "Predictive", desc: "Future trend forecasts", icon: TrendingUp, color: "border-t-violet-500", iconBg: "bg-violet-100 text-violet-600" },
-    { id: "financial" as const, label: "Financial", desc: "Revenue & profitability", icon: DollarSign, color: "border-t-emerald-500", iconBg: "bg-emerald-100 text-emerald-600" },
+    { id: "descriptive" as const, label: "Descriptive", desc: "Past performance analysis", icon: FileText, color: "border-blue-500", ring: "ring-blue-500", iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400", bar: "bg-blue-500" },
+    { id: "predictive" as const, label: "Predictive", desc: "Future trend forecasts", icon: TrendingUp, color: "border-violet-500", ring: "ring-violet-500", iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400", bar: "bg-violet-500" },
+    { id: "financial" as const, label: "Financial", desc: "Revenue & profitability", icon: DollarSign, color: "border-emerald-500", ring: "ring-emerald-500", iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400", bar: "bg-emerald-500" },
   ];
+  const selected = reportTypes.find((rt) => rt.id === reportType)!;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">AI Reports</h2>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">AI-Generated Reports</h2>
+          <p className="text-sm text-muted-foreground">Data-backed reports generated on demand by Gemini AI for the selected period.</p>
+        </div>
         <Badge variant="secondary" className="gap-1.5 px-2.5 py-1">
           <Brain className="h-3.5 w-3.5" />
           Gemini AI
         </Badge>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-3">
         {reportTypes.map((rt) => {
           const Icon = rt.icon;
           const isActive = reportType === rt.id;
@@ -850,10 +985,11 @@ function AiReportsSection() {
             <button
               key={rt.id}
               onClick={() => { setReportType(rt.id); setReport(null); setError(""); }}
-              className={`rounded-xl border-2 p-4 text-left transition-all hover:shadow-md ${
-                isActive ? `${rt.color} shadow-md bg-muted/20` : "border-transparent"
+              className={`relative overflow-hidden rounded-xl border-2 p-4 text-left transition-all hover:shadow-md ${
+                isActive ? `${rt.color} bg-muted/30 shadow-md ring-2 ring-offset-1 ${rt.ring}` : "border-muted bg-card hover:border-muted-foreground/30"
               }`}
             >
+              <span className={`absolute inset-x-0 top-0 h-1 ${rt.bar}`} />
               <div className="flex items-center gap-3">
                 <div className={`rounded-lg p-2 ${rt.iconBg}`}>
                   <Icon className="h-5 w-5" />
@@ -868,13 +1004,26 @@ function AiReportsSection() {
         })}
       </div>
 
-      <Button onClick={generateReport} disabled={loading} className="w-full sm:w-auto">
-        {loading ? (
-          <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Generating...</>
-        ) : (
-          <><Brain className="mr-2 h-4 w-4" /> Generate {reportTypes.find((r) => r.id === reportType)?.label} Report</>
-        )}
-      </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className={`rounded-lg p-2 ${selected.iconBg}`}>
+            <selected.icon className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="font-semibold text-sm">{selected.label} Report</p>
+            <p className="text-xs text-muted-foreground">
+              Period: {period === "custom" ? `${dateFrom || "—"} to ${dateTo || "—"}` : period.charAt(0).toUpperCase() + period.slice(1)}
+            </p>
+          </div>
+        </div>
+        <Button onClick={generateReport} disabled={loading}>
+          {loading ? (
+            <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Generating...</>
+          ) : (
+            <><Brain className="mr-2 h-4 w-4" /> Generate Report</>
+          )}
+        </Button>
+      </div>
 
       {error && (
         <Card className="border-t-2 border-t-yellow-500">
@@ -888,45 +1037,152 @@ function AiReportsSection() {
         </Card>
       )}
 
-      {report && (
-        <Card className="border-t-2 border-t-primary shadow-md">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <FileText className="h-4 w-4 text-primary" />
-                {report.title}
-              </CardTitle>
-              <span className="text-[10px] text-muted-foreground">
-                Generated {new Date(report.generatedAt).toLocaleString()}
-              </span>
+      {loading && (
+        <div className="grid gap-3">
+          <div className="h-32 animate-pulse rounded-xl bg-muted/50" />
+          <div className="h-48 animate-pulse rounded-xl bg-muted/50" />
+        </div>
+      )}
+
+      {!report && !loading && !error && (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-3 py-14 text-center text-muted-foreground">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+              <FileText className="h-7 w-7 text-muted-foreground/60" />
             </div>
-            <CardDescription className="text-sm leading-relaxed">
-              {report.summary}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {report.sections.map((section, i) => (
-              <div key={i} className="rounded-lg border bg-muted/20 p-4">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                    {i + 1}
-                  </span>
-                  <h4 className="font-medium text-sm">{section.heading}</h4>
-                </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">{section.content}</p>
-              </div>
-            ))}
+            <div>
+              <p className="font-medium text-foreground">No report generated yet</p>
+              <p className="text-sm">Pick a report type and click Generate to create your report.</p>
+            </div>
           </CardContent>
         </Card>
+      )}
+
+      {report && (
+        <div className="space-y-5">
+          {/* Report Header — organized & detailed for decision making */}
+          <Card className="overflow-hidden border-t-4 shadow-lg" style={{ borderTopColor: selected.bar.replace('bg-','') } as React.CSSProperties}>
+            <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-6 py-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className={`gap-1.5 ${selected.iconBg} border-0`}>
+                      <selected.icon className="h-3.5 w-3.5" />
+                      {selected.label}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs font-normal">
+                      Period: {period === "custom" ? `${dateFrom || "—"} → ${dateTo || "—"}` : period.charAt(0).toUpperCase() + period.slice(1)}
+                    </Badge>
+                    <span className="text-[11px] text-muted-foreground">Generated {new Date(report.generatedAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}</span>
+                  </div>
+                  <h3 className="mt-2 text-xl font-bold tracking-tight">{report.title}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">For admin decision-making — grounded in the selected period’s live data. Verify figures in Financial Oversight before acting.</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={downloadPdf} disabled={pdfLoading} className="shadow-sm">
+                    <Download className="mr-2 h-4 w-4" />{pdfLoading ? "Preparing PDF…" : "Download PDF"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <CardContent className="space-y-5 p-6">
+              {/* Executive Summary — detailed */}
+              <div className="rounded-xl border-l-4 bg-muted/30 p-4" style={{ borderLeftColor: "hsl(var(--primary))" }}>
+                <div className="mb-1 flex items-center gap-2">
+                  <div className="rounded-md bg-primary/10 p-1.5">
+                    <FileText className="h-4 w-4 text-primary" />
+                  </div>
+                  <h4 className="text-sm font-bold">Executive Summary</h4>
+                  <Badge variant="secondary" className="ml-auto text-[10px]">Decision-ready</Badge>
+                </div>
+                <p className="text-sm leading-relaxed text-foreground/90">{report.summary}</p>
+              </div>
+
+              {/* Table of Contents — organized navigation */}
+              <div className="rounded-xl border bg-card p-4">
+                <h4 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  <BarChart3 className="h-3.5 w-3.5" />
+                  Report Contents
+                </h4>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {report.sections.map((s, i) => (
+                    <a key={i} href={`#report-section-${i}`} className="flex items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-sm transition-colors hover:bg-muted/40 hover:text-primary">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">{i + 1}</span>
+                      <span className="truncate font-medium">{s.heading}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              {/* Detailed Sections — organized with icons & hierarchy */}
+              <div className="space-y-4">
+                {report.sections.map((section, i) => {
+                  const isRecommendation = /recommend|action|decision/i.test(section.heading);
+                  const isRisk = /risk|limit|caveat/i.test(section.heading);
+                  const Icon = isRecommendation ? TrendingUp : isRisk ? AlertCircle : i === 0 ? Package : i === 1 ? DollarSign : i === 2 ? Warehouse : Users;
+                  return (
+                    <div
+                      key={i}
+                      id={`report-section-${i}`}
+                      className={`scroll-mt-6 rounded-xl border p-5 transition-shadow hover:shadow-sm ${isRecommendation ? "bg-amber-50/50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/50" : isRisk ? "bg-slate-50 border-slate-200 dark:bg-slate-900/30" : "bg-card"}`}
+                    >
+                      <div className="mb-3 flex items-start gap-3">
+                        <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${isRecommendation ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" : isRisk ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300" : "bg-primary/10 text-primary"}`}>
+                          <Icon className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="text-sm font-bold leading-tight">{section.heading}</h4>
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Section {i + 1} of {report.sections.length}</span>
+                          </div>
+                          <div className="mt-1 h-0.5 w-8 rounded bg-primary/20" />
+                        </div>
+                        <span className="hidden sm:inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">{i + 1}</span>
+                      </div>
+                      <div className="prose prose-sm max-w-none text-sm leading-relaxed text-muted-foreground">
+                        {section.content.split(/(?<=[.!?])\s+/).map((para, idx) => (
+                          <p key={idx} className={idx > 0 ? "mt-2" : ""}>{para}</p>
+                        ))}
+                      </div>
+                      {isRecommendation && (
+                        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                          <TrendingUp className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <span className="font-medium">For decision: prioritize, assign owner, and set a review date for each action before closing this report.</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Footer — detailed & decision-support */}
+              <div className="rounded-xl border bg-muted/20 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold"><AlertCircle className="h-3.5 w-3.5 text-muted-foreground" /> How to use this report</p>
+                    <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                      Cross-check figures in <span className="font-medium text-foreground">Financial Oversight</span> and <span className="font-medium text-foreground">Graphical Data</span>, reconcile pending collections, and validate capacity/staffing against the selected period before committing resources. Re-generate for another period to compare.
+                    </p>
+                  </div>
+                  <div className="text-right text-[11px] text-muted-foreground">
+                    <p>Report ID: {report.generatedAt.slice(0, 10)}-{reportType}</p>
+                    <p>Source: live bookings/payments • Not financial advice</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );
 }
 
-function CsvReportsSection() {
+function CsvReportsSection({ period, dateFrom, dateTo }: { period: string; dateFrom: string; dateTo: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [reportAnchor] = useState(() => Date.now());
 
   const reports = [
     { id: "bookings", label: "Bookings Report", description: "All bookings with customer and payment details", icon: Package, endpoint: "/api/reports/bookings", filename: "bookings" },
@@ -937,8 +1193,11 @@ function CsvReportsSection() {
   async function downloadReport(report: typeof reports[0]) {
     setDownloading(report.id);
     const params = new URLSearchParams();
-    if (from) params.set("from", from);
-    if (to) params.set("to", to);
+    const periodDays = period === "week" ? 7 : period === "year" ? 365 : 30;
+    const effectiveFrom = from || (period === "custom" ? dateFrom : new Date(reportAnchor - periodDays * 86400000).toISOString().slice(0, 10));
+    const effectiveTo = to || (period === "custom" ? dateTo : new Date(reportAnchor).toISOString().slice(0, 10));
+    if (effectiveFrom) params.set("from", effectiveFrom);
+    if (effectiveTo) params.set("to", effectiveTo);
     try {
       const res = await fetch(`${report.endpoint}?${params}`);
       if (!res.ok) throw new Error("Failed");

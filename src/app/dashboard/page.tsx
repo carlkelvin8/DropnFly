@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -22,8 +22,17 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+
+const RechartsBar = dynamic(() => import("@/components/dashboard/RechartsBar"), {
+  ssr: false,
+  loading: () => <div className="h-64 animate-pulse rounded-lg bg-muted/50" />,
+});
+const RechartsBagBar = dynamic(() => import("@/components/dashboard/RechartsBagBar"), {
+  ssr: false,
+  loading: () => <div className="h-64 animate-pulse rounded-lg bg-muted/50" />,
+});
 
 interface DashboardData {
   capacityUsage: { used: number; total: number; percent: number };
@@ -46,16 +55,8 @@ interface DashboardData {
 
 interface DayActivity {
   bookings: { referenceNumber: string; status: string; checkIn: string; checkOut: string; createdAt: string; numberOfBags: number }[];
-  activities: { action: string; entity: string; createdAt: string }[];
 }
 
-const BAG_COLORS: Record<string, string> = {
-  "Extra Small": "#d1d5db",
-  Small: "#3b7ac7",
-  Standard: "#ea7d3d",
-  Large: "#9ca3af",
-};
-const BAG_FALLBACK_COLORS = ["#ea7d3d", "#3b7ac7", "#9ca3af", "#e3f0fb"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function getDaysInMonth(year: number, month: number) {
@@ -73,11 +74,11 @@ export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState("");
   const [dayActivity, setDayActivity] = useState<DayActivity | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [activeDates, setActiveDates] = useState<Record<string, number>>({});
 
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth() + 1);
-  const [activeDates, setActiveDates] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetch("/api/dashboard")
@@ -87,8 +88,20 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const fetchDayActivity = useCallback((date: string) => {
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/dashboard/calendar/month?year=${calYear}&month=${calMonth}`, { signal: controller.signal })
+      .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
+      .then((result) => setActiveDates(result.activeDates || {}))
+      .catch((error) => { if (error.name !== "AbortError") setActiveDates({}); });
+    return () => controller.abort();
+  }, [calYear, calMonth]);
+
+  function openDay(date: string) {
     if (!date) return;
+    setSelectedDate(date);
+    setDayActivity(null);
+    setActivityLoading(true);
     fetch(`/api/dashboard/calendar?date=${date}`)
       .then((res) => {
         if (!res.ok) throw new Error();
@@ -97,18 +110,7 @@ export default function DashboardPage() {
       .then((data) => setDayActivity(data))
       .catch(() => setDayActivity(null))
       .finally(() => setActivityLoading(false));
-  }, []);
-
-  useEffect(() => {
-    fetchDayActivity(selectedDate);
-  }, [selectedDate, fetchDayActivity]);
-
-  useEffect(() => {
-    fetch(`/api/dashboard/calendar/month?year=${calYear}&month=${calMonth}`)
-      .then((r) => r.json())
-      .then((d) => setActiveDates(d.activeDates || {}))
-      .catch(() => setActiveDates({}));
-  }, [calYear, calMonth]);
+  }
 
   function prevMonth() {
     if (calMonth === 1) { setCalMonth(12); setCalYear((y) => y - 1); }
@@ -215,7 +217,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Secondary KPIs - 2 columns */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+      <div className={`grid gap-4 ${isAdmin ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
         <Card className="border-t-2 border-t-indigo-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Completion Rate (This Week)</CardTitle>
@@ -247,24 +249,24 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3 items-stretch">
         {/* Calendar */}
-        <Card>
+        <Card className="flex flex-col h-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <CalendarDays className="h-4 w-4" />
               Calendar
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-1 flex-col">
             <div className="flex items-center justify-between mb-4">
-              <button onClick={prevMonth} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors">
+              <button onClick={prevMonth} aria-label="Previous month" className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors">
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <p className="text-sm font-semibold">
                 {new Date(calYear, calMonth - 1).toLocaleDateString("en-PH", { month: "long", year: "numeric" })}
               </p>
-              <button onClick={nextMonth} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors">
+              <button onClick={nextMonth} aria-label="Next month" className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition-colors">
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
@@ -273,48 +275,56 @@ export default function DashboardPage() {
                 <div key={d} className="text-center text-[10px] font-medium text-muted-foreground py-1">{d}</div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid flex-1 content-start grid-cols-7 gap-1 auto-rows-fr">
               {calendarCells.map((day, i) => {
                 if (day === null) return <div key={`empty-${i}`} />;
                 const key = dateKey(day);
-                const count = activeDates[key] || 0;
-                const hasActivity = count > 0;
                 const isSelected = key === selectedDate;
                 return (
                   <button
                     key={key}
-                    onClick={() => setSelectedDate(key)}
-                    className={`relative flex h-9 w-full items-center justify-center rounded-lg text-xs font-medium transition-all ${
+                    onClick={() => openDay(key)}
+                    className={`relative flex min-h-9 w-full items-center justify-center rounded-lg text-xs font-medium transition-all ${
                       isSelected
                         ? "bg-orange-500 text-white shadow-md"
-                        : hasActivity
-                          ? "bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold"
-                          : "text-gray-600 hover:bg-muted"
+                        : "text-muted-foreground hover:bg-muted"
                     } ${isToday(day) && !isSelected ? "ring-2 ring-blue-400" : ""}`}
                   >
                     {day}
-                    {hasActivity && !isSelected && (
-                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-blue-500" />
+                    {activeDates[key] > 0 && (
+                      <span
+                        className={`absolute bottom-1 h-1.5 w-1.5 rounded-full ${isSelected ? "bg-white" : "bg-orange-500"}`}
+                        aria-label={`${activeDates[key]} scheduled item${activeDates[key] === 1 ? "" : "s"}`}
+                      />
                     )}
+                    <span className="sr-only">Open day details</span>
                   </button>
                 );
               })}
             </div>
-            <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500" /> Has bookings
-              </span>
+            <div className="mt-auto pt-3 flex items-center gap-4 text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-orange-500" /> Has schedule</span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-2 w-2 rounded ring-2 ring-blue-400" /> Today
               </span>
             </div>
 
-            {/* Day detail */}
-            <div className="mt-4 border-t pt-4">
-              {activityLoading ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
-              ) : dayActivity ? (
-                <div className="space-y-3 max-h-[240px] overflow-y-auto">
+          </CardContent>
+        </Card>
+
+        {selectedDate && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="calendar-detail-title" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedDate(""); }}>
+            <Card className="w-full max-w-lg shadow-xl">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle id="calendar-detail-title">Schedule details</CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">{new Date(`${selectedDate}T00:00:00`).toLocaleDateString("en-PH", { dateStyle: "long" })}</p>
+                </div>
+                <button className="rounded-lg p-2 hover:bg-muted" onClick={() => setSelectedDate("")} aria-label="Close schedule details">×</button>
+              </CardHeader>
+              <CardContent>
+              {activityLoading ? <p className="py-8 text-center text-sm text-muted-foreground">Loading details...</p> : dayActivity ? (
+                <div className="max-h-[60vh] space-y-3 overflow-y-auto">
                   {dayActivity.bookings.length > 0 && (
                     <div>
                       <p className="mb-1.5 text-xs font-semibold uppercase text-muted-foreground">Bookings ({dayActivity.bookings.length})</p>
@@ -328,57 +338,28 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   )}
-                  {dayActivity.activities.length > 0 && (
-                    <div>
-                      <p className="mb-1.5 text-xs font-semibold uppercase text-muted-foreground">Activities ({dayActivity.activities.length})</p>
-                      <div className="space-y-1">
-                        {dayActivity.activities.map((a, i) => (
-                          <div key={i} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-sm">
-                            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase">{a.action}</span>
-                            <span className="text-xs">{a.entity}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {dayActivity.bookings.length === 0 && dayActivity.activities.length === 0 && (
-                    <p className="py-4 text-center text-sm text-muted-foreground">No activity on this date</p>
+                  {dayActivity.bookings.length === 0 && (
+                    <p className="py-8 text-center text-sm text-muted-foreground">No bookings scheduled on this date</p>
                   )}
                 </div>
-              ) : (
-                <p className="py-4 text-center text-sm text-muted-foreground">Select a date to view details</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              ) : <p className="py-8 text-center text-sm text-muted-foreground">Unable to load schedule details</p>}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-        <div className="space-y-6">
-          {/* Storage Duration Breakdown */}
-          <Card>
+        {/* Storage Duration Breakdown */}
+        <Card className="flex flex-col h-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
                 <Clock className="h-4 w-4" />
                 Storage Duration Breakdown
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-1 flex-col">
               {durationData.length > 0 ? (
                 <>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={durationData}>
-                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                      <YAxis allowDecimals={false} />
-                      <Tooltip
-                        formatter={(value, _name, props) => [
-                          `${value} booking${Number(value) !== 1 ? "s" : ""}`,
-                          `Duration: ${props?.payload ? durationLabelMap[props.payload.name] || props.payload.name : ""}`,
-                        ]}
-                        labelFormatter={(label) => `Storage: ${durationLabelMap[label as string] || label}`}
-                        contentStyle={{ borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "12px" }}
-                      />
-                      <Bar dataKey="value" fill="#ea7d3d" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <RechartsBar data={durationData} labelMap={durationLabelMap} />
                   <p className="mt-2 text-[11px] text-muted-foreground text-center">
                     Distribution of luggage storage durations across all delivered bookings.
                   </p>
@@ -387,52 +368,20 @@ export default function DashboardPage() {
                 <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
               )}
             </CardContent>
-          </Card>
+        </Card>
 
-          {/* Bag Size Distribution */}
-          <Card>
+        {/* Bag Size Distribution */}
+        <Card className="flex flex-col h-full md:col-span-2 xl:col-span-1">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
                 <Package className="h-4 w-4" />
                 Bag Size Distribution
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-1 flex-col">
               {bagData.length > 0 ? (
                 <>
-                  <ResponsiveContainer width="100%" height={Math.max(140, bagData.length * 40)}>
-                    <BarChart data={bagData} layout="vertical" margin={{ left: 10, right: 30 }}>
-                      <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        tick={{ fontSize: 11 }}
-                        width={90}
-                      />
-                      <Tooltip
-                        formatter={(value, _name, props) => [
-                          `${value} bag${Number(value) !== 1 ? "s" : ""}`,
-                          `Type: ${props?.payload?.name || ""}`,
-                        ]}
-                        contentStyle={{ borderRadius: "8px", border: "1px solid #d1d5db", fontSize: "12px" }}
-                      />
-                      <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                        {bagData.map((entry, i) => (
-                          <Cell key={i} fill={BAG_COLORS[entry.name] || BAG_FALLBACK_COLORS[i % BAG_FALLBACK_COLORS.length]} />
-                        ))}
-                        <LabelList
-                          dataKey="value"
-                          position="right"
-                          formatter={(value) => {
-                            const total = bagData.reduce((s, b) => s + b.value, 0);
-                            const pct = total > 0 ? Math.round((Number(value) / total) * 100) : 0;
-                            return `${value} (${pct}%)`;
-                          }}
-                          style={{ fontSize: 11, fontWeight: 600 }}
-                        />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <RechartsBagBar data={bagData} />
                   <p className="mt-2 text-[11px] text-muted-foreground text-center">
                     Breakdown of luggage by size type across all active bookings.
                   </p>
@@ -441,8 +390,7 @@ export default function DashboardPage() {
                 <p className="py-8 text-center text-sm text-muted-foreground">No data yet</p>
               )}
             </CardContent>
-          </Card>
-        </div>
+        </Card>
       </div>
     </div>
   );

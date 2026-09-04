@@ -12,6 +12,7 @@ export default function CustomerRegisterPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [verificationSent, setVerificationSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -48,13 +49,29 @@ export default function CustomerRegisterPage() {
         return;
       }
 
-      router.push("/my-account");
-      router.refresh();
+      if (data.requiresVerification) {
+        setVerificationSent(true);
+        setLoading(false);
+      } else {
+        router.push("/my-account");
+        router.refresh();
+      }
     } catch {
       setError("Network error. Please try again.");
       setLoading(false);
     }
   }
+
+  if (verificationSent) return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
+      <div className="max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-white">
+        <Check className="mx-auto mb-4 h-12 w-12 text-emerald-400" />
+        <h1 className="text-2xl font-semibold">Check your email</h1>
+        <p className="mt-3 text-white/60">We sent a secure activation link. It expires in 30 minutes.</p>
+        <Link href="/my-account/login" className="mt-6 inline-block text-blue-400">Back to sign in</Link>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-blue-950 flex items-center justify-center px-4 py-12">
@@ -138,8 +155,8 @@ export default function CustomerRegisterPage() {
                   id="password"
                   name="password"
                   type="password"
-                  placeholder="Min 6 chars"
-                  minLength={6}
+                  placeholder="Min 10 chars"
+                  minLength={10}
                   required
                   className="h-11 rounded-xl border-white/10 bg-white/5 text-white placeholder:text-white/45 focus-visible:border-blue-500/50 focus-visible:ring-blue-500/20"
                 />

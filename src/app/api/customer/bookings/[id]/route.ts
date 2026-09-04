@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getCustomerSession } from "@/lib/customer-auth";
 import { prisma } from "@/lib/prisma";
 import { notifyBookingCancelled } from "@/lib/notifications";
+import { decimalsToNumbers } from "@/lib/serialize";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 export async function GET(
   _req: Request,
@@ -22,6 +24,17 @@ export async function GET(
       customer: { select: { name: true, email: true, phone: true, countryOfOrigin: true, cityOfOrigin: true } },
       assignments: { include: { user: { select: { name: true, vehicleType: true, plateNumber: true } } } },
       luggageItems: { select: { id: true, tagNumber: true, description: true, status: true } },
+      scanEvents: {
+        where: { status: "CANCELLED" },
+        orderBy: { scannedAt: "desc" },
+        select: {
+          id: true,
+          photo: true,
+          note: true,
+          scannedAt: true,
+          user: { select: { name: true, role: true } },
+        },
+      },
     },
   });
 
@@ -29,7 +42,7 @@ export async function GET(
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
 
-  return NextResponse.json(booking);
+  return NextResponse.json(decimalsToNumbers(booking));
 }
 
 export async function PATCH(
@@ -57,6 +70,15 @@ export async function PATCH(
     if (!["PENDING", "CONFIRMED"].includes(booking.status)) {
       return NextResponse.json({ error: "Cannot cancel booking at current status" }, { status: 400 });
     }
+    const settings = await getSystemSettings();
+    const freeCancellationHours = Math.max(0, parseInt(setting(settings, "free_cancellation_window_hours", "24")) || 0);
+    const hoursBeforePickup = (booking.checkIn.getTime() - Date.now()) / 3_600_000;
+    if (freeCancellationHours > 0 && hoursBeforePickup < freeCancellationHours) {
+      return NextResponse.json(
+        { error: `Online cancellation closes ${freeCancellationHours} hours before pickup. Please contact support for assistance.` },
+        { status: 409 }
+      );
+    }
 
     const paidPayments = await prisma.payment.findMany({
       where: { bookingId: id, status: "PAID", refundedAt: null },
@@ -66,6 +88,13 @@ export async function PATCH(
       prisma.booking.update({
         where: { id },
         data: { status: "CANCELLED" },
+      }),
+      prisma.scanEvent.create({
+        data: {
+          bookingId: id,
+          status: "CANCELLED",
+          note: "Cancelled by the customer through My Account",
+        },
       }),
       prisma.payment.updateMany({
         where: { bookingId: id, status: "PENDING" },
@@ -82,7 +111,7 @@ export async function PATCH(
           data: {
             bookingId: id,
             customerId: booking.customerId,
-            amount: -Math.abs(p.amount),
+            amount: -Math.abs(Number(p.amount)),
             method: p.method,
             status: "REFUNDED",
             reference: `RFND-${booking.referenceNumber}-${Date.now().toString(36).toUpperCase()}`,

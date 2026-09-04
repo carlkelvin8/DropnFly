@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,9 +42,16 @@ interface BookingDetail {
   payments?: { amount: number; status: string; method: string; paidAt: string | null }[];
   assignments?: { user: { name: string; vehicleType?: string | null; plateNumber?: string | null } }[];
   luggageItems?: { id: string; tagNumber: string; description: string | null; status: string }[];
+  scanEvents?: {
+    id: string;
+    photo: string | null;
+    note: string | null;
+    scannedAt: string;
+    user: { name: string; role: string } | null;
+  }[];
 }
 
-interface ChatMsg { id: string; message: string; isFromCustomer: boolean; createdAt: string; }
+interface ChatMsg { id: string; message: string; isFromCustomer: boolean; createdAt: string; sender?: { name: string; role: string } | null; }
 interface BookingReview { id: string; rating: number; comment: string | null; createdAt: string; }
 interface Extension { id: string; requestedCheckOut: string; reason: string | null; status: string; requestedAt: string; }
 
@@ -105,7 +113,14 @@ export default function CustomerBookingDetailPage() {
 
   useEffect(() => {
     if (!showChat || !id) return;
-    fetch(`/api/customer/bookings/${id}/chat`).then((r) => r.json()).then(setMessages).catch(() => {});
+    let active = true;
+    const loadMessages = () => fetch(`/api/customer/bookings/${id}/chat`, { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => { if (active && Array.isArray(data)) setMessages(data); })
+      .catch(() => {});
+    void loadMessages();
+    const poll = window.setInterval(loadMessages, 2000);
+    return () => { active = false; window.clearInterval(poll); };
   }, [showChat, id]);
 
   useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -123,7 +138,9 @@ export default function CustomerBookingDetailPage() {
       const res = await fetch(`/api/customer/bookings/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel" }) });
       if (!res.ok) { const d = await res.json(); setError(d.error || "Failed"); return; }
       const json = await res.json();
-      setBooking((prev) => (prev ? { ...prev, status: "CANCELLED" } : prev));
+      const refreshed = await fetch(`/api/customer/bookings/${id}`).then((response) => response.ok ? response.json() : null);
+      if (refreshed) setBooking(refreshed);
+      else setBooking((prev) => (prev ? { ...prev, status: "CANCELLED" } : prev));
       toast.success(json.message || "Booking cancelled");
     } catch { setError("Network error"); }
     finally { setCancelling(false); }
@@ -244,12 +261,15 @@ export default function CustomerBookingDetailPage() {
   const canExtend = !["CANCELLED", "DELIVERED"].includes(booking.status);
   const extraBags = Math.max(0, booking.numberOfBags - 3);
   const extraBagFee = extraBags * 100;
+  const storageDays = booking.checkIn && booking.checkOut
+    ? Math.max(1, Math.ceil((new Date(booking.checkOut).getTime() - new Date(booking.checkIn).getTime()) / (1000 * 60 * 60 * 24)))
+    : 1;
   let luggageSubtotal = 0;
   try {
     const parsed: { type: string; qty: number; price: number }[] = booking.luggageDetails ? JSON.parse(booking.luggageDetails) : [];
     luggageSubtotal = parsed.reduce((sum, item) => sum + item.price * item.qty, 0);
   } catch {}
-  const basePrice = luggageSubtotal > 0 ? luggageSubtotal : booking.totalPrice - extraBagFee + booking.discount;
+  const basePrice = luggageSubtotal > 0 ? luggageSubtotal * storageDays : booking.totalPrice - extraBagFee + booking.discount;
   const additionalServices = (() => {
     const services: string[] = [];
     if (booking.luggageDetails) {
@@ -317,6 +337,43 @@ export default function CustomerBookingDetailPage() {
           </CardContent>
         </Card>
 
+        {booking.status === "CANCELLED" && (
+          <Card className="border-t-4 border-red-500">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <AlertCircle className="h-5 w-5 text-red-600" /> Cancellation Evidence
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(booking.scanEvents || []).length === 0 ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  No cancellation proof was recorded. Please contact DropnFly support if you did not authorize this cancellation.
+                </div>
+              ) : (booking.scanEvents || []).map((event) => (
+                <div key={event.id} className="rounded-xl border border-red-200 bg-red-50/50 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-red-800">{event.user ? `Recorded by ${event.user.name}` : "Customer-initiated cancellation"}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(event.scannedAt).toLocaleString("en-PH")}</p>
+                    </div>
+                    {event.user && <Badge variant="outline" className="border-red-200 text-[10px] text-red-700">{event.user.role}</Badge>}
+                  </div>
+                  {event.note && <p className="mt-2 text-sm text-red-900">{event.note}</p>}
+                  {event.photo ? (
+                    <a href={event.photo} target="_blank" rel="noreferrer" className="mt-3 block w-fit">
+                      <Image unoptimized width={480} height={320} src={event.photo} alt="Cancellation proof" className="h-36 w-52 rounded-lg border border-red-200 object-cover shadow-sm transition hover:opacity-90" />
+                      <span className="mt-1 block text-xs font-medium text-red-700">View full-size proof</span>
+                    </a>
+                  ) : (
+                    <p className="mt-2 text-xs text-muted-foreground">No staff photo required because this cancellation was submitted from the customer account.</p>
+                  )}
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">If you did not request this cancellation, use the incident-report option on the tracking page or contact support.</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Drop-off Verification */}
         {booking.status === "RECEIVED" && !verifyDone && (
           <Card className="border-t-4 border-purple-500">
@@ -335,7 +392,7 @@ export default function CustomerBookingDetailPage() {
               </p>
               {verifyPhoto ? (
                 <div className="relative overflow-hidden rounded-xl border">
-                  <img src={verifyPhoto} alt="Drop-off verification" className="h-40 w-full object-cover" />
+                  <Image unoptimized width={800} height={320} src={verifyPhoto} alt="Drop-off verification" className="h-40 w-full object-cover" />
                   <button
                     onClick={() => setVerifyPhoto(null)}
                     className="absolute top-2 right-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"
@@ -614,9 +671,15 @@ export default function CustomerBookingDetailPage() {
                 <span className="text-gray-500">Luggage ({Math.min(booking.numberOfBags, 3)} bag{Math.min(booking.numberOfBags, 3) > 1 ? "s" : ""})</span>
                 <span>₱{basePrice.toFixed(2)}</span>
               </div>
+              {storageDays > 1 && (
+                <div className="flex justify-between text-sm text-gray-400">
+                  <span>Storage ({storageDays} days)</span>
+                  <span>×{storageDays}</span>
+                </div>
+              )}
               {extraBags > 0 && (
                 <div className="flex justify-between text-sm text-amber-600">
-                  <span>Extra bag fee ({extraBags} × ₱100)</span>
+                  <span>Extra bag fee ({extraBags} bags)</span>
                   <span>+₱{extraBagFee.toFixed(2)}</span>
                 </div>
               )}
@@ -763,7 +826,7 @@ export default function CustomerBookingDetailPage() {
             <CardContent>
               <div className="grid grid-cols-3 gap-2">
                 {booking.luggagePhotos.map((photo, i) => (
-                  <img key={i} src={photo} alt={`Luggage ${i + 1}`} className="rounded-xl object-cover w-full h-24 border" />
+                  <Image unoptimized width={400} height={160} key={i} src={photo} alt={`Luggage ${i + 1}`} className="rounded-xl object-cover w-full h-24 border" />
                 ))}
               </div>
             </CardContent>
@@ -849,7 +912,7 @@ export default function CustomerBookingDetailPage() {
         {/* Chat */}
         {showChat && (
           <Card>
-            <CardHeader><CardTitle className="text-base">Chat with Staff</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Chat with {messages.slice().reverse().find((message) => !message.isFromCustomer && message.sender)?.sender?.name || "DropnFly Support Team"}</CardTitle></CardHeader>
             <CardContent>
               <div className="max-h-64 space-y-3 overflow-y-auto mb-4">
                 {messages.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No messages yet</p>}
@@ -857,7 +920,7 @@ export default function CustomerBookingDetailPage() {
                   <div key={msg.id} className={`flex ${msg.isFromCustomer ? "justify-end" : ""}`}>
                     <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${msg.isFromCustomer ? "bg-orange-500 text-white" : "bg-gray-100"}`}>
                       <p>{msg.message}</p>
-                      <p className={`mt-1 text-[10px] ${msg.isFromCustomer ? "text-blue-200" : "text-gray-400"}`}>{formatDate(msg.createdAt)}</p>
+                      <p className={`mt-1 text-[10px] ${msg.isFromCustomer ? "text-blue-200" : "text-gray-400"}`}>{formatDate(msg.createdAt)}{!msg.isFromCustomer && ` · ${msg.sender?.name || "DropnFly staff"}${msg.sender?.role ? ` (${msg.sender.role.toLowerCase()})` : ""}`}</p>
                     </div>
                   </div>
                 ))}

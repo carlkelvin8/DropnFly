@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { notifyTaskAssigned } from "@/lib/notifications";
 import { sendRiderAssignedEmail } from "@/lib/email";
+import { isBookingLocked } from "@/lib/booking-access";
 
 export async function POST(
   req: Request,
@@ -25,6 +26,7 @@ export async function POST(
       where: { id },
       select: {
         referenceNumber: true,
+        status: true,
         customer: { select: { name: true, email: true } },
       },
     });
@@ -33,22 +35,33 @@ export async function POST(
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
 
-    const assignment = await prisma.bookingAssignment.create({
-      data: {
-        bookingId: id,
-        userId: body.userId,
-        phase: body.phase === "DROPOFF" ? "DROPOFF" : "PICKUP",
-      },
-      include: {
-        user: {
-          select: {
-            name: true,
-            profilePic: true,
-            vehicleType: true,
-            plateNumber: true,
+    if (isBookingLocked(booking.status)) {
+      return NextResponse.json({ error: "This booking is locked and cannot be reassigned" }, { status: 409 });
+    }
+
+    const phase = body.phase === "DROPOFF" ? "DROPOFF" : "PICKUP";
+    const rider = await prisma.user.findFirst({
+      where: { id: body.userId, role: "EMPLOYEE", isActive: true, isApproved: true },
+      select: { id: true },
+    });
+    if (!rider) return NextResponse.json({ error: "Select an active employee account" }, { status: 400 });
+
+    const assignment = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`assignment:${id}:${phase}`}))`;
+      await tx.bookingAssignment.deleteMany({ where: { bookingId: id, phase } });
+      return tx.bookingAssignment.create({
+        data: { bookingId: id, userId: body.userId, phase },
+        include: {
+          user: {
+            select: {
+              name: true,
+              profilePic: true,
+              vehicleType: true,
+              plateNumber: true,
+            },
           },
         },
-      },
+      });
     });
 
     await logActivity({
@@ -56,7 +69,7 @@ export async function POST(
       action: "ASSIGN",
       entity: "Booking",
       entityId: id,
-      details: `Assigned booking to employee ${assignment.user.name}`,
+      details: `Assigned ${phase.toLowerCase()} to employee ${assignment.user.name}`,
     });
 
     await notifyTaskAssigned(body.userId, booking.referenceNumber);
@@ -73,7 +86,9 @@ export async function POST(
         plateNumber: assignment.user.plateNumber,
       });
     } catch {
-      console.warn("Failed to send rider assigned email");
+      if (process.env.NODE_ENV === "development") {
+        console.warn("Failed to send rider assigned email");
+      }
     }
 
     return NextResponse.json(assignment, { status: 201 });

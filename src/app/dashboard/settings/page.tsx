@@ -38,10 +38,10 @@ import {
 } from "lucide-react";
 
 const SETTING_DEFAULTS: Record<string, string> = {
-  luggage_extra_small_price: "150",
-  luggage_small_price: "200",
-  luggage_standard_price: "250",
-  luggage_large_price: "300",
+  luggage_extra_small_price: "50",
+  luggage_small_price: "150",
+  luggage_standard_price: "175",
+  luggage_large_price: "250",
   excess_bag_fee: "100",
   excess_bag_threshold: "3",
   pickup_fee: "0",
@@ -53,8 +53,8 @@ const SETTING_DEFAULTS: Record<string, string> = {
   max_concurrent_deliveries: "3",
   pickup_slot_duration: "60",
   delivery_slot_duration: "60",
-  operating_start: "08:00",
-  operating_end: "17:00",
+  operating_start: "00:00",
+  operating_end: "23:59",
   max_bags_per_booking: "10",
   email_notifications_enabled: "true",
   rider_assignment_email: "true",
@@ -76,8 +76,8 @@ const SETTING_DEFAULTS: Record<string, string> = {
   footer_twitter: "https://twitter.com/dropnfly",
   tx_prefix: "DNF",
   store_operating_days: "0,1,2,3,4,5,6",
-  store_operating_start: "08:00",
-  store_operating_end: "17:00",
+  store_operating_start: "00:00",
+  store_operating_end: "23:59",
   max_advance_booking_days: "30",
   min_storage_days: "1",
   max_storage_days: "30",
@@ -107,6 +107,8 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 interface FleetVehicle {
   id: string;
   type: string;
+  plateNumber: string;
+  color: string;
   count: number;
   icon: "bike" | "car" | "truck";
 }
@@ -127,44 +129,124 @@ const TABS = [
   { id: "maintenance", label: "Maintenance", icon: Wrench, color: "text-red-500" },
 ];
 
+const SECTION_KEYS: Record<string, string[]> = {
+  rates: ["luggage_extra_small_price", "luggage_small_price", "luggage_standard_price", "luggage_large_price", "excess_bag_fee", "excess_bag_threshold"],
+  fees: ["pickup_fee", "delivery_fee"],
+  capacity: ["max_simultaneous_bags", "max_bags_per_booking", "max_concurrent_pickups", "max_concurrent_deliveries", "pickup_slot_duration", "delivery_slot_duration", "operating_start", "operating_end"],
+  finance: ["currency", "min_dp_percentage"],
+  notifications: ["email_notifications_enabled", "rider_assignment_email", "booking_confirmation_email", "qr_scan_notification", "smtp_host", "smtp_port", "smtp_from"],
+  booking: ["tx_prefix", "max_advance_booking_days", "min_storage_days", "max_storage_days", "free_cancellation_window_hours", "store_operating_days", "auto_flag_hours_no_scan", "auto_flag_days_in_storage", "auto_flag_hours_overdue_return"],
+  features: ["online_booking_enabled", "walk_in_mode_enabled", "customer_reviews_enabled", "discount_codes_enabled"],
+  footer: ["footer_phone", "footer_email", "footer_facebook", "footer_instagram", "footer_twitter", "store_operating_start", "store_operating_end"],
+  qr: ["qr_code_prefix", "qr_image_size"],
+  fleet: ["fleet_data", "max_concurrent_pickups", "max_concurrent_deliveries"],
+  email: ["email_sender_name", "email_reply_to", "email_company_name"],
+  terms: ["terms_and_conditions", "privacy_policy"],
+  maintenance: ["maintenance_mode_enabled", "maintenance_message"],
+};
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
+  const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
+  const [savingSection, setSavingSection] = useState<string | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("rates");
 
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
-      .then((data) => setSettings({ ...SETTING_DEFAULTS, ...data }))
+      .then((data) => {
+        setSettings({ ...SETTING_DEFAULTS, ...data });
+        setDirtyKeys(new Set());
+      })
       .catch(() => toast.error("Failed to load settings"))
       .finally(() => setLoading(false));
   }, []);
 
   function handleChange(key: string, value: string) {
     setSettings((prev) => ({ ...prev, [key]: value }));
+    setDirtyKeys((prev) => new Set(prev).add(key));
   }
 
-  function handleReset() {
-    setSettings({ ...SETTING_DEFAULTS });
-    toast.info("Defaults restored. Save to apply.");
+  function getSectionDirty(section: string): string[] {
+    return (SECTION_KEYS[section] || []).filter((k) => dirtyKeys.has(k));
   }
 
-  async function handleSave() {
-    setSaving(true);
-    try {
-      const res = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
-      });
-      if (!res.ok) toast.error("Failed to save settings");
-      else toast.success("Settings saved successfully");
-    } catch {
-      toast.error("Failed to save settings");
-    } finally {
-      setSaving(false);
+  async function persistSettings(keys: string[]) {
+    if (keys.length === 0) return;
+    const payload: Record<string, string> = {};
+    for (const k of keys) payload[k] = settings[k];
+    const res = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(result?.error || "Failed to save settings");
+    setSettings((prev) => {
+      const next = { ...prev };
+      for (const k of keys) next[k] = result?.[k] ?? prev[k];
+      return next;
+    });
+    setDirtyKeys((prev) => {
+      const next = new Set(prev);
+      for (const k of keys) next.delete(k);
+      return next;
+    });
+    return result;
+  }
+
+  async function handleSaveSection(section: string) {
+    const keys = getSectionDirty(section);
+    if (keys.length === 0) {
+      toast.info("No changes to save in this section");
+      return;
     }
+    setSavingSection(section);
+    try {
+      await persistSettings(keys);
+      toast.success("Section saved and applied successfully");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save settings");
+    } finally {
+      setSavingSection(null);
+    }
+  }
+
+  async function handleSaveAll() {
+    const keys = Array.from(dirtyKeys);
+    if (keys.length === 0) {
+      toast.info("No unsaved changes");
+      return;
+    }
+    setSavingAll(true);
+    try {
+      await persistSettings(keys);
+      toast.success("All unsaved changes saved and applied successfully");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save settings");
+    } finally {
+      setSavingAll(false);
+    }
+  }
+
+  function handleResetSection(section: string) {
+    const next = { ...settings };
+    for (const k of SECTION_KEYS[section] || []) next[k] = SETTING_DEFAULTS[k] ?? "";
+    setSettings(next);
+    setDirtyKeys((prev) => {
+      const updated = new Set(prev);
+      for (const k of SECTION_KEYS[section] || []) updated.add(k);
+      return updated;
+    });
+    toast.info("Section restored to defaults. Click Save to apply.");
+  }
+
+  function handleResetAll() {
+    setSettings({ ...SETTING_DEFAULTS });
+    setDirtyKeys(new Set(Object.keys(SETTING_DEFAULTS)));
+    toast.info("Defaults restored. Save to apply.");
   }
 
   function toggleDay(day: string) {
@@ -181,13 +263,26 @@ export default function SettingsPage() {
   }
 
   function setFleet(fleet: FleetVehicle[]) {
-    handleChange("fleet_data", JSON.stringify(fleet));
+    const totalVehicles = fleet.reduce((sum, vehicle) => sum + Math.max(0, vehicle.count), 0);
+    setSettings((prev) => ({
+      ...prev,
+      fleet_data: JSON.stringify(fleet),
+      max_concurrent_pickups: String(Math.max(1, totalVehicles)),
+      max_concurrent_deliveries: String(Math.max(1, totalVehicles)),
+    }));
+    setDirtyKeys((prev) => {
+      const next = new Set(prev);
+      next.add("fleet_data");
+      next.add("max_concurrent_pickups");
+      next.add("max_concurrent_deliveries");
+      return next;
+    });
   }
 
   function addVehicle() {
     const fleet = getFleet();
     const id = `v_${Date.now()}`;
-    fleet.push({ id, type: "Motorcycle", count: 1, icon: "bike" });
+    fleet.push({ id, type: "Motorcycle", plateNumber: "", color: "", count: 1, icon: "bike" });
     setFleet(fleet);
   }
 
@@ -221,11 +316,11 @@ export default function SettingsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleReset}>
+          <Button variant="outline" size="sm" onClick={handleResetAll}>
             <RotateCcw className="mr-1 h-3.5 w-3.5" /> Reset Defaults
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            <Save className="mr-1 h-3.5 w-3.5" /> {saving ? "Saving..." : "Save All"}
+          <Button size="sm" onClick={handleSaveAll} disabled={savingAll || dirtyKeys.size === 0}>
+            <Save className="mr-1 h-3.5 w-3.5" /> {savingAll ? "Saving..." : `Save All Unsaved${dirtyKeys.size > 0 ? ` (${dirtyKeys.size})` : ""}`}
           </Button>
         </div>
       </div>
@@ -234,16 +329,24 @@ export default function SettingsPage() {
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
+          const unsaved = getSectionDirty(tab.id).length;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+              className={`relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
                 isActive ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <Icon className={`h-3.5 w-3.5 ${isActive ? tab.color : ""}`} />
               {tab.label}
+              {unsaved > 0 && (
+                <span
+                  className="absolute -right-0.5 -top-0.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-orange-500"
+                  title={`${unsaved} unsaved change${unsaved > 1 ? "s" : ""}`}
+                  aria-label={`${unsaved} unsaved change${unsaved > 1 ? "s" : ""}`}
+                />
+              )}
             </button>
           );
         })}
@@ -298,6 +401,12 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("rates").length}
+              saving={savingSection === "rates"}
+              onReset={() => handleResetSection("rates")}
+              onSave={() => handleSaveSection("rates")}
+            />
           </CardContent>
         </Card>
       )}
@@ -333,6 +442,12 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("fees").length}
+              saving={savingSection === "fees"}
+              onReset={() => handleResetSection("fees")}
+              onSave={() => handleSaveSection("fees")}
+            />
           </CardContent>
         </Card>
       )}
@@ -389,16 +504,22 @@ export default function SettingsPage() {
               <div className="space-y-1.5">
                 <Label htmlFor="operating_start">Operating Start Time</Label>
                 <Input id="operating_start" type="time" className="w-32"
-                  value={settings.operating_start || "08:00"}
+                  value={settings.operating_start || "00:00"}
                   onChange={(e) => handleChange("operating_start", e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="operating_end">Operating End Time</Label>
                 <Input id="operating_end" type="time" className="w-32"
-                  value={settings.operating_end || "17:00"}
+                  value={settings.operating_end || "23:59"}
                   onChange={(e) => handleChange("operating_end", e.target.value)} />
               </div>
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("capacity").length}
+              saving={savingSection === "capacity"}
+              onReset={() => handleResetSection("capacity")}
+              onSave={() => handleSaveSection("capacity")}
+            />
           </CardContent>
         </Card>
       )}
@@ -419,14 +540,8 @@ export default function SettingsPage() {
                   onChange={(e) => handleChange("currency", e.target.value)}
                   options={[
                     { value: "PHP", label: "PHP - Philippine Peso" },
-                    { value: "USD", label: "USD - US Dollar" },
-                    { value: "JPY", label: "JPY - Japanese Yen" },
-                    { value: "KRW", label: "KRW - South Korean Won" },
-                    { value: "CNY", label: "CNY - Chinese Yuan" },
-                    { value: "AUD", label: "AUD - Australian Dollar" },
-                    { value: "SGD", label: "SGD - Singapore Dollar" },
-                    { value: "EUR", label: "EUR - Euro" },
                   ]} className="w-full" />
+                <p className="text-[10px] text-muted-foreground">Prices and PayMongo settlements currently operate in Philippine pesos.</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="min_dp_percentage">Minimum Down Payment (%)</Label>
@@ -438,6 +553,12 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("finance").length}
+              saving={savingSection === "finance"}
+              onReset={() => handleResetSection("finance")}
+              onSave={() => handleSaveSection("finance")}
+            />
           </CardContent>
         </Card>
       )}
@@ -515,6 +636,12 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("notifications").length}
+              saving={savingSection === "notifications"}
+              onReset={() => handleResetSection("notifications")}
+              onSave={() => handleSaveSection("notifications")}
+            />
           </CardContent>
         </Card>
       )}
@@ -564,7 +691,7 @@ export default function SettingsPage() {
                 <Input id="free_cancellation_window_hours" type="number" min="0" className="w-28 font-mono"
                   value={settings.free_cancellation_window_hours || "24"}
                   onChange={(e) => handleChange("free_cancellation_window_hours", e.target.value)} />
-                <p className="text-[10px] text-muted-foreground">Customers can cancel free of charge within this window</p>
+                <p className="text-[10px] text-muted-foreground">Self-service cancellation closes this many hours before pickup</p>
               </div>
               <div className="space-y-1.5">
                 <Label>Store Operating Days</Label>
@@ -572,7 +699,7 @@ export default function SettingsPage() {
                   {WEEKDAYS.map((day, i) => {
                     const active = (settings.store_operating_days || "").split(",").includes(String(i));
                     return (
-                      <button key={i} type="button" onClick={() => toggleDay(String(i))}
+                      <button key={i} type="button" onClick={() => toggleDay(String(i))} aria-label={`Toggle ${day}`}
                         className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
                           active ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted text-muted-foreground hover:bg-muted/80"
                         }`}>
@@ -612,6 +739,12 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("booking").length}
+              saving={savingSection === "booking"}
+              onReset={() => handleResetSection("booking")}
+              onSave={() => handleSaveSection("booking")}
+            />
           </CardContent>
         </Card>
       )}
@@ -648,6 +781,12 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("features").length}
+              saving={savingSection === "features"}
+              onReset={() => handleResetSection("features")}
+              onSave={() => handleSaveSection("features")}
+            />
           </CardContent>
         </Card>
       )}
@@ -696,15 +835,21 @@ export default function SettingsPage() {
                 <Label>Store Hours (shown in footer)</Label>
                 <div className="flex items-center gap-2">
                   <Input type="time" className="w-28"
-                    value={settings.store_operating_start || "08:00"}
+                    value={settings.store_operating_start || "00:00"}
                     onChange={(e) => handleChange("store_operating_start", e.target.value)} />
                   <span className="text-xs text-muted-foreground">to</span>
                   <Input type="time" className="w-28"
-                    value={settings.store_operating_end || "17:00"}
+                    value={settings.store_operating_end || "23:59"}
                     onChange={(e) => handleChange("store_operating_end", e.target.value)} />
                 </div>
               </div>
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("footer").length}
+              saving={savingSection === "footer"}
+              onReset={() => handleResetSection("footer")}
+              onSave={() => handleSaveSection("footer")}
+            />
           </CardContent>
         </Card>
       )}
@@ -738,6 +883,12 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("qr").length}
+              saving={savingSection === "qr"}
+              onReset={() => handleResetSection("qr")}
+              onSave={() => handleSaveSection("qr")}
+            />
           </CardContent>
         </Card>
       )}
@@ -774,6 +925,12 @@ export default function SettingsPage() {
                 <p className="text-[10px] text-muted-foreground">Used in email signatures and footers</p>
               </div>
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("email").length}
+              saving={savingSection === "email"}
+              onReset={() => handleResetSection("email")}
+              onSave={() => handleSaveSection("email")}
+            />
           </CardContent>
         </Card>
       )}
@@ -807,6 +964,12 @@ export default function SettingsPage() {
                 className="min-h-[220px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("terms").length}
+              saving={savingSection === "terms"}
+              onReset={() => handleResetSection("terms")}
+              onSave={() => handleSaveSection("terms")}
+            />
           </CardContent>
         </Card>
       )}
@@ -852,23 +1015,74 @@ export default function SettingsPage() {
                 </div>
               )}
             </div>
+            <SectionFooter
+              dirtyCount={getSectionDirty("maintenance").length}
+              saving={savingSection === "maintenance"}
+              onReset={() => handleResetSection("maintenance")}
+              onSave={() => handleSaveSection("maintenance")}
+            />
           </CardContent>
         </Card>
       )}
 
       {activeTab === "fleet" && (
-        <FleetSection fleet={getFleet()} onAdd={addVehicle} onUpdate={updateVehicle} onRemove={removeVehicle} onReset={() => setFleet([])} />
+        <FleetSection
+          fleet={getFleet()}
+          onAdd={addVehicle}
+          onUpdate={updateVehicle}
+          onRemove={removeVehicle}
+          onReset={() => handleResetSection("fleet")}
+          dirtyCount={getSectionDirty("fleet").length}
+          saving={savingSection === "fleet"}
+          onSave={() => handleSaveSection("fleet")}
+        />
       )}
     </div>
   );
 }
 
-function FleetSection({ fleet, onAdd, onUpdate, onRemove, onReset }: {
+function SectionFooter({
+  dirtyCount,
+  saving,
+  onReset,
+  onSave,
+}: {
+  dirtyCount: number;
+  saving: boolean;
+  onReset: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+      {dirtyCount > 0 ? (
+        <Badge variant="warning" className="gap-1.5 text-[10px]">
+          <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+          {dirtyCount} unsaved change{dirtyCount > 1 ? "s" : ""}
+        </Badge>
+      ) : (
+        <span className="text-xs text-muted-foreground">All changes saved</span>
+      )}
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={onReset} disabled={saving}>
+          <RotateCcw className="mr-1 h-3.5 w-3.5" /> Reset
+        </Button>
+        <Button size="sm" onClick={onSave} disabled={saving || dirtyCount === 0}>
+          <Save className="mr-1 h-3.5 w-3.5" /> {saving ? "Saving..." : "Save Changes"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function FleetSection({ fleet, onAdd, onUpdate, onRemove, onReset, dirtyCount, saving, onSave }: {
   fleet: FleetVehicle[];
   onAdd: () => void;
   onUpdate: (id: string, field: keyof FleetVehicle, value: string | number) => void;
   onRemove: (id: string) => void;
   onReset: () => void;
+  dirtyCount: number;
+  saving: boolean;
+  onSave: () => void;
 }) {
   const totalVehicles = fleet.reduce((sum, v) => sum + v.count, 0);
 
@@ -906,10 +1120,26 @@ function FleetSection({ fleet, onAdd, onUpdate, onRemove, onReset }: {
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-background shadow-sm">
                       <Icon className="h-5 w-5 text-muted-foreground" />
                     </div>
-                    <div className="flex-1 min-w-[150px]">
+                    <div className="flex-1 min-w-[150px] space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Type of Vehicle</Label>
                       <Input value={v.type}
                         onChange={(e) => onUpdate(v.id, "type", e.target.value)}
-                        className="h-8 text-sm font-medium" placeholder="Vehicle type" />
+                        className="h-8 text-sm font-medium" placeholder="e.g. Motorcycle" />
+                    </div>
+                    <div className="flex-1 min-w-[150px] space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Plate Number</Label>
+                      <Input value={v.plateNumber || ""}
+                        onChange={(e) => onUpdate(v.id, "plateNumber", e.target.value)}
+                        className="h-8 text-sm font-mono uppercase" placeholder="e.g. ABC 1234" />
+                    </div>
+                    <div className="flex-1 min-w-[150px] space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Color</Label>
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-6 shrink-0 rounded border" style={{ backgroundColor: v.color || "#ffffff" }} />
+                        <Input value={v.color || ""}
+                          onChange={(e) => onUpdate(v.id, "color", e.target.value)}
+                          className="h-8 text-sm" placeholder="e.g. Red" />
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Label className="text-xs text-muted-foreground">Count</Label>
@@ -947,6 +1177,12 @@ function FleetSection({ fleet, onAdd, onUpdate, onRemove, onReset }: {
               </Button>
             )}
           </div>
+          <SectionFooter
+            dirtyCount={dirtyCount}
+            saving={saving}
+            onReset={onReset}
+            onSave={onSave}
+          />
         </CardContent>
       </Card>
     </div>

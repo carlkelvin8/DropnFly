@@ -1,21 +1,29 @@
 import webpush from "web-push";
 import { prisma } from "./prisma";
 
-const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
+function getVapidKeys() {
+  const publicKey = process.env.VAPID_PUBLIC_KEY || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  const email = process.env.VAPID_EMAIL || "mailto:admin@dropnfly.ph";
 
-if (vapidPublicKey && vapidPrivateKey) {
-  webpush.setVapidDetails(
-    "mailto:support@dropnfly.ph",
-    vapidPublicKey,
-    vapidPrivateKey
-  );
+  if (!publicKey || !privateKey) {
+    throw new Error(
+      "VAPID keys not configured. Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY environment variables."
+    );
+  }
+
+  return { publicKey, privateKey, email };
+}
+
+try {
+  const { publicKey, privateKey, email } = getVapidKeys();
+  webpush.setVapidDetails(email, publicKey, privateKey);
+} catch {
+  // Push sending will fail until VAPID keys are configured; callers handle errors.
 }
 
 export function getVapidPublicKey(): string {
-  if (vapidPublicKey) return vapidPublicKey;
-  const keys = webpush.generateVAPIDKeys();
-  return keys.publicKey;
+  return getVapidKeys().publicKey;
 }
 
 export async function sendPushToUser(userId: string, payload: { title: string; body?: string; url?: string }) {
@@ -35,7 +43,9 @@ export async function sendPushToUser(userId: string, payload: { title: string; b
       }
     }
   } catch {
-    console.warn("Push notification sending failed");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("Push notification sending failed");
+    }
   }
 }
 
@@ -56,6 +66,8 @@ export async function sendPushToCustomer(customerId: string, payload: { title: s
       }
     }
   } catch {
-    console.warn("Push notification sending failed");
+    if (process.env.NODE_ENV === "development") {
+      console.warn("Push notification sending failed");
+    }
   }
 }

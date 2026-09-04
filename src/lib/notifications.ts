@@ -1,17 +1,30 @@
 import { prisma } from "./prisma";
 import nodemailer from "nodemailer";
 import { sendPushToUser, sendPushToCustomer } from "./push";
+import { getSystemSettings, setting } from "./settings";
 
-function createTransporter() {
+function sanitizeHtml(str: string): string {
+  if (typeof str !== "string") return "";
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+async function createTransporter() {
+  const settings = await getSystemSettings();
+  const host = setting(settings, "smtp_host", "") || process.env.SMTP_HOST || "smtp.ethereal.email";
+  const port = parseInt(setting(settings, "smtp_port", process.env.SMTP_PORT || "587"));
+  const fromAddress = setting(settings, "smtp_from", "") || process.env.SMTP_FROM || "noreply@dropnfly.ph";
+  const senderName = setting(settings, "email_sender_name", "Dropnfly").replace(/[\r\n"]/g, "").trim() || "Dropnfly";
+  const from = fromAddress.includes("<") ? fromAddress : `"${senderName}" <${fromAddress}>`;
+  const replyTo = setting(settings, "email_reply_to", "") || fromAddress;
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.ethereal.email",
-    port: parseInt(process.env.SMTP_PORT || "587"),
+    host,
+    port,
     secure: process.env.SMTP_SECURE === "true",
     auth: {
       user: process.env.SMTP_USER || "",
       pass: process.env.SMTP_PASS || "",
     },
-  });
+  }, { from, replyTo });
 }
 
 interface SendNotificationParams {
@@ -35,38 +48,39 @@ export async function sendNotification({
     await prisma.notification.create({
       data: { userId, type, title, message, link },
     });
-  } catch {
-    console.warn("Failed to create in-app notification");
+  } catch (e) {
+    console.warn("Failed to create in-app notification:", e);
   }
 
   try {
     await sendPushToUser(userId, { title, body: message, url: link });
-  } catch {
-    console.warn("Failed to send push notification");
+  } catch (e) {
+    console.warn("Failed to send push notification:", e);
   }
 
   if (sendEmail) {
     try {
+      const settings = await getSystemSettings();
+      if (setting(settings, "email_notifications_enabled", "true") === "false") return;
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { email: true, name: true },
       });
 
       if (user?.email) {
-        const transporter = createTransporter();
+        const transporter = await createTransporter();
         await transporter.sendMail({
-          from: process.env.SMTP_FROM || '"Dropnfly" <noreply@dropnfly.ph>',
           to: user.email,
           subject: title,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
               <div style="background: #ea7d3d; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
-                <h2 style="margin: 0;">${title}</h2>
+                <h2 style="margin: 0;">${sanitizeHtml(title)}</h2>
               </div>
               <div style="padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
-                <p>Hi <strong>${user.name}</strong>,</p>
-                ${message ? `<p>${message}</p>` : ""}
-                ${link ? `<p style="text-align: center; margin-top: 16px;"><a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}${link}" style="display: inline-block; background: #ea7d3d; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">View Details</a></p>` : ""}
+                <p>Hi <strong>${sanitizeHtml(user.name)}</strong>,</p>
+                ${message ? `<p>${sanitizeHtml(message)}</p>` : ""}
+                ${link ? `<p style="text-align: center; margin-top: 16px;"><a href="${process.env.NEXTAUTH_URL || "http://localhost:3000"}${sanitizeHtml(link)}" style="display: inline-block; background: #ea7d3d; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">View Details</a></p>` : ""}
                 <hr style="border: none; border-top: 1px solid #d1d5db; margin: 24px 0;" />
                 <p style="color: #9ca3af; font-size: 12px; text-align: center;">Dropnfly Notification</p>
               </div>
@@ -74,8 +88,8 @@ export async function sendNotification({
           `,
         });
       }
-    } catch {
-      console.warn("Failed to send email notification");
+    } catch (e) {
+      console.warn("Failed to send email notification:", e);
     }
   }
 }
@@ -195,13 +209,13 @@ export async function sendCustomerNotification({
     await prisma.customerNotification.create({
       data: { customerId, type, title, message, link },
     });
-  } catch {
-    console.warn("Failed to send customer notification");
+  } catch (e) {
+    console.warn("Failed to send customer notification:", e);
   }
 
   try {
     await sendPushToCustomer(customerId, { title, body: message, url: link });
-  } catch {
-    console.warn("Failed to send customer push notification");
+  } catch (e) {
+    console.warn("Failed to send customer push notification:", e);
   }
 }

@@ -200,7 +200,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const existing = await prisma.incidentReport.findUnique({
       where: { id },
-      select: { status: true, resolution: true, type: true, customerId: true },
+      select: { status: true, resolution: true, internalNotes: true, type: true, customerId: true },
     });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -214,30 +214,52 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (escalatedTo !== undefined) updateData.escalatedTo = escalatedTo;
     if (status === "RESOLVED" || status === "CLOSED") updateData.resolvedAt = new Date();
 
-    const incident = await prisma.incidentReport.update({
+    await prisma.incidentReport.update({
       where: { id },
       data: updateData,
-      include: {
-        customer: { select: { name: true, email: true } },
-        booking: { select: { referenceNumber: true } },
-      },
     });
 
-    const changes: string[] = [];
-    if (status && status !== existing.status) changes.push(`status → ${status}`);
-    if (priority) changes.push(`priority → ${priority}`);
-    if (internalNotes !== undefined) changes.push("internal notes updated");
-    if (resolution !== undefined && resolution !== existing.resolution) changes.push("resolution updated");
-    if (escalatedTo) changes.push(`escalated to ${escalatedTo}`);
-
-    await prisma.incidentTimeline.create({
-      data: {
-        incidentId: id,
-        action: status ? "status_change" : "note_added",
-        description: changes.length > 0 ? `Admin action: ${changes.join(", ")}` : "Incident updated",
-        userId: session.user.id,
-      },
-    });
+    // Senior: dedicated history — create separate timeline entries so admin can back-track
+    const timelineCreates: { action: string; description: string }[] = [];
+    if (status && status !== existing.status) {
+      timelineCreates.push({ action: "status_change", description: `Status changed: ${existing.status} → ${status}` });
+    }
+    if (priority) {
+      timelineCreates.push({ action: "status_change", description: `Priority set to ${priority}` });
+    }
+    if (internalNotes !== undefined && internalNotes !== existing.internalNotes) {
+      const trimmed = String(internalNotes).trim();
+      if (trimmed) {
+        timelineCreates.push({ action: "internal_note", description: `Internal note (admin only): ${trimmed.slice(0, 800)}` });
+      } else if (existing.internalNotes) {
+        timelineCreates.push({ action: "internal_note", description: "Internal note cleared" });
+      }
+    }
+    if (resolution !== undefined && resolution !== existing.resolution) {
+      const trimmed = String(resolution).trim();
+      if (trimmed) {
+        timelineCreates.push({ action: "resolved", description: `Resolution submitted (visible to customer): ${trimmed.slice(0, 800)}` });
+      } else {
+        timelineCreates.push({ action: "resolved", description: "Resolution cleared" });
+      }
+    }
+    if (escalatedTo !== undefined && escalatedTo) {
+      timelineCreates.push({ action: "note_added", description: `Escalated to ${escalatedTo}` });
+    }
+    if (timelineCreates.length === 0) {
+      timelineCreates.push({ action: "note_added", description: "Incident updated" });
+    }
+    for (const entry of timelineCreates) {
+      await prisma.incidentTimeline.create({
+        data: {
+          incidentId: id,
+          action: entry.action,
+          description: entry.description,
+          userId: session.user.id,
+        },
+      });
+    }
+    const changes = timelineCreates.map((e) => e.description);
 
     await logActivity({
       userId: session.user.id,
@@ -247,27 +269,65 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       details: `Updated incident #${id.slice(0, 8)}: ${changes.join(", ")}`,
     });
 
+    const updated = await prisma.incidentReport.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { name: true, email: true, phone: true } },
+        booking: {
+          select: {
+            referenceNumber: true,
+            pickupLocation: true,
+            dropOffLocation: true,
+            status: true,
+            checkIn: true,
+            checkOut: true,
+            totalPrice: true,
+            luggageDetails: true,
+          },
+        },
+        timeline: {
+          orderBy: { createdAt: "desc" },
+          include: { user: { select: { name: true } } },
+        },
+      },
+    });
+
     // Only email the customer when customer-visible fields actually changed
     const customerVisibleChange =
       (status && status !== existing.status) ||
       (resolution !== undefined && resolution !== existing.resolution);
-    if (customerVisibleChange) {
-      try {
-        await sendIncidentEmail({
-          to: incident.customer.email,
-          customerName: incident.customer.name,
-          referenceNumber: incident.booking.referenceNumber,
-          incidentType: incident.type,
-          status: status || incident.status,
-          resolution: resolution || incident.resolution,
-          incidentId: id,
+    if (customerVisibleChange && updated) {
+      const emailPayload = {
+        to: updated.customer.email,
+        customerName: updated.customer.name,
+        referenceNumber: updated.booking.referenceNumber,
+        incidentType: updated.type,
+        status: status || updated.status,
+        resolution: (resolution !== undefined ? resolution : updated.resolution) || updated.resolution,
+        incidentId: id,
+        description: updated.description,
+        submittedAt: updated.submittedAt,
+      } as const;
+      // Senior: ensure resolution email is delivered (Brevo) with retry and proper logging — not dev-only
+      sendIncidentEmail(emailPayload)
+        .then(() => console.log(`[EMAIL] Incident resolution email sent for ${id}`))
+        .catch((firstErr) => {
+          console.error("[EMAIL] Incident resolution email first attempt failed:", firstErr);
+          void (async () => {
+            for (let attempt = 1; attempt < 3; attempt += 1) {
+              try {
+                await sendIncidentEmail(emailPayload);
+                console.log(`[EMAIL] Incident resolution email retry ${attempt + 1} succeeded for ${id}`);
+                return;
+              } catch (retryErr) {
+                console.error(`[EMAIL] Incident resolution retry ${attempt + 1} failed for ${id}:`, retryErr);
+              }
+            }
+          })();
         });
-      } catch (emailErr) {
-        console.warn("[EMAIL] Failed to send incident email:", emailErr);
-      }
     }
 
-    return NextResponse.json(incident);
+    return NextResponse.json(updated);
   } catch {
     return NextResponse.json({ error: "Failed to update incident" }, { status: 500 });
   }

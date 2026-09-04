@@ -47,14 +47,30 @@ function currentTimeStep(): number {
   return Math.floor(Date.now() / 1000 / 30);
 }
 
+// Tracks the last successfully used time step per secret so the same code
+// cannot be replayed within (or after) its validity window.
+const lastUsedSteps = new Map<string, number>();
+const MAX_TRACKED_SECRETS = 10_000;
+
 export function verifyTotp(secret: string, code: string, window = 1): boolean {
   if (!secret || !code) return false;
   const cleanCode = String(code).replace(/\s+/g, "").trim();
   if (!/^\d{6}$/.test(cleanCode)) return false;
   const decoded = base32Decode(secret);
   const step = currentTimeStep();
+  const key = crypto.createHash("sha256").update(secret).digest("hex");
+  const lastUsed = lastUsedSteps.get(key);
   for (let i = -window; i <= window; i++) {
-    if (hotp(decoded, step + i) === cleanCode) return true;
+    const candidate = step + i;
+    if (lastUsed !== undefined && candidate <= lastUsed) continue;
+    if (hotp(decoded, candidate) === cleanCode) {
+      if (lastUsedSteps.size >= MAX_TRACKED_SECRETS) {
+        const oldest = lastUsedSteps.keys().next().value;
+        if (oldest !== undefined) lastUsedSteps.delete(oldest);
+      }
+      lastUsedSteps.set(key, candidate);
+      return true;
+    }
   }
   return false;
 }

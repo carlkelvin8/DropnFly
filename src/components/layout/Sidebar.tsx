@@ -17,6 +17,7 @@ import {
   Moon,
   User,
   MessageCircle,
+  HeadphonesIcon,
   QrCode,
   Truck,
   AlertTriangle,
@@ -30,6 +31,7 @@ const ADMIN_ONLY_ITEMS = new Set([
   "/dashboard/settings",
   "/dashboard/employees",
   "/dashboard/activity-logs",
+  "/dashboard/analytics",
 ]);
 
 const STAFF_AND_ABOVE_ITEMS = new Set([
@@ -46,6 +48,7 @@ const allNavItems = [
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/customers", label: "Customers", icon: Users },
   { href: "/dashboard/chat", label: "Chat", icon: MessageCircle },
+  { href: "/dashboard/support", label: "General Support", icon: HeadphonesIcon },
   { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/dashboard/employees", label: "Employees", icon: UserCog },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
@@ -78,10 +81,10 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   });
 
   return (
-    <aside className="flex w-64 flex-col border-r bg-sidebar-background">
+    <aside className="flex h-full w-64 flex-col border-r bg-sidebar-background">
       <div className="flex h-14 items-center border-b px-6">
         <Luggage className="mr-2 h-5 w-5" />
-        <span className="font-semibold">Dropnfly</span>
+        <span className="font-semibold"><span className="text-blue-600">Drop</span><span className="text-orange-500">nfly</span></span>
       </div>
 
       <div className="border-b px-4 py-3">

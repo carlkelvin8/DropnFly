@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 
 export async function GET(req: Request) {
   const session = await auth();
-  if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
+  if (!session?.user || session.user.role !== "ADMIN") return new NextResponse("Forbidden", { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const from = searchParams.get("from");
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   }
 
   const payments = await prisma.payment.findMany({
-    where: { ...where, status: { in: ["PAID", "REFUNDED"] } },
+    where: { ...where, status: "PAID" },
     include: { booking: { select: { referenceNumber: true } }, customer: { select: { name: true, email: true } } },
     orderBy: { paidAt: "desc" },
   });

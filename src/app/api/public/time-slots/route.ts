@@ -1,29 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { manilaDayStart } from "@/lib/manila-time";
 
 const DEFAULTS = {
   max_concurrent_pickups: "1",
   max_concurrent_deliveries: "1",
   pickup_slot_duration: "60",
   delivery_slot_duration: "60",
-  operating_start: "08:00",
-  operating_end: "17:00",
+  operating_start: "00:00",
+  operating_end: "23:59",
+  store_operating_days: "0,1,2,3,4,5,6",
 };
 
+function parseMinutes(value: string): number {
+  const [h, m] = value.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function minutesToHHMM(minutes: number): string {
+  const m = ((minutes % 1440) + 1440) % 1440;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
 function generateSlots(start: string, end: string, durationMin: number) {
+  const startMinutes = parseMinutes(start);
+  // Normalize a 24-hour operation ("23:59" or "24:00") to the start of the next day so a
+  // slot ending exactly at midnight is included.
+  let endMinutes = parseMinutes(end);
+  if (endMinutes === 1439) endMinutes = 1440;
+  if (endMinutes === 0 && (end === "24:00" || end === "00:00")) endMinutes = 1440;
+
   const slots: { start: string; end: string }[] = [];
-  const [startH, startM] = start.split(":").map(Number);
-  const [endH, endM] = end.split(":").map(Number);
-  let h = startH, m = startM;
-  while (h * 60 + m + durationMin <= endH * 60 + endM) {
-    const slotStart = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    m += durationMin;
-    h += Math.floor(m / 60);
-    m = m % 60;
-    const slotEnd = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    slots.push({ start: slotStart, end: slotEnd });
+  let cursor = startMinutes;
+  while (cursor + durationMin <= endMinutes) {
+    slots.push({ start: minutesToHHMM(cursor), end: minutesToHHMM(cursor + durationMin) });
+    cursor += durationMin;
   }
   return slots;
+}
+
+function manilaNowParts() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || "00";
+  return { date: `${value("year")}-${value("month")}-${value("day")}`, minutes: Number(value("hour")) * 60 + Number(value("minute")) };
 }
 
 export async function GET(req: NextRequest) {
@@ -44,14 +73,33 @@ export async function GET(req: NextRequest) {
   }
 
   const isPickup = type === "pickup";
-  const maxConcurrent = parseInt(isPickup ? settings.max_concurrent_pickups : settings.max_concurrent_deliveries);
-  const slotDuration = parseInt(isPickup ? settings.pickup_slot_duration : settings.delivery_slot_duration);
-  const operatingStart = settings.operating_start;
-  const operatingEnd = settings.operating_end;
+  const maxConcurrent = Math.max(1, parseInt(isPickup ? settings.max_concurrent_pickups : settings.max_concurrent_deliveries) || 1);
+  const slotDuration = Math.max(15, parseInt(isPickup ? settings.pickup_slot_duration : settings.delivery_slot_duration) || 60);
+  // Senior: respect admin operating hours but default to 24h (00:00-23:59) for flight-flexible service
+  const operatingStart = settings.operating_start || "00:00";
+  const operatingEnd = settings.operating_end || "23:59";
 
   const slots = generateSlots(operatingStart, operatingEnd, slotDuration);
 
-  const selectedDate = new Date(dateStr + "T00:00:00");
+  // Respect store_operating_days — if admin closed that weekday, return empty (with hint)
+  const { manilaWeekday } = await import("@/lib/manila-time");
+  const manilaDay = String(manilaWeekday(manilaDayStart(dateStr)));
+  const operatingDays = (settings.store_operating_days || "0,1,2,3,4,5,6").split(",").map((s) => s.trim());
+  if (!operatingDays.includes(manilaDay)) {
+    return NextResponse.json({
+      date: dateStr,
+      type,
+      maxConcurrent,
+      slotDuration,
+      operatingStart,
+      operatingEnd,
+      storeOperatingDays: settings.store_operating_days,
+      slots: [],
+      closedReason: "Store is closed on this weekday per admin settings",
+    }, { headers: { "Cache-Control": "no-store, must-revalidate" } });
+  }
+
+  const selectedDate = manilaDayStart(dateStr);
   const nextDate = new Date(selectedDate);
   nextDate.setDate(nextDate.getDate() + 1);
 
@@ -74,9 +122,12 @@ export async function GET(req: NextRequest) {
   for (const b of existingBookings) {
     const dt = isPickup ? (b as { checkIn: Date }).checkIn : (b as { checkOut: Date | null }).checkOut;
     if (!dt) continue;
-    const hours = dt.getHours().toString().padStart(2, "0");
-    const minutes = dt.getMinutes().toString().padStart(2, "0");
-    const timeStr = `${hours}:${minutes}`;
+    const timeStr = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Manila",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(dt);
 
     for (const slot of slots) {
       if (timeStr >= slot.start && timeStr < slot.end) {
@@ -86,12 +137,21 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const result = slots.map((slot) => ({
-    start: slot.start,
-    end: slot.end,
-    booked: slotCounts[slot.start] || 0,
-    available: (slotCounts[slot.start] || 0) < maxConcurrent,
-  }));
+  const manilaNow = manilaNowParts();
+  const result = slots.map((slot) => {
+    const booked = slotCounts[slot.start] || 0;
+    const slotMinutes = Number(slot.start.slice(0, 2)) * 60 + Number(slot.start.slice(3, 5));
+    const isPast = dateStr < manilaNow.date || (dateStr === manilaNow.date && slotMinutes <= manilaNow.minutes);
+    const isFull = booked >= maxConcurrent;
+
+    return {
+      start: slot.start,
+      end: slot.end,
+      booked,
+      available: !isPast && !isFull,
+      unavailableReason: isPast ? "past" : isFull ? "full" : null,
+    };
+  });
 
   return NextResponse.json({
     date: dateStr,

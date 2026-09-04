@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function GET() {
   const session = await auth();
@@ -8,8 +9,15 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const promos = await prisma.promoCode.findMany({ orderBy: { createdAt: "desc" } });
-  return NextResponse.json(promos);
+  try {
+    const promos = await prisma.promoCode.findMany({ orderBy: { createdAt: "desc" } });
+    return NextResponse.json(decimalsToNumbers(promos));
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("Promo codes error:", error);
+    }
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
@@ -44,7 +52,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json(promo, { status: 201 });
+    return NextResponse.json(decimalsToNumbers(promo), { status: 201 });
   } catch {
     return NextResponse.json({ error: "Failed to create promo code" }, { status: 500 });
   }

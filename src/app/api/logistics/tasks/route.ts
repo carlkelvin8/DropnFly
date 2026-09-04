@@ -30,16 +30,16 @@ export async function GET() {
       assignments: {
         include: { user: { select: { id: true, name: true, profilePic: true, vehicleType: true, plateNumber: true } } },
         orderBy: { createdAt: "desc" },
-        take: 1,
       },
     },
   });
 
   const mapped = bookings.map((b) => {
-    const rider = b.assignments[0]?.user || null;
     const taskType = b.status === "OUT_FOR_DELIVERY" ? "delivery"
       : b.status === "CONFIRMED" ? "pickup"
       : "processing";
+    const activePhase = taskType === "delivery" ? "DROPOFF" : "PICKUP";
+    const rider = b.assignments.find((assignment) => assignment.phase === activePhase)?.user || null;
 
     return {
       id: b.id,
@@ -52,6 +52,7 @@ export async function GET() {
       rider,
       isAssignedToMe: rider?.id === session.user.id,
       createdAt: b.createdAt,
+      pickupStartedAt: b.pickupStartedAt,
     };
   });
 

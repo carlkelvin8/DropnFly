@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { normalizeReference } from "@/lib/utils";
 import { notifyDropOffVerified } from "@/lib/notifications";
+import { canAccessBooking } from "@/lib/booking-access";
 
 export async function POST(
   req: Request,
@@ -30,6 +31,11 @@ export async function POST(
 
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
+    if (!(await canAccessBooking(booking))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    if (typeof photo !== "string" || photo.length > 7_000_000 || (note && (typeof note !== "string" || note.length > 1000))) {
+      return NextResponse.json({ error: "Photo or note is too large" }, { status: 413 });
     }
 
     if (["CANCELLED", "NO_SHOW", "DELIVERED"].includes(booking.status)) {
@@ -91,7 +97,9 @@ export async function POST(
       message: `Drop-off verified — ${booking.referenceNumber} is now In Storage`,
     });
   } catch (error) {
-    console.error("Passenger verification error:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Passenger verification error:", error);
+    }
     return NextResponse.json({ error: "Failed to verify drop-off" }, { status: 500 });
   }
 }

@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { locationSchema } from "@/lib/validations";
+import { hasStaffRole } from "@/lib/staff-access";
+import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user) {
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -21,7 +23,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(location);
+  return NextResponse.json(decimalsToNumbers(location));
 }
 
 export async function PUT(
@@ -29,8 +31,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {
@@ -54,7 +56,7 @@ export async function PUT(
       },
     });
 
-    return NextResponse.json(location);
+    return NextResponse.json(decimalsToNumbers(location));
   } catch {
     return NextResponse.json(
       { error: "Failed to update location" },
@@ -68,8 +70,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {

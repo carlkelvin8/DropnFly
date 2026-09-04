@@ -41,6 +41,7 @@ model User {
   totpSecret          String?
   totpEnabled         Boolean   @default(false)
   passwordChangedAt   DateTime?
+  authVersion          Int       @default(0)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -53,6 +54,7 @@ model User {
   chatMessages      ChatMessage[]
   scanEvents        ScanEvent[]
   incidentTimelines IncidentTimeline[]
+  supportMessages   SupportChatMessage[]
 }
 
 model StorageLocation {
@@ -61,7 +63,7 @@ model StorageLocation {
   address      String
   city         String
   capacity     Int
-  pricePerDay  Float
+  pricePerDay  Decimal  @db.Decimal(10, 2)
   openingTime  String   @default("08:00")
   closingTime  String   @default("20:00")
   isActive     Boolean  @default(true)
@@ -77,6 +79,8 @@ model Customer {
   email           String   @unique
   phone           String
   password        String?
+  emailVerifiedAt DateTime?
+  authVersion     Int      @default(0)
   countryOfOrigin String?
   cityOfOrigin    String?
   isApproved      Boolean  @default(true)
@@ -93,6 +97,7 @@ model Customer {
   reviews           BookingReview[]
   pointsTransactions PointsTransaction[]
   incidentReports   IncidentReport[]
+  activationTokens  CustomerActivationToken[]
 }
 
 model Booking {
@@ -109,11 +114,12 @@ model Booking {
   checkIn         DateTime
   checkOut        DateTime?
   numberOfBags    Int
-  totalPrice      Float         @default(0)
-  discount        Float         @default(0)
+  totalPrice      Decimal       @default(0) @db.Decimal(10, 2)
+  discount        Decimal       @default(0) @db.Decimal(10, 2)
   promoCodeId     String?
   status          BookingStatus @default(PENDING)
   pickupStartedAt DateTime?     // set when "Start Pickup" pressed — enables geolocation monitoring
+  checkoutLockedUntil DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -130,6 +136,14 @@ model Booking {
   scanEvents       ScanEvent[]
   baggageTags      BaggageTag[]
   incidentReports  IncidentReport[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([customerId, status])
+  @@index([checkIn])
+  @@index([checkOut])
 }
 
 model ScanEvent {
@@ -160,6 +174,9 @@ model BookingAssignment {
 
   booking Booking @relation(fields: [bookingId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
+
+  @@index([bookingId])
+  @@index([userId])
 }
 
 model ActivityLog {
@@ -172,6 +189,9 @@ model ActivityLog {
   createdAt DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 model LocationUpdate {
@@ -211,9 +231,36 @@ model Notification {
 model PasswordResetToken {
   id        String   @id @default(cuid())
   email     String
-  token     String   @unique
+  tokenHash String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+model CustomerActivationToken {
+  id           String   @id @default(cuid())
+  customerId   String
+  tokenHash    String   @unique
+  passwordHash String
+  pendingName  String
+  pendingPhone String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([expiresAt])
+}
+
+model ApiRateLimit {
+  key         String   @id
+  count       Int      @default(1)
+  windowStart DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([expiresAt])
 }
 
 enum PaymentStatus {
@@ -234,7 +281,7 @@ model Payment {
   id            String        @id @default(cuid())
   bookingId     String
   customerId    String
-  amount        Float
+  amount        Decimal       @db.Decimal(10, 2)
   method        PaymentMethod @default(CASH)
   status        PaymentStatus @default(PENDING)
   reference     String?
@@ -246,6 +293,10 @@ model Payment {
 
   booking  Booking  @relation(fields: [bookingId], references: [id])
   customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([customerId])
 }
 
 enum DiscountType {
@@ -258,11 +309,11 @@ model PromoCode {
   code        String       @unique
   description String?
   type        DiscountType @default(PERCENTAGE)
-  value       Float
+  value       Decimal      @db.Decimal(10, 2)
   maxUsage    Int          @default(100)
   usedCount   Int          @default(0)
-  minAmount   Float        @default(0)
-  maxDiscount Float?
+  minAmount   Decimal      @default(0) @db.Decimal(10, 2)
+  maxDiscount Decimal?     @db.Decimal(10, 2)
   expiresAt   DateTime?
   isActive    Boolean      @default(true)
   createdAt   DateTime     @default(now())
@@ -341,6 +392,35 @@ model ChatMessage {
   @@index([bookingId, createdAt])
 }
 
+model SupportChat {
+  id            String   @id @default(cuid())
+  token         String   @unique
+  customerName  String?
+  customerEmail String?
+  status        String   @default("OPEN") // OPEN, CLOSED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  messages SupportChatMessage[]
+
+  @@index([status, updatedAt])
+}
+
+model SupportChatMessage {
+  id            String   @id @default(cuid())
+  supportChatId String
+  senderId      String?
+  message       String
+  isFromCustomer Boolean  @default(false)
+  isRead        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  supportChat SupportChat @relation(fields: [supportChatId], references: [id])
+  sender      User?       @relation(fields: [senderId], references: [id])
+
+  @@index([supportChatId, createdAt])
+}
+
 model BookingReview {
   id         String   @id @default(cuid())
   bookingId  String   @unique
@@ -367,6 +447,7 @@ model PointsTransaction {
   customer Customer @relation(fields: [customerId], references: [id])
 
   @@index([customerId, createdAt])
+  @@unique([reference, type])
 }
 
 model LuggageItem {
@@ -440,6 +521,7 @@ model IncidentReport {
   timeline IncidentTimeline[]
 
   @@index([bookingId])
+  @@index([customerId])
   @@index([status])
   @@index([priority])
 }

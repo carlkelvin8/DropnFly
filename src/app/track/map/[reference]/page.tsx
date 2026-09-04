@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -73,10 +74,12 @@ export default function LiveTrackingPage() {
   const [data, setData] = useState<TrackingData | null>(null);
   const [employeeLoc, setEmployeeLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<{ id: string; message: string; isFromCustomer: boolean; createdAt: string }[]>([]);
+  const [chatMessages, setChatMessages] = useState<{ id: string; message: string; isFromCustomer: boolean; createdAt: string; sender?: { name: string; role?: string } | null }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatBoxRef = useRef<HTMLDivElement>(null);
+  const chatStickToBottomRef = useRef(true);
+  const lastChatMessageIdRef = useRef<string | null>(null);
   const [isRiderView, setIsRiderView] = useState(false);
 
   useEffect(() => {
@@ -116,7 +119,7 @@ export default function LiveTrackingPage() {
     const userId = data.assignments[0].user.id;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/tracking/location/${userId}`);
+        const res = await fetch(`/api/tracking/location/${userId}?reference=${encodeURIComponent(String(params.reference))}`);
         if (!res.ok) return;
         const loc = await res.json();
         if (loc.currentLat && loc.currentLng) {
@@ -125,21 +128,37 @@ export default function LiveTrackingPage() {
       } catch {}
     }, 5000);
     return () => clearInterval(interval);
-  }, [data]);
+  }, [data, params.reference]);
 
   useEffect(() => {
     if (!chatOpen) return;
-    const abort = new AbortController();
-    fetch(`/api/public/bookings/${params.reference}/chat`, { signal: abort.signal })
-      .then((res) => res.json())
-      .then((msgs) => { if (!abort.signal.aborted) setChatMessages(msgs); })
+    let active = true;
+    const loadMessages = () => fetch(`/api/public/bookings/${params.reference}/chat`, { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : [])
+      .then((msgs) => {
+        if (!active || !Array.isArray(msgs)) return;
+        const lastId = msgs.length ? String(msgs[msgs.length - 1].id) : "";
+        if (lastId === lastChatMessageIdRef.current) return;
+        lastChatMessageIdRef.current = lastId;
+        setChatMessages(msgs);
+      })
       .catch(() => {});
-    return () => abort.abort();
+    void loadMessages();
+    const poll = window.setInterval(loadMessages, 2000);
+    return () => { active = false; window.clearInterval(poll); };
   }, [chatOpen, params.reference]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
+    const el = chatBoxRef.current;
+    if (!el || !chatStickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [chatMessages, chatOpen]);
+
+  function handleChatScroll() {
+    const el = chatBoxRef.current;
+    if (!el) return;
+    chatStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function sendChat() {
     const text = chatInput.trim();
@@ -299,7 +318,7 @@ export default function LiveTrackingPage() {
                         <div className="flex items-center gap-3">
                           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-green-500 to-emerald-500 text-base font-bold text-white shadow-md">
                             {employee.profilePic ? (
-                              <img src={employee.profilePic} alt={employee.name} className="h-12 w-12 rounded-full object-cover" />
+                              <Image unoptimized width={48} height={48} src={employee.profilePic} alt={employee.name} className="h-12 w-12 rounded-full object-cover" />
                             ) : (
                               employee.name.charAt(0)
                             )}
@@ -382,7 +401,7 @@ export default function LiveTrackingPage() {
               <CardHeader className="pb-2 cursor-pointer" onClick={() => setChatOpen(!chatOpen)}>
                 <CardTitle className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4 text-blue-500" /> Chat
+                    <MessageCircle className="h-4 w-4 text-blue-500" /> Chat with {chatMessages.slice().reverse().find((message) => !message.isFromCustomer && message.sender)?.sender?.name || "Support"}
                   </span>
                   <Badge variant="outline" className="text-[10px]">
                     {chatMessages.length} msg
@@ -391,7 +410,7 @@ export default function LiveTrackingPage() {
               </CardHeader>
               {chatOpen && (
                 <CardContent className="space-y-3">
-                  <div className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-2 bg-muted/20">
+                  <div ref={chatBoxRef} onScroll={handleChatScroll} className="max-h-40 overflow-y-auto space-y-2 border rounded-lg p-2 bg-muted/20">
                     {chatMessages.length === 0 && (
                       <p className="text-xs text-muted-foreground text-center py-2">No messages yet</p>
                     )}
@@ -402,12 +421,12 @@ export default function LiveTrackingPage() {
                         }`}>
                           <p>{msg.message}</p>
                           <p className="text-[9px] opacity-60 mt-0.5">
-                            {new Date(msg.createdAt).toLocaleTimeString()}
+                            {new Date(msg.createdAt).toLocaleTimeString()}{!msg.isFromCustomer && ` · ${msg.sender?.name || "DropnFly staff"}`}
                           </p>
                         </div>
                       </div>
                     ))}
-                    <div ref={chatEndRef} />
+                    <div />
                   </div>
                   <div className="flex gap-2">
                     <input

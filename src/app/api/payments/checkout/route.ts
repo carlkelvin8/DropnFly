@@ -4,19 +4,18 @@ import { auth } from "@/lib/auth";
 import { getCustomerSession } from "@/lib/customer-auth";
 import { createCheckoutSession, isPaymongoConfigured } from "@/lib/paymongo";
 import { logActivity } from "@/lib/activity";
+import { canAccessBooking } from "@/lib/booking-access";
 
 export async function POST(req: Request) {
   const session = await auth();
   const customer = await getCustomerSession();
-  if (!session?.user && !customer) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+  let lockedBookingId: string | null = null;
   try {
     const body = await req.json();
-    const { bookingId, method } = body as {
+    const { bookingId, method, amount } = body as {
       bookingId: string;
       method?: "GCASH" | "MAYA" | "CARD";
+      amount?: number;
     };
 
     if (!bookingId) {
@@ -31,6 +30,12 @@ export async function POST(req: Request) {
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
+    if (session?.user?.role === "EMPLOYEE") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (!(await canAccessBooking(booking))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     if (booking.status === "CANCELLED") {
       return NextResponse.json({ error: "Cannot pay for a cancelled booking" }, { status: 400 });
@@ -44,11 +49,24 @@ export async function POST(req: Request) {
       where: { bookingId: booking.id, status: "PAID" },
       _sum: { amount: true },
     });
-    const remaining = booking.totalPrice - (paidAmount._sum.amount || 0);
+    const remaining = Number(booking.totalPrice) - Number(paidAmount._sum.amount || 0);
 
     if (remaining <= 0) {
       return NextResponse.json({ error: "Booking is already fully paid" }, { status: 400 });
     }
+    const checkoutAmount = amount == null ? remaining : Number(amount);
+    if (!Number.isFinite(checkoutAmount) || checkoutAmount <= 0 || checkoutAmount > remaining) {
+      return NextResponse.json({ error: "Invalid payment amount" }, { status: 400 });
+    }
+
+    const pending = await prisma.payment.findFirst({
+      where: { bookingId: booking.id, status: "PENDING", gatewayRef: { not: null } },
+      select: { id: true, createdAt: true },
+    });
+    if (pending && pending.createdAt > new Date(Date.now() - 30 * 60 * 1000)) {
+      return NextResponse.json({ error: "A payment for this booking is already pending" }, { status: 409 });
+    }
+    if (pending) await prisma.payment.update({ where: { id: pending.id }, data: { status: "FAILED" } });
 
     const selectedMethod = method && ["GCASH", "MAYA", "CARD"].includes(method) ? method : "GCASH";
 
@@ -57,7 +75,7 @@ export async function POST(req: Request) {
         data: {
           bookingId: booking.id,
           customerId: booking.customerId,
-          amount: remaining,
+          amount: checkoutAmount,
           method: selectedMethod,
           status: "PENDING",
         },
@@ -69,7 +87,7 @@ export async function POST(req: Request) {
           action: "CREATE",
           entity: "Payment",
           entityId: payment.id,
-          details: `Payment request of ${remaining} for booking ${booking.referenceNumber}`,
+          details: `Payment request of ${checkoutAmount} for booking ${booking.referenceNumber}`,
         });
       }
 
@@ -80,12 +98,26 @@ export async function POST(req: Request) {
       });
     }
 
+    const now = new Date();
+    const lock = await prisma.booking.updateMany({
+      where: {
+        id: booking.id,
+        OR: [{ checkoutLockedUntil: null }, { checkoutLockedUntil: { lt: now } }],
+      },
+      data: { checkoutLockedUntil: new Date(now.getTime() + 5 * 60 * 1000) },
+    });
+    if (lock.count !== 1) {
+      return NextResponse.json({ error: "A checkout is already being created for this booking" }, { status: 409 });
+    }
+    lockedBookingId = booking.id;
+
     const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-    const successUrl = `${baseUrl}/my-account/bookings/${booking.id}?paid=1`;
-    const cancelUrl = `${baseUrl}/my-account/bookings/${booking.id}`;
+    const customerPath = customer ? `/my-account/bookings/${booking.id}` : `/book/confirm/${booking.referenceNumber}`;
+    const successUrl = `${baseUrl}${customerPath}?paid=1`;
+    const cancelUrl = `${baseUrl}${customerPath}`;
 
     const sessionResult = await createCheckoutSession({
-      amount: remaining,
+      amount: checkoutAmount,
       description: `DropnFly luggage booking ${booking.referenceNumber}`,
       name: booking.customer.name,
       email: booking.customer.email,
@@ -104,7 +136,7 @@ export async function POST(req: Request) {
       data: {
         bookingId: booking.id,
         customerId: booking.customerId,
-        amount: remaining,
+        amount: checkoutAmount,
         method: selectedMethod,
         status: "PENDING",
         gatewayRef: sessionResult.id,
@@ -117,7 +149,7 @@ export async function POST(req: Request) {
         action: "CREATE",
         entity: "Payment",
         entityId: payment.id,
-        details: `Payment request of ${remaining} for booking ${booking.referenceNumber}`,
+        details: `Payment request of ${checkoutAmount} for booking ${booking.referenceNumber}`,
       });
     }
 
@@ -127,6 +159,9 @@ export async function POST(req: Request) {
       url: sessionResult.checkoutUrl,
     });
   } catch (e) {
+    if (lockedBookingId) {
+      await prisma.booking.updateMany({ where: { id: lockedBookingId }, data: { checkoutLockedUntil: null } }).catch(() => undefined);
+    }
     const message = e instanceof Error ? e.message : "Failed to start checkout";
     return NextResponse.json({ error: message }, { status: 500 });
   }

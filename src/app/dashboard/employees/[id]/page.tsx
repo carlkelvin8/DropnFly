@@ -5,7 +5,9 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Mail, Shield, Calendar, User, Activity } from "lucide-react";
+import { Mail, Shield, Calendar, User, Activity, Pencil } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -23,6 +25,7 @@ import {
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { signOut, useSession } from "next-auth/react";
 
 interface Employee {
   id: string;
@@ -47,9 +50,16 @@ interface Employee {
 
 export default function EmployeeDetailPage() {
   const params = useParams();
+  const { data: session } = useSession();
 
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [bookingPage, setBookingPage] = useState(0);
+  const BOOKINGS_PER_PAGE = 5;
 
   useEffect(() => {
     const abort = new AbortController();
@@ -69,17 +79,25 @@ export default function EmployeeDetailPage() {
     });
     if (res.ok) {
       const updated = await res.json();
+      if (updated.sessionInvalidated) {
+        toast.success("Account role updated. Please sign in again.");
+        await signOut({ callbackUrl: `${window.location.origin}/login` });
+        return;
+      }
       setEmployee((prev) => prev ? { ...prev, ...updated } : prev);
+      setEditing(false);
+      setEditPassword("");
       toast.success("Employee updated successfully");
     } else {
-      toast.error("Failed to update employee");
+      const body = await res.json().catch(() => null);
+      toast.error(body?.error || "Failed to update employee");
     }
     setSaving(false);
   }
 
   if (!employee) {
     return (
-      <div className="mx-auto max-w-4xl space-y-6">
+      <div className="space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="grid gap-6 md:grid-cols-2">
           <Skeleton className="h-64 w-full" />
@@ -91,7 +109,7 @@ export default function EmployeeDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" asChild>
           <Link href="/dashboard/employees">&larr; Back</Link>
@@ -163,10 +181,13 @@ export default function EmployeeDetailPage() {
             <CardTitle>Account Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <Button variant="outline" className="w-full" disabled={saving} onClick={() => { setEditName(employee.name); setEditEmail(employee.email); setEditing(true); }}>
+              <Pencil className="mr-2 h-4 w-4" /> Update Details
+            </Button>
             <Button
               variant={employee.isApproved ? "secondary" : "default"}
               className="w-full"
-              disabled={saving}
+              disabled={saving || (session?.user?.id === employee.id && employee.isActive)}
               onClick={() => updateEmployee({ isApproved: !employee.isApproved })}
             >
               {employee.isApproved ? "Unapprove Account" : "Approve Account"}
@@ -174,7 +195,8 @@ export default function EmployeeDetailPage() {
             <Button
               variant={employee.isActive ? "destructive" : "default"}
               className="w-full"
-              disabled={saving}
+              disabled={saving || (session?.user?.id === employee.id && employee.isActive)}
+              title={session?.user?.id === employee.id ? "You cannot deactivate your own account" : undefined}
               onClick={() => updateEmployee({ isActive: !employee.isActive })}
             >
               {employee.isActive ? "Deactivate Account" : "Activate Account"}
@@ -194,6 +216,20 @@ export default function EmployeeDetailPage() {
         </Card>
       </div>
 
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+          <Card className="w-full max-w-md">
+            <CardHeader><CardTitle>Update Employee Details</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5"><Label htmlFor="edit-name">Name</Label><Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} /></div>
+              <div className="space-y-1.5"><Label htmlFor="edit-email">Username / Email</Label><Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} /></div>
+              <div className="space-y-1.5"><Label htmlFor="edit-password">New Password</Label><Input id="edit-password" type="password" minLength={8} value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="Leave blank to keep current password" /></div>
+              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button><Button disabled={saving || !editName.trim() || !editEmail.trim() || (!!editPassword && editPassword.length < 8)} onClick={() => updateEmployee({ name: editName, email: editEmail, ...(editPassword ? { password: editPassword } : {}) })}>Save Details</Button></div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Assigned Bookings</CardTitle>
@@ -209,7 +245,7 @@ export default function EmployeeDetailPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {employee.assignedBookings.map((a) => (
+              {employee.assignedBookings.slice(bookingPage * BOOKINGS_PER_PAGE, bookingPage * BOOKINGS_PER_PAGE + BOOKINGS_PER_PAGE).map((a) => (
                 <TableRow key={a.booking.id} className="border-b transition-colors hover:bg-muted/50">
                   <TableCell className="font-mono">{a.booking.referenceNumber}</TableCell>
                   <TableCell>{a.booking.pickupLocation}</TableCell>
@@ -233,6 +269,26 @@ export default function EmployeeDetailPage() {
               )}
             </TableBody>
           </Table>
+          {employee.assignedBookings.length > BOOKINGS_PER_PAGE && (
+            <div className="mt-4 flex items-center justify-between border-t pt-3">
+              <span className="text-xs text-muted-foreground">
+                Showing {bookingPage * BOOKINGS_PER_PAGE + 1}–{Math.min(bookingPage * BOOKINGS_PER_PAGE + BOOKINGS_PER_PAGE, employee.assignedBookings.length)} of {employee.assignedBookings.length} bookings
+              </span>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" disabled={bookingPage === 0} onClick={() => setBookingPage((p) => Math.max(0, p - 1))}>
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={(bookingPage + 1) * BOOKINGS_PER_PAGE >= employee.assignedBookings.length}
+                  onClick={() => setBookingPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

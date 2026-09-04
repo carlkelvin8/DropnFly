@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { hasStaffRole } from "@/lib/staff-access";
+import { rateLimit, requestKey } from "@/lib/rate-limit";
 
 export async function GET(req: Request) {
+  const key = requestKey(req);
+  const { allowed, retryAfter } = await rateLimit(`customer-search:${key}`, 20, 60 * 1000);
+  if (!allowed) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429, headers: { "Retry-After": String(retryAfter) } });
+  }
+
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);

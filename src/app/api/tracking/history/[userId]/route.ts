@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canReadRiderLocation } from "@/lib/staff-access";
 
 export async function GET(
   req: Request,
@@ -12,6 +13,9 @@ export async function GET(
   }
 
   const { userId } = await params;
+  if (!(await canReadRiderLocation(session.user, userId))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const { searchParams } = new URL(req.url);
   const from = searchParams.get("from");
   const to = searchParams.get("to");

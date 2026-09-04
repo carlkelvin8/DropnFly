@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -24,17 +25,16 @@ import { formatDate, formatCurrency } from "@/lib/utils";
 import {
   ArrowLeft, Mail, Phone, MapPin, Calendar, Package,
   User, Navigation, Printer, Trash2, Tag, MessageCircle, Clock,
-  Briefcase, Plus, Edit3, AlertTriangle, X, CheckCircle, ShieldAlert,
+  Briefcase, Plus, Minus, Edit3, AlertTriangle, X, CheckCircle, ShieldAlert,
   Wrench, ShoppingBag, CreditCard, Receipt, Ban, UserX,
   RotateCcw, History, Flag, Check, XCircle, ChevronDown, Activity, Camera, Loader2,
-  Navigation2, Radio, Play, Square,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { LocationUpdater } from "@/components/tracking/LocationUpdater";
-import { BookingScannerPanel } from "@/components/scanner/BookingScannerPanel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NAIA_TERMINALS } from "@/components/booking/constants";
+import { getAirlinesForTerminal } from "@/lib/terminal-airlines";
 
 interface Booking {
   id: string;
@@ -64,6 +64,8 @@ interface Employee {
   name: string;
   email: string;
   isActive: boolean;
+  isApproved: boolean;
+  role: string;
 }
 
 interface Extension {
@@ -87,6 +89,12 @@ interface LuggageItem {
   checkOutAt: string | null;
 }
 
+interface AvailableTag {
+  id: string;
+  tagNumber: string;
+  isUsed: boolean;
+}
+
 const statusOptions = [
   { value: "PENDING", label: "Pending" },
   { value: "CONFIRMED", label: "Confirmed" },
@@ -94,14 +102,31 @@ const statusOptions = [
   { value: "IN_STORAGE", label: "In Storage" },
   { value: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
   { value: "DELIVERED", label: "Delivered" },
-  { value: "NO_SHOW", label: "No Show" },
   { value: "CANCELLED", label: "Cancelled" },
+  { value: "NO_SHOW", label: "No Show" },
 ];
 
 const ADDITIONAL_SERVICES = [
   { id: "pickup", name: "Pick-up from Customer", price: 180, icon: "📦", description: "We pick up the luggage from the customer" },
   { id: "delivery", name: "Deliver to Customer", price: 180, icon: "🚚", description: "We deliver the luggage to the customer" },
 ];
+
+function readableLuggageDetails(value: string | null): string {
+  if (!value) return "";
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return value;
+    return parsed.flatMap((entry: Record<string, unknown>) => {
+      const lines: string[] = [];
+      if (typeof entry.type === "string" && typeof entry.qty === "number") lines.push(`${entry.type} × ${entry.qty}`);
+      if (Array.isArray(entry.services)) lines.push(`Additional services: ${(entry.services as string[]).join(", ")}`);
+      if (Array.isArray(entry.notes)) lines.push(`Service notes: ${(entry.notes as string[]).join("; ")}`);
+      return lines;
+    }).join("\n");
+  } catch {
+    return value;
+  }
+}
 
 export default function BookingDetailPage() {
   const params = useParams();
@@ -110,7 +135,6 @@ export default function BookingDetailPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [extensions, setExtensions] = useState<Extension[]>([]);
@@ -119,6 +143,12 @@ export default function BookingDetailPage() {
   const [addingLuggage, setAddingLuggage] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [sendingReceipt, setSendingReceipt] = useState(false);
+  const [editPickupTerminal, setEditPickupTerminal] = useState("");
+  const [editPickupAirline, setEditPickupAirline] = useState("");
+
+  const [editDropOffTerminal, setEditDropOffTerminal] = useState("");
+  const [editSessionName, setEditSessionName] = useState<string | null>(null);
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
   const [serviceNote, setServiceNote] = useState("");
   const [dangerModal, setDangerModal] = useState<{ action: "no-show" | "cancelled"; mode: "admin" | "report" } | null>(null);
@@ -127,37 +157,38 @@ export default function BookingDetailPage() {
   const [dangerSubmitting, setDangerSubmitting] = useState(false);
   const dangerFileRef = useRef<HTMLInputElement>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
-  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-  const [pickupBusy, setPickupBusy] = useState(false);
-  const [showTrackingPanel, setShowTrackingPanel] = useState(false);
-  const [confirmCancelTracking, setConfirmCancelTracking] = useState(false);
   const [settleAmount, setSettleAmount] = useState<number>(0);
-  const [settleMethod, setSettleMethod] = useState("CASH");
   const [refundAmount, setRefundAmount] = useState(0);
   const [refundReason, setRefundReason] = useState("");
-  const [refundMethod, setRefundMethod] = useState("CASH");
   const [refunding, setRefunding] = useState(false);
   const [showRefundForm, setShowRefundForm] = useState(false);
   const [logs, setLogs] = useState<{ id: string; action: string; entity: string; details: string | null; createdAt: string; user: { name: string } | null }[]>([]);
   const [showLog, setShowLog] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
-  const [tagRequestCount, setTagRequestCount] = useState(1);
+  const [availableTags, setAvailableTags] = useState<AvailableTag[]>([]);
+  const [selectedTagNumbers, setSelectedTagNumbers] = useState<Set<string>>(new Set());
   const [requestingTags, setRequestingTags] = useState(false);
   const [flaggableItem, setFlaggableItem] = useState<string | null>(null);
+  const [sectionFilter, setSectionFilter] = useState<string>("all");
+  const [showAddBagModal, setShowAddBagModal] = useState(false);
+  const [addBagType, setAddBagType] = useState<string>("Standard");
+  const [addBagQty, setAddBagQty] = useState<number>(1);
 
   useEffect(() => {
     const abort = new AbortController();
     Promise.all([
       fetch(`/api/bookings/${params.id}`, { signal: abort.signal }).then((r) => r.json()),
-      fetch("/api/employees", { signal: abort.signal }).then((r) => r.json()),
+      fetch("/api/employees?assignable=true", { signal: abort.signal, cache: "no-store" }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/extensions`, { signal: abort.signal }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/luggage`, { signal: abort.signal }).then((r) => r.json()),
-    ]).then(([bookingData, empData, extData, luggageData]) => {
+      fetch("/api/baggage-tags/available", { signal: abort.signal }).then((r) => r.json()),
+    ]).then(([bookingData, empData, extData, luggageData, tagData]) => {
       if (!abort.signal.aborted) {
         setBooking(bookingData);
-        setEmployees(empData || []);
-        setExtensions(extData || []);
-        setLuggageItems(luggageData || []);
+        setEmployees(Array.isArray(empData) ? empData : []);
+        setExtensions(Array.isArray(extData) ? extData : []);
+        setLuggageItems(Array.isArray(luggageData) ? luggageData : []);
+        setAvailableTags(Array.isArray(tagData?.tags) ? tagData.tags : []);
         const paid = (bookingData?.payments || [])
           .filter((p: { status: string }) => p.status === "PAID")
           .reduce((s: number, p: { amount: number }) => s + p.amount, 0);
@@ -172,10 +203,51 @@ export default function BookingDetailPage() {
       .then((r) => r.json())
       .then((s) => {
         setUserRole(s?.user?.role || null);
-        setSessionUserId(s?.user?.id || null);
+        setEditSessionName(s?.user?.name || null);
       })
       .catch(() => setUserRole(null));
   }, []);
+
+  useEffect(() => {
+    if (!booking || showEditModal) return;
+    // pre-fill edit fields from booking when not editing
+    const pick = booking.pickupLocation || "";
+    if (pick.includes(" - ")) {
+      const [t, ...rest] = pick.split(" - ");
+      setEditPickupTerminal(t.trim());
+      setEditPickupAirline(rest.join(" - ").trim());
+    } else {
+      // try to detect terminal substring
+      const found = NAIA_TERMINALS.find((tt) => pick.includes(tt.value));
+      setEditPickupTerminal(found ? found.value : pick);
+      setEditPickupAirline("");
+    }
+    setEditDropOffTerminal(booking.dropOffLocation || "");
+  }, [booking, showEditModal]);
+
+  useEffect(() => {
+    if (showEditModal && booking) {
+      const pick = booking.pickupLocation || "";
+      if (pick.includes(" - ")) {
+        const [t, ...rest] = pick.split(" - ");
+        setEditPickupTerminal(t.trim());
+        setEditPickupAirline(rest.join(" - ").trim());
+      } else {
+        const found = NAIA_TERMINALS.find((tt) => pick.includes(tt.value));
+        setEditPickupTerminal(found ? found.value : pick);
+        setEditPickupAirline("");
+      }
+      setEditDropOffTerminal(booking.dropOffLocation || "");
+    }
+  }, [showEditModal, booking]);
+
+  useEffect(() => {
+    if (!booking) return;
+    fetch(`/api/bookings/${booking.id}/log`)
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setLogs(d); })
+      .catch(() => {});
+  }, [booking?.id]);
 
   const totalPaid = (booking?.payments || [])
     .filter((p) => p.status === "PAID")
@@ -184,11 +256,22 @@ export default function BookingDetailPage() {
   const paymentStatus = !booking ? "unpaid" :
     totalPaid >= booking.totalPrice && booking.totalPrice > 0 ? "full" :
     totalPaid > 0 ? "dp" : "unpaid";
-
-  const pickupStarted = !!booking?.pickupStartedAt;
-  const pickupEmployee = booking?.assignments?.find((a) => a.phase !== "DROPOFF")?.user ||
-    booking?.assignments?.[0]?.user || null;
-  const isAssignee = !!pickupEmployee && sessionUserId === pickupEmployee.id;
+  const bookingLocked = booking ? ["CANCELLED", "NO_SHOW"].includes(booking.status) : false;
+  const availedServices = (() => {
+    const names = new Set<string>();
+    if (!booking?.luggageDetails) return names;
+    try {
+      const parsed = JSON.parse(booking.luggageDetails);
+      if (Array.isArray(parsed)) parsed.forEach((entry: Record<string, unknown>) => {
+        if (Array.isArray(entry.services)) (entry.services as string[]).forEach((name) => names.add(name));
+      });
+    } catch {
+      ADDITIONAL_SERVICES.forEach((service) => {
+        if (booking.luggageDetails?.includes(service.name)) names.add(service.name);
+      });
+    }
+    return names;
+  })();
 
   function reloadBooking() {
     fetch(`/api/bookings/${params.id}`)
@@ -203,53 +286,49 @@ export default function BookingDetailPage() {
       .catch(() => toast.error("Failed to reload booking"));
   }
 
-  async function handleStartPickup() {
-    setPickupBusy(true);
-    try {
-      const res = await fetch(`/api/bookings/${params.id}/pickup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start" }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to start pickup");
-      setBooking(json.booking);
-      toast.success("Pickup started — live geolocation tracking enabled");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to start pickup");
-    } finally {
-      setPickupBusy(false);
-    }
-  }
-
-  async function handleCancelTracking() {
-    setPickupBusy(true);
-    try {
-      const res = await fetch(`/api/bookings/${params.id}/pickup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cancel" }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to cancel tracking");
-      setBooking(json.booking);
-      toast.success("Live tracking cancelled");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to cancel tracking");
-    } finally {
-      setPickupBusy(false);
-    }
-  }
-
   async function handleAddLuggage() {
+    // open modal instead of direct add
+    setShowAddBagModal(true);
+  }
+
+  async function confirmAddBaggage() {
+    if (!booking) return;
+    if (!addBagType) return toast.error("Select baggage type");
+    if (addBagQty < 1) return toast.error("Quantity must be at least 1");
     setAddingLuggage(true);
     try {
-      const res = await fetch(`/api/bookings/${params.id}/luggage`, { method: "POST" });
-      if (!res.ok) throw new Error();
-      const item = await res.json();
-      setLuggageItems((prev) => [...prev, item]);
-      toast.success(`Added luggage ${item.tagNumber}`);
-    } catch { toast.error("Failed to add luggage"); }
+      const actor = editSessionName || "staff";
+      // Build updated luggageDetails JSON with the added type
+      let parsed: Array<Record<string, unknown>> = [];
+      try {
+        parsed = booking.luggageDetails ? JSON.parse(booking.luggageDetails) : [];
+        if (!Array.isArray(parsed)) parsed = [];
+      } catch { parsed = []; }
+      // Find existing entry for addBagType
+      const { LUGGAGE_TYPES: LT } = await import("@/lib/luggage-types");
+      const typeMeta = LT.find((t: { name: string }) => t.name === addBagType);
+      const price = typeMeta ? typeMeta.price : 0;
+      const existing = parsed.find((e) => e.type === addBagType) as Record<string, unknown> | undefined;
+      if (existing && typeof existing.qty === "number") {
+        existing.qty = (existing.qty as number) + addBagQty;
+      } else {
+        parsed.push({ type: addBagType, qty: addBagQty, price });
+      }
+      const newLuggageDetails = JSON.stringify(parsed);
+      const changeNote = `Additional ${addBagQty}pc ${addBagType} baggage has been added (added by: ${actor})`;
+      const res = await fetch(`/api/bookings/${params.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numberOfBags: booking.numberOfBags + addBagQty, luggageDetails: newLuggageDetails, changeNote, allowBaggageChange: true }),
+      });
+      const result = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(result?.error || "Failed to add baggage");
+      reloadBooking();
+      // refresh logs so Added by shows in card
+      fetch(`/api/bookings/${params.id}/log`).then((r) => r.json()).then(setLogs).catch(() => {});
+      toast.success(`${changeNote}. Select an available physical tag below.`);
+      setShowAddBagModal(false);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to add luggage"); }
     setAddingLuggage(false);
   }
 
@@ -260,11 +339,14 @@ export default function BookingDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to update luggage status");
+      }
       const updated = await res.json();
       setLuggageItems((prev) => prev.map((i) => i.id === itemId ? { ...i, ...updated } : i));
       toast.success(`Luggage status updated to ${status.replace("_", " ")}`);
-    } catch { toast.error("Failed to update luggage status"); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to update luggage status"); }
   }
 
   async function handleReviewExtension(extId: string, status: string) {
@@ -295,13 +377,16 @@ export default function BookingDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: e.target.value }),
       });
-      if (!res.ok) throw new Error("Failed to update status");
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to update status");
+      }
       const getRes = await fetch(`/api/bookings/${params.id}`);
       if (!getRes.ok) throw new Error("Failed to reload booking");
       const updated = await getRes.json();
       setBooking(updated);
       toast.success("Status updated successfully");
-    } catch { toast.error("Failed to update status"); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to update status"); }
     setSaving(false);
   }
 
@@ -318,13 +403,16 @@ export default function BookingDetailPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId, phase }),
         });
-        if (!res.ok) throw new Error("Failed to assign employee");
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}));
+          throw new Error(error.error || "Failed to assign employee");
+        }
         const getRes = await fetch(`/api/bookings/${params.id}`);
         if (!getRes.ok) throw new Error("Failed to reload booking");
         const updated = await getRes.json();
         setBooking(updated);
-        toast.success("Employee assigned successfully");
-      } catch { toast.error("Failed to assign employee"); }
+        toast.success(`${phase === "DROPOFF" ? "Drop-off" : "Pickup"} employee ${booking?.assignments.some((assignment) => assignment.phase === phase) ? "re-assigned" : "assigned"} successfully`);
+      } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to assign employee"); }
     }
     setSaving(false);
   }
@@ -405,46 +493,6 @@ export default function BookingDetailPage() {
     }
   }
 
-  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingPhoto(true);
-    try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-        const res = await fetch(`/api/bookings/${params.id}/photos`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ photo: base64 }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setBooking((prev) => prev ? { ...prev, luggagePhotos: data.photos } : prev);
-          toast.success("Photo uploaded");
-        } else toast.error("Failed to upload photo");
-        setUploadingPhoto(false);
-      };
-      reader.readAsDataURL(file);
-    } catch {
-      toast.error("Failed to upload photo");
-      setUploadingPhoto(false);
-    }
-  }
-
-  async function handleDeletePhoto(index: number) {
-    const res = await fetch(`/api/bookings/${params.id}/photos`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ index }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setBooking((prev) => prev ? { ...prev, luggagePhotos: data.photos } : prev);
-      toast.success("Photo removed");
-    } else toast.error("Failed to remove photo");
-  }
-
   async function handleAddPayment(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setPaymentSaving(true);
@@ -456,7 +504,6 @@ export default function BookingDetailPage() {
         body: JSON.stringify({
           bookingId: params.id,
           amount: parseFloat(formData.get("amount") as string),
-          method: formData.get("method"),
           status: "PAID",
         }),
       });
@@ -479,7 +526,6 @@ export default function BookingDetailPage() {
         body: JSON.stringify({
           bookingId: params.id,
           amount: settleAmount,
-          method: settleMethod,
           status: "PAID",
         }),
       });
@@ -498,9 +544,20 @@ export default function BookingDetailPage() {
     const body: Record<string, unknown> = {};
     for (const [key, val] of formData.entries()) {
       if (key === "checkIn" || key === "checkOut") body[key] = val;
-      else if (key === "numberOfBags") body[key] = parseInt(val as string);
-      else if (key === "totalPrice") body[key] = parseFloat(val as string);
+      else if (key === "numberOfBags") continue;
+      else if (key === "pickupTerminal" || key === "pickupAirline" || key === "dropOffTerminal") continue;
       else body[key] = val;
+    }
+    const pickupLocation = editPickupAirline
+      ? `${editPickupTerminal} - ${editPickupAirline}`
+      : editPickupTerminal;
+    const dropOffLocation = editDropOffTerminal || booking?.dropOffLocation || "";
+    if (pickupLocation) body.pickupLocation = pickupLocation;
+    if (dropOffLocation) body.dropOffLocation = dropOffLocation;
+    // Add change note with actor
+    if (!body.changeNote) {
+      const actor = editSessionName || "staff";
+      body.changeNote = `Booking edited (by: ${actor}) - terminal/airline updated`;
     }
     try {
       const res = await fetch(`/api/bookings/${params.id}`, {
@@ -514,6 +571,24 @@ export default function BookingDetailPage() {
       toast.success("Booking updated");
     } catch { toast.error("Failed to update booking"); }
     setEditSaving(false);
+  }
+
+  async function handleSendReceiptEmail() {
+    if (!booking?.customer?.email) {
+      toast.error("Customer has no email on file");
+      return;
+    }
+    setSendingReceipt(true);
+    try {
+      const res = await fetch(`/api/bookings/${params.id}/receipt/email`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to send receipt");
+      toast.success(`Receipt emailed to ${booking.customer.email}`);
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Failed to send receipt");
+    } finally {
+      setSendingReceipt(false);
+    }
   }
 
   async function handleAddServices() {
@@ -534,8 +609,9 @@ export default function BookingDetailPage() {
         if (servicesEntry) {
           const existing = (servicesEntry.services as string[]) || [];
           servicesEntry.services = Array.from(new Set([...existing, ...serviceNames]));
+          if (serviceNote) servicesEntry.notes = [...(Array.isArray(servicesEntry.notes) ? servicesEntry.notes as string[] : []), serviceNote];
         } else {
-          parsed.push({ services: serviceNames });
+          parsed.push({ services: serviceNames, notes: serviceNote ? [serviceNote] : [] });
         }
         newDetails = JSON.stringify(parsed);
       } else {
@@ -553,14 +629,18 @@ export default function BookingDetailPage() {
         body: JSON.stringify({
           luggageDetails: newDetails,
           totalPrice: (booking?.totalPrice || 0) + total,
+          changeNote: `Added services: ${serviceNames.join(", ")}${serviceNote ? `. Notes: ${serviceNote}` : ""}`,
         }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to add services");
+      }
       reloadBooking();
       setSelectedServices(new Set());
       setServiceNote("");
       toast.success(`Added services (${serviceNames.join(", ")}) — total adjusted`);
-    } catch { toast.error("Failed to add services"); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to add services"); }
   }
 
   async function handleRefund() {
@@ -571,7 +651,7 @@ export default function BookingDetailPage() {
       const res = await fetch(`/api/bookings/${params.id}/refund`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: refundAmount, reason: refundReason, paymentMethod: refundMethod }),
+        body: JSON.stringify({ amount: refundAmount, reason: refundReason }),
       });
       if (res.ok) {
         reloadBooking();
@@ -598,10 +678,10 @@ export default function BookingDetailPage() {
   }
 
   async function handleRequestTags() {
-    if (tagRequestCount < 1) return toast.error("Invalid count");
+    if (selectedTagNumbers.size < 1) return toast.error("Select at least one available tag");
     const maxBags = booking?.numberOfBags || 3;
     if (luggageItems.length >= maxBags) return toast.error(`Maximum ${maxBags} baggage tag(s) per booking`);
-    if (luggageItems.length + tagRequestCount > maxBags) {
+    if (luggageItems.length + selectedTagNumbers.size > maxBags) {
       return toast.error(`Can only assign ${maxBags - luggageItems.length} more tag(s). Maximum is ${maxBags}.`);
     }
     setRequestingTags(true);
@@ -609,13 +689,14 @@ export default function BookingDetailPage() {
       const res = await fetch("/api/baggage-tags/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: params.id, count: tagRequestCount }),
+        body: JSON.stringify({ bookingId: params.id, tagNumbers: [...selectedTagNumbers] }),
       });
       if (res.ok) {
         const items = await res.json();
         setLuggageItems((prev) => [...prev, ...items]);
         toast.success(`Assigned ${items.length} baggage tag(s)`);
-        setTagRequestCount(1);
+        setAvailableTags((prev) => prev.map((tag) => selectedTagNumbers.has(tag.tagNumber) ? { ...tag, isUsed: true } : tag));
+        setSelectedTagNumbers(new Set());
       } else {
         const err = await res.json();
         toast.error(err.error || "Failed to request tags");
@@ -654,6 +735,8 @@ export default function BookingDetailPage() {
     setFlaggableItem(null);
   }
 
+  const shouldShow = (type: string) => sectionFilter === "all" || sectionFilter === type;
+
   if (!booking) {
     return (
       <div className="mx-auto max-w-5xl space-y-6">
@@ -672,10 +755,7 @@ export default function BookingDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      {pickupStarted && isAssignee && (
-        <LocationUpdater enabled />
-      )}
+    <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex items-center gap-4">
         <Button variant="ghost" asChild>
           <Link href="/dashboard/bookings">
@@ -701,7 +781,29 @@ export default function BookingDetailPage() {
         </span>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      {/* Filter Type for action containers - Display All vs Specific Type */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Filter Type</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">— show only the section you need, avoids scrolling through long content</span>
+        </div>
+        <select
+          value={sectionFilter}
+          onChange={(e) => setSectionFilter(e.target.value)}
+          className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm min-w-[180px]"
+        >
+          <option value="all">Display All</option>
+          <option value="customer">Customer & Pickup</option>
+          <option value="booking">Booking & Payment</option>
+          <option value="actions">Actions & Assignments</option>
+          <option value="services">Additional Services</option>
+          <option value="luggage">Luggage & Tags</option>
+          <option value="history">History & Logs</option>
+        </select>
+      </div>
+
+      {shouldShow("customer") && (
+      <div className="grid gap-4 md:grid-cols-2">
         <Card className="border-t-2 border-t-blue-500">
           <CardHeader>
             <CardTitle>Customer Info</CardTitle>
@@ -734,7 +836,7 @@ export default function BookingDetailPage() {
               <CardTitle>Pickup & Drop-off</CardTitle>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3">
             <div className="rounded-lg border bg-muted/30 p-3">
               <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Pickup Location</p>
               <p className="font-medium">{booking.pickupLocation}</p>
@@ -746,7 +848,9 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
       </div>
+      )}
 
+      {shouldShow("booking") && (
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="border-t-2 border-t-emerald-500">
           <CardHeader>
@@ -884,19 +988,11 @@ export default function BookingDetailPage() {
                     type="number"
                     value={settleAmount}
                     onChange={(e) => setSettleAmount(parseFloat(e.target.value) || 0)}
+                    min={0}
                     max={balance}
-                    className="flex h-9 w-28 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-                  />
-                  <select
-                    value={settleMethod}
-                    onChange={(e) => setSettleMethod(e.target.value)}
+                    placeholder="Amount"
                     className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-                  >
-                    <option value="CASH">Cash</option>
-                    <option value="GCASH">GCash</option>
-                    <option value="MAYA">Maya</option>
-                    <option value="CARD">Card</option>
-                  </select>
+                  />
                   <Button size="sm" onClick={handleSettleBalance} disabled={paymentSaving || settleAmount <= 0}>
                     {paymentSaving ? "..." : "Pay"}
                   </Button>
@@ -912,14 +1008,8 @@ export default function BookingDetailPage() {
               <form onSubmit={handleAddPayment} className="flex gap-2 p-3 border rounded-lg bg-muted/30">
                 <input
                   name="amount" type="number" step="0.01" placeholder="Amount" required
-                  className="flex h-9 w-28 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                  className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm"
                 />
-                <select name="method" required className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm">
-                  <option value="CASH">Cash</option>
-                  <option value="GCASH">GCash</option>
-                  <option value="MAYA">Maya</option>
-                  <option value="CARD">Card</option>
-                </select>
                 <Button type="submit" size="sm" disabled={paymentSaving}>
                   {paymentSaving ? "Saving..." : "Save"}
                 </Button>
@@ -947,17 +1037,8 @@ export default function BookingDetailPage() {
                       type="number" step="0.01" min="0" max={totalPaid}
                       value={refundAmount} onChange={(e) => setRefundAmount(parseFloat(e.target.value) || 0)}
                       placeholder="Amount" required
-                      className="flex h-9 w-28 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-                    />
-                    <select
-                      value={refundMethod} onChange={(e) => setRefundMethod(e.target.value)}
                       className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-                    >
-                      <option value="CASH">Cash</option>
-                      <option value="GCASH">GCash</option>
-                      <option value="MAYA">Maya</option>
-                      <option value="CARD">Card</option>
-                    </select>
+                    />
                   </div>
                   <input
                     value={refundReason} onChange={(e) => setRefundReason(e.target.value)}
@@ -976,9 +1057,11 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
       </div>
+      )}
 
+      {shouldShow("actions") && (
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="border-t-2 border-t-gray-500">
+        <Card className="self-start border-t-2 border-t-gray-500">
           <CardHeader>
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
@@ -995,7 +1078,7 @@ export default function BookingDetailPage() {
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                 value={booking.status}
                 onChange={handleStatusChange}
-                disabled={saving}
+                disabled={saving || bookingLocked}
               >
                 {statusOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1003,74 +1086,41 @@ export default function BookingDetailPage() {
               </select>
             </div>
 
-            <form onSubmit={handleAssign} className="space-y-2">
-              <Label htmlFor="employeeId">Assign Employee</Label>
-              <div className="flex gap-2">
-                <select
-                  id="employeeId" name="employeeId"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                >
-                  <option value="">Select employee...</option>
-                  {employees.filter((e) => e.isActive !== false).map((emp) => (
-                    <option key={emp.id} value={emp.id}>{emp.name}</option>
-                  ))}
-                </select>
-                <select
-                  name="phase"
-                  defaultValue="PICKUP"
-                  className="flex h-9 w-36 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  aria-label="Assignment phase"
-                >
-                  <option value="PICKUP">Pickup</option>
-                  <option value="DROPOFF">Drop-off</option>
-                </select>
-                <Button type="submit" disabled={saving}>Assign</Button>
-              </div>
-            </form>
-
-            <div className="space-y-2 border-t border-dashed pt-3">
-              <div className="flex items-center gap-2">
-                {pickupStarted ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-green-300 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
-                    Pickup started — live tracking on
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-muted-foreground">
-                    Start pickup to begin sharing the assigned employee&apos;s live location
-                  </span>
-                )}
-              </div>
-              <Button
-                className="w-full justify-start bg-emerald-600 text-white hover:bg-emerald-700"
-                onClick={handleStartPickup}
-                disabled={pickupBusy || pickupStarted || ["CANCELLED", "NO_SHOW", "DELIVERED"].includes(booking.status)}
-              >
-                {pickupBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : pickupStarted ? <Radio className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
-                {pickupStarted ? "Start Pickup (Started)" : "Start Pickup"}
-              </Button>
-              <Button
-                variant="outline" className="w-full justify-start"
-                onClick={() => setShowTrackingPanel((v) => !v)}
-                disabled={!pickupStarted}
-              >
-                {showTrackingPanel ? <XCircle className="mr-2 h-4 w-4" /> : <Navigation2 className="mr-2 h-4 w-4" />}
-                {showTrackingPanel ? "Close Update Tracking" : "Update Tracking"}
-              </Button>
-              {pickupStarted && userRole === "ADMIN" && (
-                <Button
-                  variant="outline" className="w-full justify-start text-amber-700 hover:text-amber-800"
-                  onClick={() => setConfirmCancelTracking(true)}
-                  disabled={pickupBusy}
-                >
-                  {pickupBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Square className="mr-2 h-4 w-4" />}
-                  Cancel Live Tracking (Admin)
-                </Button>
-              )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(["PICKUP", "DROPOFF"] as const).map((phase) => {
+                const currentAssignment = booking.assignments.find((assignment) => assignment.phase === phase);
+                const phaseLabel = phase === "PICKUP" ? "Pickup" : "Drop-off";
+                return (
+                  <form key={phase} onSubmit={handleAssign} className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                    <input type="hidden" name="phase" value={phase} />
+                    <div>
+                      <Label htmlFor={`employee-${phase}`}>{phaseLabel} Employee</Label>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {currentAssignment ? `Currently: ${currentAssignment.user.name}` : "No employee assigned"}
+                      </p>
+                    </div>
+                    <select
+                      id={`employee-${phase}`}
+                      name="employeeId"
+                      defaultValue={currentAssignment?.user.id || ""}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                      required
+                    >
+                      <option value="">Select active employee...</option>
+                      {employees.filter((employee) => employee.isActive && employee.isApproved && employee.role === "EMPLOYEE").map((employee) => (
+                        <option key={employee.id} value={employee.id}>{employee.name}</option>
+                      ))}
+                    </select>
+                    <Button type="submit" className="w-full" variant={currentAssignment ? "outline" : "default"} disabled={saving || bookingLocked}>
+                      {currentAssignment ? `Re-assign ${phaseLabel}` : `Assign ${phaseLabel}`}
+                    </Button>
+                  </form>
+                );
+              })}
             </div>
 
             <div className="space-y-2">
-              <Button variant="outline" className="w-full justify-start" onClick={() => setShowEditModal(true)}>
+              <Button variant="outline" className="w-full justify-start" onClick={() => setShowEditModal(true)} disabled={bookingLocked}>
                 <Edit3 className="mr-2 h-4 w-4" /> Edit Booking
               </Button>
               <Button variant="outline" className="w-full justify-start" asChild>
@@ -1083,6 +1133,9 @@ export default function BookingDetailPage() {
                   <Printer className="mr-2 h-4 w-4" /> Receipt
                 </Link>
               </Button>
+              <Button variant="outline" className="w-full justify-start" onClick={handleSendReceiptEmail} disabled={sendingReceipt || !booking.customer?.email}>
+                <Mail className="mr-2 h-4 w-4" /> {sendingReceipt ? "Sending..." : "Send Receipt via Email"}
+              </Button>
               <Button variant="outline" className="w-full justify-start" asChild>
                 <Link href={`/dashboard/chat/${booking.id}`}>
                   <MessageCircle className="mr-2 h-4 w-4" /> Chat with Customer
@@ -1092,7 +1145,7 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-t-2 border-t-red-500">
+        <Card className="self-start border-t-2 border-t-red-500">
           <CardHeader>
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-100">
@@ -1130,14 +1183,9 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
       </div>
-
-      {showTrackingPanel && (
-        <BookingScannerPanel
-          referenceNumber={booking.referenceNumber}
-          onUpdate={() => { reloadBooking(); }}
-        />
       )}
 
+      {shouldShow("services") && (
       <Card className="border-t-2 border-t-purple-500">
         <CardHeader>
           <div className="flex items-center gap-2">
@@ -1150,16 +1198,22 @@ export default function BookingDetailPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 mb-4">
-            {ADDITIONAL_SERVICES.map((svc) => (
+            {ADDITIONAL_SERVICES.map((svc) => {
+              const alreadyAvailed = availedServices.has(svc.name);
+              return (
               <div
                 key={svc.id}
                 onClick={() => {
+                  if (alreadyAvailed) return;
                   const next = new Set(selectedServices);
                   if (next.has(svc.id)) next.delete(svc.id);
                   else next.add(svc.id);
                   setSelectedServices(next);
                 }}
-                className={`cursor-pointer rounded-xl border-2 p-4 transition-all ${
+                aria-disabled={alreadyAvailed}
+                className={`rounded-xl border-2 p-4 transition-all ${
+                  alreadyAvailed ? "cursor-not-allowed border-slate-300 bg-slate-100 opacity-55 grayscale" : "cursor-pointer "
+                } ${
                   selectedServices.has(svc.id)
                     ? "border-purple-400 bg-purple-50 ring-1 ring-purple-400 dark:bg-purple-950/20"
                     : "border-muted hover:border-purple-200 hover:bg-muted/50"
@@ -1178,8 +1232,9 @@ export default function BookingDetailPage() {
                 </div>
                 <p className="text-sm font-semibold">{svc.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{svc.description}</p>
+                {alreadyAvailed && <p className="mt-2 text-xs font-semibold text-slate-600">Already availed</p>}
               </div>
-            ))}
+            )})}
           </div>
 
           {selectedServices.size > 0 && (
@@ -1203,13 +1258,16 @@ export default function BookingDetailPage() {
                 className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
               />
             </div>
-            <Button onClick={handleAddServices} disabled={selectedServices.size === 0} className="bg-orange-500 hover:bg-orange-600">
+            <Button onClick={handleAddServices} disabled={selectedServices.size === 0 || bookingLocked} className="bg-orange-500 hover:bg-orange-600">
               <ShoppingBag className="mr-2 h-4 w-4" /> Add & Process
             </Button>
           </div>
         </CardContent>
       </Card>
+      )}
 
+      {shouldShow("luggage") && (
+      <>
       {booking.luggageDetails && (
         <Card>
           <CardHeader><CardTitle>Luggage Details</CardTitle></CardHeader>
@@ -1222,7 +1280,10 @@ export default function BookingDetailPage() {
                   const services = parsed.flatMap((item: Record<string, unknown>) =>
                     Array.isArray(item.services) ? (item.services as string[]) : []
                   );
-                  if (items.length > 0 || services.length > 0) {
+                  const notes = parsed.flatMap((item: Record<string, unknown>) =>
+                    Array.isArray(item.notes) ? (item.notes as string[]) : []
+                  );
+                  if (items.length > 0 || services.length > 0 || notes.length > 0) {
                     return (
                       <div className="space-y-1 text-sm">
                         {items.map((item, i) => (
@@ -1239,6 +1300,12 @@ export default function BookingDetailPage() {
                             ))}
                           </div>
                         )}
+                        {notes.length > 0 && (
+                          <div className="mt-2 rounded-lg border bg-muted/40 p-2">
+                            <p className="text-xs font-medium">Service Notes</p>
+                            {notes.map((note, i) => <p key={i} className="text-xs text-muted-foreground">• {note}</p>)}
+                          </div>
+                        )}
                       </div>
                     );
                   }
@@ -1251,27 +1318,16 @@ export default function BookingDetailPage() {
       )}
 
       <Card>
-        <CardHeader><CardTitle>Luggage Photos</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Luggage Photos</CardTitle><CardDescription>Submitted photos are read-only. Employees add verification photos only while updating luggage status.</CardDescription></CardHeader>
         <CardContent>
           <div className="grid grid-cols-4 gap-2 mb-4">
             {booking.luggagePhotos.map((photo, i) => (
               <div key={i} className="relative group">
-                <img src={photo} alt={`Luggage ${i + 1}`} className="rounded-lg object-cover w-full h-24" />
-                <button onClick={() => handleDeletePhoto(i)}
-                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                ><Trash2 className="h-3 w-3" /></button>
+                <Image unoptimized width={400} height={160} src={photo} alt={`Luggage ${i + 1}`} className="rounded-lg object-cover w-full h-24" />
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={uploadingPhoto} className="relative">
-              {uploadingPhoto ? "Uploading..." : "Add Photo"}
-              <input type="file" accept="image/*" capture="environment"
-                onChange={handlePhotoUpload}
-                className="absolute inset-0 opacity-0 cursor-pointer" />
-            </Button>
-            <span className="text-xs text-muted-foreground">{booking.luggagePhotos.length} photo(s)</span>
-          </div>
+          <span className="text-xs text-muted-foreground">{booking.luggagePhotos.length} submitted photo(s)</span>
         </CardContent>
       </Card>
 
@@ -1310,15 +1366,41 @@ export default function BookingDetailPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Luggage Items</CardTitle>
-            <Button variant="outline" size="sm" onClick={handleAddLuggage} disabled={addingLuggage}>
-              <Plus className="mr-1 h-4 w-4" /> Add Bag
+            <div><CardTitle>Additional Baggage</CardTitle><CardDescription>Register baggage added after the original booking.</CardDescription></div>
+            <Button variant="outline" size="sm" onClick={handleAddLuggage} disabled={addingLuggage || bookingLocked}>
+              <Plus className="mr-1 h-4 w-4" /> Add Additional Bag
             </Button>
           </div>
         </CardHeader>
         <CardContent>
           {luggageItems.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No luggage items registered</p>
+            (() => {
+              const addLogs = logs.filter((l) => l.details && l.details.includes("Additional") && l.details.toLowerCase().includes("baggage"));
+              if (addLogs.length > 0) {
+                return (
+                  <div className="space-y-2">
+                    {addLogs.map((log) => (
+                      <div key={log.id} className="flex items-start gap-3 rounded-lg border bg-amber-50 px-3 py-2.5">
+                        <div className="rounded-lg bg-amber-100 p-2">
+                          <ShoppingBag className="h-4 w-4 text-amber-600" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-amber-800">{log.details}</p>
+                          <p className="text-[11px] text-muted-foreground">{formatDate(log.createdAt)} {log.user?.name ? `· by ${log.user.name}` : ""}</p>
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-[11px] text-muted-foreground">Select a physical tag in the Baggage Tags section below to link it.</p>
+                  </div>
+                );
+              }
+              return (
+                <div className="rounded-lg border border-dashed p-4 text-center">
+                  <p className="text-sm text-muted-foreground">No luggage items registered</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Click <span className="font-medium">Add Additional Bag</span>, choose the baggage type (Extra Small/Small/Standard/Large) and quantity — it will show here as “Additional 1pc XL size Baggage has been added (added by: {editSessionName || "staff"})”.</p>
+                </div>
+              );
+            })()
           ) : (
             <div className="divide-y">
               {luggageItems.map((item) => (
@@ -1348,6 +1430,13 @@ export default function BookingDetailPage() {
                         <option value="CANCELLED">Cancelled</option>
                       </select>
                   </div>
+                </div>
+              ))}
+              {/* Also show any additional baggage that hasn't been assigned a physical tag yet */}
+              {logs.filter((l) => l.details && l.details.includes("Additional") && l.details.toLowerCase().includes("baggage") && !luggageItems.some((li) => l.details!.includes(li.tagNumber))).slice(0,3).map((log) => (
+                <div key={`add-pending-${log.id}`} className="flex items-start gap-3 py-2.5 bg-amber-50/50 rounded-lg px-3 mt-2">
+                  <ShoppingBag className="h-4 w-4 text-amber-600 mt-0.5" />
+                  <p className="text-sm text-amber-800">{log.details} <span className="text-[11px] text-muted-foreground">· {formatDate(log.createdAt)}</span></p>
                 </div>
               ))}
             </div>
@@ -1382,48 +1471,50 @@ export default function BookingDetailPage() {
           )}
         </CardHeader>
         <CardContent>
-          {/* Tag Request Controls */}
+          {/* Physical tag selection */}
           <div className="mb-4 rounded-lg border bg-muted/30 p-3">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground">
-                Request baggage tags (max {booking?.numberOfBags || 3} for this booking)
+                Select available physical tags (max {booking?.numberOfBags || 3} for this booking)
               </p>
               {booking && luggageItems.length >= booking.numberOfBags && (
                 <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded">Limit reached</span>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center rounded-lg border">
-                <button
-                  type="button"
-                  onClick={() => setTagRequestCount(Math.max(1, tagRequestCount - 1))}
-                  className="flex h-8 w-8 items-center justify-center text-sm font-medium hover:bg-muted transition-colors rounded-l-lg"
-                  disabled={tagRequestCount <= 1}
-                >
-                  −
-                </button>
-                <span className="flex h-8 w-10 items-center justify-center border-x text-sm font-bold">
-                  {tagRequestCount}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setTagRequestCount(Math.min((booking?.numberOfBags || 3) - luggageItems.length, tagRequestCount + 1))}
-                  className="flex h-8 w-8 items-center justify-center text-sm font-medium hover:bg-muted transition-colors rounded-r-lg"
-                  disabled={tagRequestCount >= ((booking?.numberOfBags || 3) - luggageItems.length)}
-                >
-                  +
-                </button>
-              </div>
+            <div className="mb-3 grid max-h-40 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+              {availableTags.filter((tag) => !tag.isUsed).map((tag) => {
+                const selected = selectedTagNumbers.has(tag.tagNumber);
+                const remaining = (booking?.numberOfBags || 3) - luggageItems.length;
+                return (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => setSelectedTagNumbers((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(tag.tagNumber)) next.delete(tag.tagNumber);
+                      else if (next.size < remaining) next.add(tag.tagNumber);
+                      return next;
+                    })}
+                    className={`rounded-lg border px-2 py-2 text-xs font-mono font-semibold transition-colors ${selected ? "border-teal-600 bg-teal-600 text-white" : "bg-background hover:border-teal-400"}`}
+                  >
+                    {selected ? "✓ " : ""}{tag.tagNumber}
+                  </button>
+                );
+              })}
+              {availableTags.every((tag) => tag.isUsed) && <p className="col-span-full text-xs text-muted-foreground">No physical tags are currently available.</p>}
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">{selectedTagNumbers.size} selected</span>
               <Button
                 size="sm"
                 onClick={handleRequestTags}
-                disabled={requestingTags || (booking ? luggageItems.length >= booking.numberOfBags : luggageItems.length >= 3) || tagRequestCount < 1}
+                disabled={bookingLocked || requestingTags || (booking ? luggageItems.length >= booking.numberOfBags : luggageItems.length >= 3) || selectedTagNumbers.size < 1}
                 className="bg-teal-600 hover:bg-teal-700"
               >
                 {requestingTags ? (
                   <><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent mr-1" /> Requesting...</>
                 ) : (
-                  <><Plus className="mr-1 h-3 w-3" /> Assign {tagRequestCount} Tag{tagRequestCount > 1 ? "s" : ""}</>
+                  <><Plus className="mr-1 h-3 w-3" /> Assign {selectedTagNumbers.size} Tag{selectedTagNumbers.size > 1 ? "s" : ""}</>
                 )}
               </Button>
             </div>
@@ -1531,7 +1622,11 @@ export default function BookingDetailPage() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
+      {shouldShow("history") && (
+      <>
       <Card>
         <CardHeader>
           <button onClick={handleLoadLogs} className="flex w-full items-center justify-between">
@@ -1612,6 +1707,8 @@ export default function BookingDetailPage() {
           </Table>
         </CardContent>
       </Card>
+      </>
+      )}
 
       <ConfirmDialog
         open={deleteConfirm}
@@ -1620,15 +1717,6 @@ export default function BookingDetailPage() {
         title="Delete Booking"
         message={`Are you sure you want to delete booking ${booking.referenceNumber}? This action cannot be undone.`}
         confirmLabel="Delete" variant="danger"
-      />
-
-      <ConfirmDialog
-        open={confirmCancelTracking}
-        onClose={() => setConfirmCancelTracking(false)}
-        onConfirm={handleCancelTracking}
-        title="Cancel Live Tracking"
-        message={`Stop sharing the assigned employee's live location for booking ${booking.referenceNumber}? The customer will be notified and tracking will end.`}
-        confirmLabel="Stop Tracking" variant="danger"
       />
 
       {dangerModal && (
@@ -1662,7 +1750,7 @@ export default function BookingDetailPage() {
                 <Label>Photo proof {dangerModal.mode === "admin" && <span className="text-red-500">*</span>}</Label>
                 {dangerPhoto ? (
                   <div className="relative mt-1 overflow-hidden rounded-lg border">
-                    <img src={dangerPhoto} alt="Proof" className="h-40 w-full object-cover" />
+                    <Image unoptimized width={800} height={320} src={dangerPhoto} alt="Proof" className="h-40 w-full object-cover" />
                     <button
                       onClick={() => setDangerPhoto(null)}
                       className="absolute right-2 top-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"
@@ -1731,14 +1819,32 @@ export default function BookingDetailPage() {
 
             <form onSubmit={handleEditSave} className="space-y-4">
               <div>
-                <Label>Pickup Location</Label>
-                <input name="pickupLocation" defaultValue={booking.pickupLocation}
-                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                <Label>Pickup Terminal</Label>
+                <select value={editPickupTerminal} onChange={(e) => { setEditPickupTerminal(e.target.value); setEditPickupAirline(""); }}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                  <option value="">Select terminal...</option>
+                  {NAIA_TERMINALS.map((terminal) => <option key={terminal.value} value={terminal.value}>{terminal.label}</option>)}
+                </select>
               </div>
+
+              <div>
+                <Label>Pickup Airline</Label>
+                <select value={editPickupAirline} onChange={(e) => setEditPickupAirline(e.target.value)}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm disabled:opacity-50"
+                  disabled={!editPickupTerminal}>
+                  <option value="">{editPickupTerminal ? "Select airline..." : "Select terminal first"}</option>
+                  {getAirlinesForTerminal(editPickupTerminal).map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+                {editPickupTerminal && <p className="mt-1 text-[10px] text-muted-foreground">Showing airlines available for {editPickupTerminal}</p>}
+              </div>
+
               <div>
                 <Label>Drop-off Location</Label>
-                <input name="dropOffLocation" defaultValue={booking.dropOffLocation}
-                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                <select value={editDropOffTerminal} onChange={(e) => setEditDropOffTerminal(e.target.value)}
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                  {NAIA_TERMINALS.map((terminal) => <option key={terminal.value} value={terminal.value}>{terminal.label}</option>)}
+                  <option value="Villamor, Pasay City">Villamor, Pasay City (Dropnfly Counter)</option>
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1756,25 +1862,80 @@ export default function BookingDetailPage() {
                 <div>
                   <Label>Number of Bags</Label>
                   <input name="numberOfBags" type="number" min="1" defaultValue={booking.numberOfBags}
-                    className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                    disabled readOnly
+                    className="mt-1 flex h-9 w-full rounded-md border border-input bg-muted px-3 py-1 text-sm shadow-sm opacity-60" />
+                  <p className="mt-1 text-[10px] text-muted-foreground">Bags cannot be changed here — use “Add Additional Baggage” to add more.</p>
                 </div>
                 <div>
-                  <Label>Total Price (₱)</Label>
-                  <input name="totalPrice" type="number" step="0.01" min="0" defaultValue={booking.totalPrice}
-                    className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
+                  <Label>Total Price (automatic)</Label>
+                  <div className="mt-1 flex h-9 w-full items-center rounded-md border bg-muted px-3 text-sm font-semibold">{formatCurrency(booking.totalPrice)}</div>
                 </div>
               </div>
               <div>
-                <Label>Luggage Details / Notes</Label>
-                <textarea name="luggageDetails" rows={3} defaultValue={booking.luggageDetails || ""}
+                <Label>Luggage Details (readable)</Label>
+                <textarea rows={4} value={readableLuggageDetails(booking.luggageDetails)} readOnly
+                  className="mt-1 flex w-full resize-none rounded-md border border-input bg-muted px-3 py-2 text-sm shadow-sm" />
+                <input type="hidden" name="luggageDetails" value={booking.luggageDetails || ""} />
+              </div>
+              <div>
+                <Label>Update Reason / Notes</Label>
+                <textarea name="changeNote" rows={2} placeholder="Explain this booking update; it will appear in View Log."
                   className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm" />
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="outline" onClick={() => setShowEditModal(false)}>Cancel</Button>
-                <Button type="submit" disabled={editSaving}>{editSaving ? "Saving..." : "Save Changes"}</Button>
+                <Button type="submit" disabled={editSaving || !editPickupTerminal}>{editSaving ? "Saving..." : "Save Changes"}</Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showAddBagModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddBagModal(false)} />
+          <div className="relative z-10 mx-4 w-full max-w-md rounded-xl border bg-background p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                  <ShoppingBag className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">Add Additional Baggage</h3>
+                  <p className="text-xs text-muted-foreground">Select type and qty — will show as “Additional 1pc XL size … (added by: {editSessionName || "staff"})”</p>
+                </div>
+              </div>
+              <button onClick={() => setShowAddBagModal(false)} className="rounded-lg p-1 hover:bg-muted"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <Label>Baggage Type <span className="text-red-500">*</span></Label>
+                <select value={addBagType} onChange={(e) => setAddBagType(e.target.value)} className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                  <option value="Extra Small">Extra Small</option>
+                  <option value="Small">Small</option>
+                  <option value="Standard">Standard</option>
+                  <option value="Large">Large</option>
+                  <option value="XL">XL</option>
+                </select>
+              </div>
+              <div>
+                <Label>Quantity <span className="text-red-500">*</span></Label>
+                <div className="mt-1 flex items-center gap-2">
+                  <Button type="button" variant="outline" size="icon" onClick={() => setAddBagQty((n) => Math.max(1, n - 1))}><Minus className="h-4 w-4" /></Button>
+                  <input type="number" min={1} value={addBagQty} onChange={(e) => setAddBagQty(Math.max(1, parseInt(e.target.value) || 1))} className="flex h-9 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm text-center shadow-sm" />
+                  <Button type="button" variant="outline" size="icon" onClick={() => setAddBagQty((n) => n + 1)}><Plus className="h-4 w-4" /></Button>
+                  <span className="text-xs text-muted-foreground ml-2">Will be logged as {addBagQty}pc {addBagType}</span>
+                </div>
+              </div>
+              <div className="rounded-lg border bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Preview: <strong>Additional {addBagQty}pc {addBagType} size Baggage has been added (added by: {editSessionName || "staff"})</strong>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowAddBagModal(false)}>Cancel</Button>
+                <Button onClick={confirmAddBaggage} disabled={addingLuggage} className="bg-amber-600 hover:bg-amber-700">{addingLuggage ? "Adding..." : "Add Baggage"}</Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

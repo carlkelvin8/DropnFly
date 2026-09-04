@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +10,13 @@ import {
   History, Users, Activity,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { LocationPlayback } from "@/components/tracking/LocationPlayback";
+import { LocationUpdater } from "@/components/tracking/LocationUpdater";
+import { Pagination } from "@/components/ui/pagination";
+import { imageFileToDataUrl } from "@/lib/client-image";
 
 interface Employee {
   id: string;
@@ -35,6 +39,7 @@ interface Task {
   rider: { id: string; name: string; profilePic: string | null; vehicleType: string | null; plateNumber: string | null } | null;
   isAssignedToMe: boolean;
   createdAt: string;
+  pickupStartedAt: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -71,6 +76,11 @@ export default function LogisticsPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmpId, setSelectedEmpId] = useState<string>("");
   const [now, setNow] = useState(() => Date.now());
+  const [taskSearch, setTaskSearch] = useState("");
+  const [taskTypeFilter, setTaskTypeFilter] = useState("all");
+  const [taskPage, setTaskPage] = useState(1);
+  const [locationStatus, setLocationStatus] = useState<"requesting" | "active" | "denied" | "error" | "idle">("idle");
+  const handleLocationStatus = useCallback((status: "requesting" | "active" | "denied" | "error") => setLocationStatus(status), []);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30000);
@@ -78,7 +88,7 @@ export default function LogisticsPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/employees")
+    fetch("/api/riders?includeLocation=true", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
         const emps = Array.isArray(data) ? data : data.employees || [];
@@ -107,30 +117,59 @@ export default function LogisticsPage() {
       const body: Record<string, unknown> = { action };
       if (actionNote) body.note = actionNote;
       if (photoProof) body.photo = photoProof;
+      if (navigator.geolocation) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 8000 })
+          );
+          body.latitude = position.coords.latitude;
+          body.longitude = position.coords.longitude;
+        } catch {
+          toast.warning("Location permission was unavailable; the task action will continue without a map point.");
+        }
+      }
 
       const res = await fetch(`/api/logistics/tasks/${taskId}/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error("Action failed");
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Action failed");
+      }
       const data = await res.json();
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: data.status } : t));
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: data.status, pickupStartedAt: data.pickupStartedAt ?? t.pickupStartedAt } : t));
       toast.success(`Action completed — ${action}`);
       setActiveTask(null);
       setActiveAction(null);
       setPhotoProof(null);
       setActionNote("");
-    } catch {
-      toast.error("Failed to process action");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to process action");
     }
     setProcessingAction(false);
   }
 
-  const filteredTasks = isAdmin ? tasks : tasks.filter((t) => t.isAssignedToMe);
+  const roleTasks = isAdmin ? tasks : tasks.filter((t) => t.isAssignedToMe);
+  const filteredTasks = roleTasks.filter((task) => {
+    const query = taskSearch.toLowerCase();
+    const matchesSearch = !query || `${task.referenceNumber} ${task.customer.name} ${task.rider?.name || ""}`.toLowerCase().includes(query);
+    return matchesSearch && (taskTypeFilter === "all" || task.taskType === taskTypeFilter);
+  });
+  const taskPageSize = 5;
+  const taskTotalPages = Math.max(1, Math.ceil(filteredTasks.length / taskPageSize));
+  const currentTaskPage = Math.min(taskPage, taskTotalPages);
+  const paginatedTasks = filteredTasks.slice((currentTaskPage - 1) * taskPageSize, currentTaskPage * taskPageSize);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      {roleTasks.some((task) => task.isAssignedToMe && !!task.pickupStartedAt) && <LocationUpdater enabled onStatusChange={handleLocationStatus} />}
+      {locationStatus !== "idle" && (
+        <div className={`rounded-lg border px-3 py-2 text-sm ${locationStatus === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : locationStatus === "requesting" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+          {locationStatus === "active" ? "Live geolocation is active and updating the customer map." : locationStatus === "requesting" ? "Requesting location access…" : "Live map needs browser location permission. Enable Location for this site and refresh."}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Logistics & Routes</h1>
@@ -155,17 +194,17 @@ export default function LogisticsPage() {
         >
           <Activity className="h-4 w-4" /> Active Tasks
         </button>
-        <button
+        {isAdmin && <button
           onClick={() => setActiveTab("playback")}
           className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
             activeTab === "playback" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <History className="h-4 w-4" /> Route Playback
-        </button>
+        </button>}
       </div>
 
-      {activeTab === "playback" ? (
+      {activeTab === "playback" && isAdmin ? (
         <div className="space-y-4">
           <Card>
             <CardHeader className="pb-3">
@@ -217,7 +256,12 @@ export default function LogisticsPage() {
             </div></CardContent></Card>
           ))}
         </div>
-      ) : filteredTasks.length === 0 ? (
+      ) : <>
+        <div className="grid gap-2 sm:grid-cols-[1fr_180px]">
+          <input value={taskSearch} onChange={(e) => { setTaskSearch(e.target.value); setTaskPage(1); }} placeholder="Filter by reference, customer, or rider" className="h-10 rounded-lg border bg-background px-3 text-sm" />
+          <select value={taskTypeFilter} onChange={(e) => { setTaskTypeFilter(e.target.value); setTaskPage(1); }} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="all">All task types</option><option value="pickup">Pickup</option><option value="delivery">Delivery</option></select>
+        </div>
+      {filteredTasks.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             <Package className="mx-auto h-8 w-8 mb-2 opacity-50" />
@@ -226,7 +270,7 @@ export default function LogisticsPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {filteredTasks.map((task) => (
+          {paginatedTasks.map((task) => (
             <Card key={task.id} className={`border-l-4 ${task.taskType === "delivery" ? "border-l-orange-500" : "border-l-blue-500"}`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
@@ -275,7 +319,7 @@ export default function LogisticsPage() {
                             <div className="flex gap-2">
                               {photoProof ? (
                                 <div className="relative">
-                                  <img src={photoProof} alt="Proof" className="h-12 w-12 rounded object-cover" />
+                                  <Image unoptimized width={48} height={48} src={photoProof} alt="Proof" className="h-12 w-12 rounded object-cover" />
                                   <button onClick={() => setPhotoProof(null)}
                                     className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full text-xs w-4 h-4 flex items-center justify-center">×</button>
                                 </div>
@@ -285,9 +329,9 @@ export default function LogisticsPage() {
                                 </Button>
                               )}
                               <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
-                                onChange={(e) => {
+                                onChange={async (e) => {
                                   const f = e.target.files?.[0];
-                                  if (f) { const r = new FileReader(); r.onloadend = () => setPhotoProof(r.result as string); r.readAsDataURL(f); }
+                                  if (f) { try { setPhotoProof(await imageFileToDataUrl(f)); } catch { toast.error("Could not read photo"); } }
                                 }} className="hidden" />
                               <input
                                 value={actionNote} onChange={(e) => setActionNote(e.target.value)}
@@ -340,8 +384,9 @@ export default function LogisticsPage() {
               </CardContent>
             </Card>
           ))}
+          <Pagination currentPage={currentTaskPage} totalPages={taskTotalPages} onPageChange={setTaskPage} />
         </div>
-      )}
+      )}</>}
     </div>
   );
 }

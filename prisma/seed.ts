@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomBytes } from "crypto";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
@@ -6,12 +7,7 @@ import bcrypt from "bcryptjs";
 const adapter = new PrismaPg({ connectionString: process.env.SUPABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
-function generateRef() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return `DROPFLY-${code}`;
-}
+const seedPassword = process.env.SEED_PASSWORD || randomBytes(16).toString("base64url");
 
 function randomDate(daysAgo: number, daysRange: number): Date {
   const d = new Date();
@@ -27,7 +23,11 @@ function addDays(date: Date, days: number): Date {
 }
 
 async function main() {
-  const hashedPassword = await bcrypt.hash("password123", 12);
+  if (!process.env.SEED_PASSWORD && process.env.NODE_ENV === "production") {
+    throw new Error("SEED_PASSWORD is required when seeding production so staff credentials remain recoverable.");
+  }
+  console.log(`Seed password: ${seedPassword}`);
+  const hashedPassword = await bcrypt.hash(seedPassword, 12);
 
   // ── Users ──
   const userData = [
@@ -43,14 +43,14 @@ async function main() {
   for (const u of userData) {
     const existing = await prisma.user.findUnique({ where: { email: u.email } });
     if (existing) {
-      await prisma.user.update({ where: { id: existing.id }, data: u });
+      await prisma.user.update({ where: { id: existing.id }, data: { ...u, password: hashedPassword } });
       createdUsers.push({ email: u.email, id: existing.id });
       console.log(`User ${u.email} already exists, updated`);
       continue;
     }
     const user = await prisma.user.create({ data: { ...u, password: hashedPassword } });
     createdUsers.push({ email: user.email, id: user.id });
-    console.log(`Created user: ${u.email} / password123`);
+    console.log(`Created user: ${u.email}`);
   }
 
   // ── Storage Location: Villamor, Pasay City (single location) ──
@@ -96,7 +96,7 @@ async function main() {
     }
     const customer = await prisma.customer.create({ data: { ...c, password: hashedPassword } });
     createdCustomers.push({ email: customer.email, id: customer.id });
-    console.log(`Created customer: ${c.name} / password123`);
+    console.log(`Created customer: ${c.name}`);
   }
 
   // ── Bookings with realistic data ──
@@ -126,7 +126,7 @@ async function main() {
 
   for (let i = 0; i < bookingConfigs.length; i++) {
     const b = bookingConfigs[i];
-    const ref = generateRef();
+    const ref = `DROPFLY-SEED-${String(i + 1).padStart(3, "0")}`;
     const existing = await prisma.booking.findFirst({ where: { referenceNumber: ref } });
     if (existing) {
       createdBookings.push({ ref: existing.referenceNumber, id: existing.id });
@@ -231,6 +231,54 @@ async function main() {
       }
     }
   }
+
+  // ── Analytics demo dataset: keep a stable set of exactly 100 seeded bookings ──
+  const demoStatuses = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW"] as const;
+  const demoMethods = ["CASH", "GCASH", "MAYA", "CARD"] as const;
+  const additionalDemoBookings = Math.max(0, 100 - bookingConfigs.length);
+  for (let i = 1; i <= additionalDemoBookings; i++) {
+    const referenceNumber = `DROPFLY-MOCK-${String(i).padStart(3, "0")}`;
+    const existing = await prisma.booking.findUnique({ where: { referenceNumber } });
+    if (existing) {
+      createdBookings.push({ ref: existing.referenceNumber, id: existing.id });
+      continue;
+    }
+
+    const customer = createdCustomers[i % createdCustomers.length];
+    const employee = createdUsers[1 + (i % (createdUsers.length - 1))];
+    const status = demoStatuses[i % demoStatuses.length];
+    const checkIn = randomDate(90 - (i % 90), 3);
+    const checkOut = addDays(checkIn, 1 + (i % 10));
+    const numberOfBags = 1 + (i % 5);
+    const totalPrice = 250 * numberOfBags + (i % 3) * 180;
+
+    const booking = await prisma.booking.create({
+      data: {
+        referenceNumber,
+        qrCode: "seed-qr-placeholder",
+        userId: adminUser.id,
+        customerId: customer.id,
+        locationId: location.id,
+        pickupLocation: `NAIA Terminal ${(i % 3) + 1}`,
+        dropOffLocation: "Dropnfly Villamor, Pasay City",
+        luggageDetails: JSON.stringify([{ type: ["Extra Small", "Small", "Standard", "Large"][i % 4], qty: numberOfBags, price: 250 }]),
+        checkIn,
+        checkOut,
+        numberOfBags,
+        totalPrice,
+        status,
+      },
+    });
+    createdBookings.push({ ref: referenceNumber, id: booking.id });
+
+    await prisma.bookingAssignment.create({ data: { bookingId: booking.id, userId: employee.id, phase: i % 2 === 0 ? "PICKUP" : "DROPOFF" } });
+    if (!["PENDING", "CANCELLED", "NO_SHOW"].includes(status)) {
+      await prisma.payment.create({
+        data: { bookingId: booking.id, customerId: customer.id, amount: status === "CONFIRMED" ? Math.ceil(totalPrice / 2) : totalPrice, method: demoMethods[i % demoMethods.length], status: "PAID", paidAt: checkIn },
+      });
+    }
+  }
+  console.log(`Analytics dataset ready: ${bookingConfigs.length + additionalDemoBookings} seeded bookings`);
 
   // ── Activity Logs ──
   const logActions = ["CREATE", "UPDATE", "UPDATE", "DELETE", "CREATE", "UPDATE"];
