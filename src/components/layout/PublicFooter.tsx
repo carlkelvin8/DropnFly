@@ -16,11 +16,17 @@ export function PublicFooter() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/public/settings", { signal: controller.signal })
+    fetch("/api/public/settings", { signal: controller.signal, cache: "no-store", headers: { "Cache-Control": "no-cache" } })
       .then((response) => response.ok ? response.json() : null)
       .then((data) => { if (data?.footer && !controller.signal.aborted) setFooter(data.footer); })
       .catch(() => {});
-    return () => controller.abort();
+    const onFocus = () => {
+      fetch("/api/public/settings", { cache: "no-store", headers: { "Cache-Control": "no-cache" } })
+        .then((r) => r.ok ? r.json() : null)
+        .then((d) => { if (d?.footer) setFooter(d.footer); }).catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+    return () => { controller.abort(); window.removeEventListener("focus", onFocus); };
   }, []);
 
   const { phone, email, operating_start: start, operating_end: end } = footer;

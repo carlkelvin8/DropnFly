@@ -1,10 +1,13 @@
 import { prisma } from "./prisma";
 
 let cache: { map: Record<string, string>; at: number } | null = null;
-const TTL_MS = 3000;
+const TTL_MS = 0;
 
 export async function getSystemSettings(force = false): Promise<Record<string, string>> {
-  if (!force && cache && Date.now() - cache.at < TTL_MS) {
+  // Senior-level: immediate reflection for admin → customer/employee.
+  // Disable stale cache — always fetch fresh unless explicitly allowed.
+  // Keep tiny in-memory cache only to coalesce concurrent requests within same tick.
+  if (!force && TTL_MS > 0 && cache && Date.now() - cache.at < TTL_MS) {
     return cache.map;
   }
   const settings = await prisma.systemSetting.findMany();

@@ -47,6 +47,8 @@ export async function GET() {
     const settings = await prisma.systemSetting.findMany();
     const map = Object.fromEntries(settings.map((s) => [s.key, s.value]));
     return NextResponse.json({
+      // Explicit version to bust client caches when admin saves
+      _version: Date.now(),
       terms_and_conditions: map.terms_and_conditions || DEFAULT_TERMS,
       privacy_policy: map.privacy_policy || DEFAULT_PRIVACY,
       currency: map.currency || "PHP",
@@ -89,7 +91,7 @@ export async function GET() {
         operating_start: map.store_operating_start || "00:00",
         operating_end: map.store_operating_end || "23:59",
       },
-    });
+    }, { headers: { "Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache" } });
   } catch {
     return NextResponse.json({
       terms_and_conditions: DEFAULT_TERMS,
@@ -101,6 +103,6 @@ export async function GET() {
       pricing: { pickup_fee: 180, delivery_fee: 180, excess_bag_fee: 100, excess_bag_threshold: 3 },
       booking_limits: { max_bags_per_booking: 0, max_storage_days: 0, max_advance_booking_days: 0, min_dp_percentage: 0, min_storage_days: 1 },
       footer: { phone: "+63 (2) 1234 5678", email: "hello@dropnfly.ph", facebook: "", instagram: "", twitter: "", operating_days: "0,1,2,3,4,5,6", operating_start: "00:00", operating_end: "23:59" },
-    });
+    }, { headers: { "Cache-Control": "no-store, must-revalidate" } });
   }
 }

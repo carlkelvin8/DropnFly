@@ -154,26 +154,34 @@ export default function BookPage() {
     if (selectedCountry) setCitiesLoading(true);
   }, [selectedCountry]);
 
-  useEffect(() => {
-    fetch("/api/public/settings")
-      .then((r) => r.json())
-      .then((data) => {
-        setMaintenance(data.maintenance || { enabled: false, message: "" });
-        setOnlineBookingEnabled(data.features?.online_booking_enabled !== false);
-        setDiscountCodesEnabled(data.features?.discount_codes_enabled !== false);
-        if (data.luggage_prices) setLuggagePrices(data.luggage_prices);
-        if (data.booking_limits?.max_bags_per_booking > 0) setMaxBags(data.booking_limits.max_bags_per_booking);
-        if (data.pricing) {
-          setFees({
-            pickupFee: data.pricing.pickup_fee || 180,
-            deliveryFee: data.pricing.delivery_fee || 180,
-            excessBagFee: data.pricing.excess_bag_fee || 100,
-            excessBagThreshold: data.pricing.excess_bag_threshold || 3,
-          });
-        }
-      })
-      .catch(() => {});
+  const fetchPublicSettings = useCallback(async () => {
+    try {
+      const res = await fetch("/api/public/settings", { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+      const data = await res.json();
+      setMaintenance(data.maintenance || { enabled: false, message: "" });
+      setOnlineBookingEnabled(data.features?.online_booking_enabled !== false);
+      setDiscountCodesEnabled(data.features?.discount_codes_enabled !== false);
+      if (data.luggage_prices) setLuggagePrices(data.luggage_prices);
+      if (data.booking_limits?.max_bags_per_booking > 0) setMaxBags(data.booking_limits.max_bags_per_booking);
+      if (data.pricing) {
+        setFees({
+          pickupFee: data.pricing.pickup_fee || 180,
+          deliveryFee: data.pricing.delivery_fee || 180,
+          excessBagFee: data.pricing.excess_bag_fee || 100,
+          excessBagThreshold: data.pricing.excess_bag_threshold || 3,
+        });
+      }
+    } catch {}
   }, []);
+
+  useEffect(() => {
+    fetchPublicSettings();
+    const onFocus = () => fetchPublicSettings();
+    const onVisibility = () => { if (document.visibilityState === "visible") fetchPublicSettings(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onVisibility); };
+  }, [fetchPublicSettings]);
 
   const fetchSlots = useCallback(async (date: string, type: "pickup" | "delivery"): Promise<TimeSlot[]> => {
     if (!date) return [];

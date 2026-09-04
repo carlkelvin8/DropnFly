@@ -27,7 +27,7 @@ export function TermsModal({ open, onClose }: { open: boolean; onClose: () => vo
   useEffect(() => {
     if (!open) return;
     let mounted = true;
-    fetch("/api/public/settings")
+    fetch("/api/public/settings", { cache: "no-store", headers: { "Cache-Control": "no-cache" } })
       .then((res) => res.json())
       .then((data) => { if (mounted) setContent(data.terms_and_conditions || ""); })
       .catch(() => { if (mounted) setContent(""); });
@@ -62,7 +62,7 @@ export function PrivacyModal({ open, onClose }: { open: boolean; onClose: () => 
   useEffect(() => {
     if (!open) return;
     let mounted = true;
-    fetch("/api/public/settings")
+    fetch("/api/public/settings", { cache: "no-store", headers: { "Cache-Control": "no-cache" } })
       .then((res) => res.json())
       .then((data) => { if (mounted) setContent(data.privacy_policy || ""); })
       .catch(() => { if (mounted) setContent(""); });
