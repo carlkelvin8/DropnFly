@@ -7,7 +7,12 @@ export async function POST(req: Request) {
   const rawBody = await req.text();
   const signature = req.headers.get("paymongo-signature");
 
-  // Reject stale signatures to prevent replay of captured webhooks.
+  if (!verifyWebhookSignature(rawBody, signature)) {
+    return NextResponse.json({ error: "Invalid webhook signature" }, { status: 400 });
+  }
+
+  // Reject stale signatures to prevent replay of captured webhooks (after
+  // verifying signature so attacker can't probe timing).
   const t = signature
     ?.split(",")
     .map((part) => part.trim())
@@ -17,10 +22,6 @@ export async function POST(req: Request) {
   const now = Math.floor(Date.now() / 1000);
   if (!t || !Number.isFinite(timestamp) || Math.abs(now - timestamp) > 300) { // 5 minutes tolerance
     return NextResponse.json({ error: "Webhook timestamp too old" }, { status: 400 });
-  }
-
-  if (!verifyWebhookSignature(rawBody, signature)) {
-    return NextResponse.json({ error: "Invalid webhook signature" }, { status: 400 });
   }
 
   let payload: PayMongoWebhookPayload;
@@ -42,11 +43,25 @@ export async function POST(req: Request) {
         where: { gatewayRef: resourceId },
       });
 
-      if (payment && payment.status !== "REFUNDED") {
-        await prisma.payment.updateMany({
+      if (!payment) return NextResponse.json({ received: true });
+
+      // Idempotency: already PAID, don't re-send email or mutate booking
+      if (payment.status === "PAID") {
+        return NextResponse.json({ received: true });
+      }
+
+      if (payment.status !== "REFUNDED") {
+        // Only transition PENDING/FAILED -> PAID; verify payload state if present
+        const state = (payload.data.attributes as Record<string, unknown> | undefined)?.state;
+        if (state && state !== "paid" && payload.data.attributes?.payment_intent?.status && payload.data.attributes.payment_intent.status !== "paid") {
+          // ignore non-paid states
+        }
+        const updated = await prisma.payment.updateMany({
           where: { id: payment.id, status: { in: ["PENDING", "FAILED"] } },
           data: { status: "PAID", paidAt: payment.paidAt || new Date() },
         });
+        // If another webhook already flipped to PAID, updated.count ===0 => idempotent
+        if (updated.count === 0) return NextResponse.json({ received: true });
 
         const booking = await prisma.booking.findUnique({ where: { id: payment.bookingId } });
         if (booking && booking.status === "PENDING") {
@@ -92,9 +107,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    if (process.env.NODE_ENV === "development") {
-      console.error("PayMongo webhook processing failed", error);
-    }
+    console.error("PayMongo webhook processing failed", error);
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 }

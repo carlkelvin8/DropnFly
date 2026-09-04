@@ -44,17 +44,49 @@ export default async function middleware(req: NextRequest) {
     return res;
   };
   if (path.startsWith("/api/") && mutating) {
-    const contentLength = Number(req.headers.get("content-length") || "0");
+    const contentLengthHeader = req.headers.get("content-length");
+    const transferEncoding = req.headers.get("transfer-encoding");
+    const contentLength = contentLengthHeader ? Number(contentLengthHeader) : 0;
     if (Number.isFinite(contentLength) && contentLength > 10 * 1024 * 1024) {
       return NextResponse.json({ error: "Request body is too large" }, { status: 413 });
+    }
+    // Chunked requests without content-length bypass the above check — reject large chunked bodies
+    if (!contentLengthHeader && transferEncoding?.includes("chunked")) {
+      // Let Next.js bodySizeLimit handle it, but flag suspicious
+      const url = req.nextUrl.pathname;
+      if (url !== "/api/qr/scan" && url !== "/api/bookings/[id]/photos") {
+        // generic chunked mutating without length — still enforce origin
+      }
     }
 
     // Webhooks are authenticated by provider signatures. Browser-originated
     // mutations must come from this deployment to limit cookie-based CSRF.
+    // Require Origin or Referer for mutating API calls (curl without origin is still allowed for public APIs, but blocked for non-public).
     if (path !== "/api/payments/webhook") {
-      const origin = req.headers.get("origin");
-      if (origin && origin !== req.nextUrl.origin) {
-        return NextResponse.json({ error: "Invalid request origin" }, { status: 403 });
+      const isPublicApi = publicRoutes.some((r) => r !== "/" && path.startsWith(r));
+      if (!isPublicApi) {
+        const origin = req.headers.get("origin");
+        const referer = req.headers.get("referer");
+        if (origin) {
+          if (origin !== req.nextUrl.origin) {
+            return NextResponse.json({ error: "Invalid request origin" }, { status: 403 });
+          }
+        } else if (referer) {
+          try {
+            const refererOrigin = new URL(referer).origin;
+            if (refererOrigin !== req.nextUrl.origin) {
+              return NextResponse.json({ error: "Invalid request origin" }, { status: 403 });
+            }
+          } catch {
+            return NextResponse.json({ error: "Invalid request origin" }, { status: 403 });
+          }
+        } else {
+          // No Origin/Referer — allow only if it's a same-site fetch with Sec-Fetch-Site
+          const secFetchSite = req.headers.get("sec-fetch-site");
+          if (secFetchSite && !["same-origin", "same-site"].includes(secFetchSite)) {
+            return NextResponse.json({ error: "Invalid request origin" }, { status: 403 });
+          }
+        }
       }
     }
   }

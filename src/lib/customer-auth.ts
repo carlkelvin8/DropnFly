@@ -70,5 +70,12 @@ export async function setCustomerCookie(token: string) {
 
 export async function clearCustomerCookie() {
   const cookieStore = await cookies();
-  cookieStore.delete(COOKIE_NAME);
+  // Use explicit maxAge 0 + path to ensure browser deletes cookie with same attributes
+  cookieStore.set(COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 0,
+    path: "/",
+  });
 }

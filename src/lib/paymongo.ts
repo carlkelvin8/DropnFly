@@ -126,16 +126,24 @@ export function verifyWebhookSignature(
   if (!timestamp || !expected) return false;
 
   const signedPayload = `${timestamp}.${rawBody}`;
-  const computed = crypto
-    .createHmac("sha256", secret)
-    .update(signedPayload)
-    .digest("base64");
+  // PayMongo sends v1 as hex (docs: HMAC-SHA256 hex). Compute hex and compare
+  // in constant time. Also accept base64 for forward-compat if gateway changes.
+  const computedHex = crypto.createHmac("sha256", secret).update(signedPayload).digest("hex");
+  const computedB64 = crypto.createHmac("sha256", secret).update(signedPayload).digest("base64");
+  const expectedLower = expected.toLowerCase();
 
   try {
-    const a = Buffer.from(computed);
-    const b = Buffer.from(expected);
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
+    // Compare as hex first (primary), then base64 fallback
+    const tryCompare = (computed: string, exp: string) => {
+      const a = Buffer.from(computed, "utf8");
+      const b = Buffer.from(exp, "utf8");
+      if (a.length !== b.length) return false;
+      return crypto.timingSafeEqual(a, b);
+    };
+    if (tryCompare(computedHex, expectedLower)) return true;
+    if (tryCompare(computedHex.toUpperCase(), expected)) return true;
+    if (tryCompare(computedB64, expected)) return true;
+    return false;
   } catch {
     return false;
   }

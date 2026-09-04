@@ -58,8 +58,14 @@ export async function POST(req: Request) {
     if (!bookingId || !customerId || !type || !description) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+    // Validate booking exists and customer matches booking
+    const bookingCheck = await prisma.booking.findUnique({ where: { id: bookingId }, select: { id: true, customerId: true } });
+    if (!bookingCheck) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    if (bookingCheck.customerId !== customerId) return NextResponse.json({ error: "Booking and customer mismatch" }, { status: 400 });
+    const customerExists = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
+    if (!customerExists) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
 
-    const isStaffReport = REPORT_TYPES.includes(type) && session.user.role !== "ADMIN";
+    const isStaffReport = REPORT_TYPES.includes(type);
     const internalNotes = isStaffReport
       ? JSON.stringify({ report: type, photo: photo || null, note: note || null, reportedBy: session.user.id })
       : undefined;
@@ -107,7 +113,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // For non-staff reports (customer-visible), send tracking email (async, respects SMTP settings)
+    // For non-staff reports (customer-visible), send tracking email (async)
     if (!isStaffReport && incident.customer?.email) {
       void sendIncidentEmail({
         to: incident.customer.email,
@@ -118,12 +124,13 @@ export async function POST(req: Request) {
         incidentId: incident.id,
         description,
       }).catch((e) => {
-        if (process.env.NODE_ENV === "development") console.warn("[EMAIL] incident submission email failed:", e);
+        console.error("[EMAIL] incident submission email failed:", e);
       });
     }
 
     return NextResponse.json(incident, { status: 201 });
-  } catch {
+  } catch (e) {
+    console.error("Failed to create incident report:", e);
     return NextResponse.json({ error: "Failed to create incident report" }, { status: 500 });
   }
 }

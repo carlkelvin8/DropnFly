@@ -1,7 +1,7 @@
 import { prisma } from "./prisma";
 
 let cache: { map: Record<string, string>; at: number } | null = null;
-const TTL_MS = 10000;
+const TTL_MS = 3000;
 
 export async function getSystemSettings(force = false): Promise<Record<string, string>> {
   if (!force && cache && Date.now() - cache.at < TTL_MS) {

@@ -7,6 +7,7 @@ import type { BookingStatus } from "@/generated/prisma/client";
 import { normalizeReference } from "@/lib/utils";
 import { getSystemSettings, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
+import { manilaDateStr, manilaDayRange, manilaMinutesOfDay } from "@/lib/manila-time";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -265,20 +266,81 @@ export async function POST(req: Request) {
       }
     }
 
+    // Validate payment amount
+    const downPaymentNum = downPayment == null || downPayment === "" ? 0 : Number(downPayment);
+    if (!Number.isFinite(downPaymentNum) || downPaymentNum < 0 || downPaymentNum > totalPrice) {
+      return NextResponse.json({ error: "Invalid down payment amount" }, { status: 400 });
+    }
+
     const referenceNumber = generateReferenceNumber(setting(settings, "tx_prefix", "DROPFLY"));
 
     const QRCode = (await import("qrcode")).default;
     const qrCode = await QRCode.toDataURL(referenceNumber, { width: 300, margin: 2 });
     const qrBase64 = qrCode.replace(/^data:image\/png;base64,/, "");
 
-    // Wrap the promo-code usage increment and booking creation in a transaction so the
-    // promo's usedCount is rolled back if booking creation fails.
+    // Capacity & slot checks (same as public flow) — prevent overbooking via staff path
+    const slotQueryStaff = async (date: Date, type: "pickup" | "delivery", db: typeof prisma | Parameters<Parameters<typeof prisma.$transaction>[0]>[0] = prisma): Promise<void> => {
+      const isPickup = type === "pickup";
+      const maxConcurrent = parseInt(setting(settings, isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries", "1"));
+      const durationMin = parseInt(setting(settings, isPickup ? "pickup_slot_duration" : "delivery_slot_duration", "60"));
+      const slotStartMinutes = manilaMinutesOfDay(date);
+      const { start: dayStart, end: dayEnd } = manilaDayRange(date);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const existing: any[] = await (db as typeof prisma).booking.findMany({
+        where: {
+          status: { notIn: ["CANCELLED", "DELIVERED"] },
+          ...(isPickup ? { checkIn: { gte: dayStart, lt: dayEnd } } : { checkOut: { gte: dayStart, lt: dayEnd } }),
+        },
+        select: isPickup ? { checkIn: true } : { checkOut: true },
+      });
+      let count = 0;
+      for (const b of existing) {
+        const dt = isPickup ? (b as { checkIn: Date }).checkIn : (b as { checkOut: Date | null }).checkOut;
+        if (!dt) continue;
+        const t = manilaMinutesOfDay(dt);
+        if (t >= slotStartMinutes && t < slotStartMinutes + durationMin) count++;
+      }
+      if (count >= maxConcurrent) {
+        throw new Error(`The selected ${type} time slot is fully booked. Please choose another time.`);
+      }
+    };
+
     const booking = await prisma.$transaction(async (tx) => {
+      // Advisory locks for slot + promo + capacity to serialize concurrent staff bookings
+      const lockKeys = [checkInDate, checkOutDate].filter((d): d is Date => Boolean(d)).map((d) => `slot:${manilaDateStr(d)}:${d === checkInDate ? "pickup" : "delivery"}`);
+      for (const key of lockKeys) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+      }
       if (promoCodeId) {
-        await tx.promoCode.update({
-          where: { id: promoCodeId },
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`promo:${promoCodeId}`}))`;
+      }
+      const maxSimultaneousBags = parseInt(setting(settings, "max_simultaneous_bags", "0"));
+      if (maxSimultaneousBags > 0) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
+        const activeBagTotal = await tx.booking.aggregate({
+          where: { status: { notIn: ["PENDING", "DELIVERED", "CANCELLED", "NO_SHOW"] } },
+          _sum: { numberOfBags: true },
+        });
+        if (Number(activeBagTotal._sum.numberOfBags || 0) + computed.totalBags > maxSimultaneousBags) {
+          throw new Error("Storage capacity is full for the requested booking");
+        }
+      }
+      await slotQueryStaff(checkInDate, "pickup", tx);
+      if (checkOutDate) await slotQueryStaff(checkOutDate, "delivery", tx);
+
+      if (promoCodeId) {
+        const promoForUpdate = await tx.promoCode.findUnique({ where: { id: promoCodeId }, select: { maxUsage: true } });
+        if (!promoForUpdate) throw new Error("Promo code is no longer available");
+        const claimed = await tx.promoCode.updateMany({
+          where: {
+            id: promoCodeId,
+            isActive: true,
+            usedCount: { lt: promoForUpdate.maxUsage },
+            OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+          },
           data: { usedCount: { increment: 1 } },
         });
+        if (claimed.count !== 1) throw new Error("Promo code is no longer available");
       }
       return tx.booking.create({
         data: {
@@ -297,8 +359,8 @@ export async function POST(req: Request) {
           discount,
           promoCodeId,
           status: bookingStatus,
-          payments: downPayment > 0
-            ? { create: { amount: parseFloat(downPayment), method: paymentMethod || "CASH", status: "PAID", paidAt: new Date(), customerId } }
+          payments: downPaymentNum > 0
+            ? { create: { amount: downPaymentNum, method: paymentMethod || "CASH", status: "PAID", paidAt: new Date(), customerId } }
             : undefined,
         },
         include: { customer: { select: { name: true } }, location: { select: { name: true } } },

@@ -13,12 +13,12 @@ export function isBookingLocked(status: string): boolean {
 }
 
 function getSecret(): string {
-  const secret = process.env.CUSTOMER_JWT_SECRET || process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  const secret = process.env.CUSTOMER_JWT_SECRET;
   if (!secret) {
     if (process.env.NODE_ENV === "production") {
       throw new Error("CUSTOMER_JWT_SECRET must be set in production");
     }
-    return "dropnfly-local-development-only-secret";
+    return process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dropnfly-local-development-only-secret";
   }
   return secret;
 }

@@ -21,7 +21,8 @@ export async function POST(
     const { id } = await params;
     const { amount, reason, paymentMethod } = await req.json();
 
-    if (!amount || amount <= 0) {
+    const amountNum = Number(amount);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
       return NextResponse.json({ error: "Invalid refund amount" }, { status: 400 });
     }
     if (!reason?.trim()) {
@@ -35,8 +36,7 @@ export async function POST(
         customerId: true,
         referenceNumber: true,
         payments: {
-          where: { status: "PAID" },
-          select: { id: true, amount: true, refundedAt: true },
+          select: { id: true, amount: true, status: true, refundedAt: true },
         },
       },
     });
@@ -48,45 +48,51 @@ export async function POST(
       return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
     }
 
+    // Net paid = sum PAID (not refunded) + sum REFUNDED negative amounts
     const totalPaid = booking.payments
-      .filter((p) => !p.refundedAt)
+      .filter((p) => p.status === "PAID" && !p.refundedAt)
       .reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalRefunded = booking.payments
+      .filter((p) => p.status === "REFUNDED" && Number(p.amount) < 0)
+      .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
+    const netPaid = totalPaid - totalRefunded;
 
-    if (amount > totalPaid) {
+    if (amountNum > netPaid) {
       return NextResponse.json(
-        { error: `Refund amount exceeds total paid (${totalPaid})` },
+        { error: `Refund amount exceeds net paid (${netPaid})` },
         { status: 400 }
       );
     }
 
-    const refund = await prisma.payment.create({
-      data: {
-        bookingId: id,
-        customerId: booking.customerId,
-        amount: -Math.abs(amount),
-        method: paymentMethod || "CASH",
-        status: "REFUNDED",
-        reference: `RFND-${booking.referenceNumber}-${Date.now().toString(36).toUpperCase()}`,
-        paidAt: new Date(),
-        refundedAt: new Date(),
-      },
-    });
+    const refund = await prisma.$transaction(async (tx) => {
+      const created = await tx.payment.create({
+        data: {
+          bookingId: id,
+          customerId: booking.customerId,
+          amount: -Math.abs(amountNum),
+          method: ["GCASH", "MAYA", "CARD", "CASH"].includes(paymentMethod) ? paymentMethod : "CASH",
+          status: "REFUNDED",
+          reference: `RFND-${booking.referenceNumber}-${Date.now().toString(36).toUpperCase()}`,
+          paidAt: new Date(),
+          refundedAt: new Date(),
+        },
+      });
 
-    let remaining = amount;
-    for (const payment of booking.payments) {
-      if (remaining <= 0) break;
-      if (payment.refundedAt) continue;
-
-      const toRefund = Math.min(Number(payment.amount), remaining);
-      remaining -= toRefund;
-
-      if (toRefund >= Number(payment.amount)) {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: { refundedAt: new Date(), status: "REFUNDED" },
-        });
+      let remaining = amountNum;
+      for (const payment of booking.payments.filter((p) => p.status === "PAID" && !p.refundedAt)) {
+        if (remaining <= 0) break;
+        const toRefund = Math.min(Number(payment.amount), remaining);
+        remaining -= toRefund;
+        if (toRefund >= Number(payment.amount)) {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: { refundedAt: new Date(), status: "REFUNDED" },
+          });
+        }
+        // Partial refunds keep original PAID but future netPaid accounts for negative refund
       }
-    }
+      return created;
+    });
 
     await logActivity({
       userId: session.user.id,
@@ -98,9 +104,7 @@ export async function POST(
 
     return NextResponse.json(decimalsToNumbers(refund), { status: 201 });
   } catch (error) {
-    if (process.env.NODE_ENV === "development") {
-      console.error("Refund error:", error);
-    }
+    console.error("Refund error:", error);
     return NextResponse.json({ error: "Failed to issue refund" }, { status: 500 });
   }
 }

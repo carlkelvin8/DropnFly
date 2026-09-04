@@ -104,7 +104,7 @@ export async function POST(req: Request) {
         id: booking.id,
         OR: [{ checkoutLockedUntil: null }, { checkoutLockedUntil: { lt: now } }],
       },
-      data: { checkoutLockedUntil: new Date(now.getTime() + 30 * 60 * 1000) },
+      data: { checkoutLockedUntil: new Date(now.getTime() + 5 * 60 * 1000) },
     });
     if (lock.count !== 1) {
       return NextResponse.json({ error: "A checkout is already being created for this booking" }, { status: 409 });

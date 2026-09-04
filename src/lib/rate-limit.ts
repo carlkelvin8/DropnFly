@@ -1,11 +1,18 @@
 import { prisma } from "@/lib/prisma";
 
 export function requestKey(req: Request, secondary?: string): string {
-  // Use the most reliable IP source - prefer platform-provided headers
-  const realIp = req.headers.get("x-real-ip");
+  // Trust platform headers only: x-real-ip is set by trusted proxy, otherwise
+  // use the last entry of x-forwarded-for (closest to server) to prevent
+  // client spoofing of the first entry. Fallback to x-vercel-forwarded-for.
+  const realIp = req.headers.get("x-real-ip")?.trim();
+  const vercelIp = req.headers.get("x-vercel-forwarded-for")?.trim();
   const forwarded = req.headers.get("x-forwarded-for");
-  const ip = realIp || (forwarded ? forwarded.split(",")[0].trim() : "unknown");
-  // Combine with secondary key (e.g., email) for additional security
+  let ip = realIp || vercelIp;
+  if (!ip && forwarded) {
+    const parts = forwarded.split(",").map((s) => s.trim()).filter(Boolean);
+    ip = parts.length > 0 ? parts[parts.length - 1] : "unknown";
+  }
+  ip = ip || "unknown";
   return secondary ? `${ip}:${secondary}` : ip;
 }
 

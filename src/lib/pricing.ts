@@ -116,9 +116,8 @@ function parseFeeSetting(value: string | undefined, defaultValue: number): numbe
 }
 
 export async function getBookingPriceSettings(): Promise<BookingPriceSettings> {
-  const { prisma } = await import("./prisma");
-  const settings = await prisma.systemSetting.findMany();
-  const map = Object.fromEntries(settings.map((s) => [s.key, s.value]));
+  const { getSystemSettings } = await import("./settings");
+  const map = await getSystemSettings();
 
   return {
     pickupFee: parseFeeSetting(map.pickup_fee, DEFAULT_PRICE_SETTINGS.pickupFee),

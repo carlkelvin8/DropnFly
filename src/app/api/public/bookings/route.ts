@@ -7,7 +7,7 @@ import { notifyBookingCreated, sendCustomerNotification } from "@/lib/notificati
 import { getSystemSettings, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
 import { grantBookingAccess } from "@/lib/booking-access";
-import { manilaMinutesOfDay, manilaDayRange } from "@/lib/manila-time";
+import { manilaDateStr, manilaMinutesOfDay, manilaDayRange } from "@/lib/manila-time";
 import type { Prisma, Booking } from "@/generated/prisma/client";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
 
@@ -189,14 +189,6 @@ export async function POST(req: Request) {
       }
     };
 
-    try {
-      await slotQuery(checkInDate, "pickup");
-      if (checkOutDate) await slotQuery(checkOutDate, "delivery");
-    } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : "Slot unavailable" }, { status: 409 });
-    }
-
-
     let customer = await prisma.customer.findUnique({ where: { email: normalizedEmail } });
 
     if (!customer) {
@@ -241,17 +233,20 @@ export async function POST(req: Request) {
         qrBase64 = qrCode.replace(/^data:image\/png;base64,/, "");
 
         booking = await prisma.$transaction(async (tx) => {
-          // Serialize reservations for these slots. Locking on date+type (not the
-          // exact minute) prevents two concurrent requests for overlapping slot
-          // windows from both claiming the last available capacity.
-          const lockKeys = [checkInDate, checkOutDate].filter((d): d is Date => Boolean(d)).map((d) => `slot:${d.toISOString().split('T')[0]}:${d === checkInDate ? "pickup" : "delivery"}`);
+          // Serialize reservations for these slots using Manila date (not UTC) so
+          // 00:30 Manila doesn't lock a different advisory key than the query.
+          const lockKeys = [checkInDate, checkOutDate].filter((d): d is Date => Boolean(d)).map((d) => `slot:${manilaDateStr(d)}:${d === checkInDate ? "pickup" : "delivery"}`);
           for (const key of lockKeys) {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
           }
+          if (promoCodeId) {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`promo:${promoCodeId}`}))`;
+          }
           if (maxSimultaneousBags > 0) {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
+            // PENDING reservations don't occupy physical storage yet
             const activeBagTotal = await tx.booking.aggregate({
-              where: { status: { notIn: ["DELIVERED", "CANCELLED", "NO_SHOW"] } },
+              where: { status: { notIn: ["PENDING", "DELIVERED", "CANCELLED", "NO_SHOW"] } },
               _sum: { numberOfBags: true },
             });
             if (Number(activeBagTotal._sum.numberOfBags || 0) + pricing.totalBags > maxSimultaneousBags) {
@@ -262,11 +257,13 @@ export async function POST(req: Request) {
           if (checkOutDate) await slotQuery(checkOutDate, "delivery", tx);
 
           if (promoCodeId) {
+            const promoForUpdate = await tx.promoCode.findUnique({ where: { id: promoCodeId }, select: { maxUsage: true } });
+            if (!promoForUpdate) throw new Error("Promo code is no longer available");
             const claimed = await tx.promoCode.updateMany({
               where: {
                 id: promoCodeId,
                 isActive: true,
-                usedCount: { lt: (await tx.promoCode.findUniqueOrThrow({ where: { id: promoCodeId }, select: { maxUsage: true } })).maxUsage },
+                usedCount: { lt: promoForUpdate.maxUsage },
                 OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
               },
               data: { usedCount: { increment: 1 } },
@@ -402,9 +399,7 @@ export async function POST(req: Request) {
     if (error instanceof StorageCapacityError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
-    if (process.env.NODE_ENV === "development") {
-      console.error("Booking creation error:", error);
-    }
+    console.error("Booking creation error:", error);
     return NextResponse.json({ error: "Failed to create booking" }, { status: 500 });
   }
 }
