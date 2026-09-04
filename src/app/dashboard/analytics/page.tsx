@@ -274,6 +274,7 @@ export default function AnalyticsPage() {
           loading={paymentsLoading}
           overview={data?.overview || null}
           metrics={data?.financialMetrics || null}
+          customerTrends={data?.customerTrends || null}
           totalRevenue={totalRevenue}
           pendingCount={pendingPayments.length}
           pendingPayments={pendingPayments}
@@ -291,12 +292,10 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
     bookingsByDay,
     hourlyDistribution,
     employeePerformance,
-    customerTrends,
     bookingsByStatus,
     bagBreakdown,
     cityDistribution,
     countryDistribution,
-    overview,
   } = data;
   const maxEmployee = Math.max(...employeePerformance.map((e) => e.totalAssigned), 1);
   const heatmapSource = bookingsByDay.slice(-84);
@@ -349,32 +348,6 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Primary KPIs */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {[
-          { label: "Bookings", value: overview.totalBookings.toLocaleString(), detail: `${overview.activeBookings} currently active`, color: "border-t-blue-500", icon: Package, iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
-          { label: "Collected Revenue", value: formatCurrency(overview.totalRevenue), detail: `${formatCurrency(overview.averagePrice)} average payment`, color: "border-t-emerald-500", icon: DollarSign, iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" },
-          { label: "Average Bags", value: overview.averageBags.toFixed(1), detail: "per booking in selected period", color: "border-t-violet-500", icon: Luggage, iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" },
-          { label: "Storage Utilization", value: `${overview.storageUtilization.toFixed(1)}%`, detail: `${overview.newCustomers} new customers`, color: "border-t-orange-500", icon: Warehouse, iconBg: "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" },
-        ].map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <Card key={metric.label} className={`border-t-2 ${metric.color}`}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-xs font-medium text-muted-foreground">{metric.label}</CardTitle>
-                <div className={`rounded-lg p-2 ${metric.iconBg}`}>
-                  <Icon className="h-4 w-4" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{metric.value}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{metric.detail}</p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
       {/* Bookings & Revenue Trend (Line Graph) */}
       <Card className="border-t-2 border-t-sky-500">
         <CardHeader>
@@ -536,52 +509,6 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
         </Card>
       </div>
 
-      {/* Customer Trends */}
-      <Card className="border-t-2 border-t-amber-500">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm font-medium">
-            <Users className="h-4 w-4" />
-            Customer Trends
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
-              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <p className="text-2xl font-bold">{customerTrends.totalCustomers}</p>
-              <p className="text-xs text-muted-foreground">Total Customers</p>
-            </div>
-            <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
-              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
-                <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
-              </div>
-              <p className="text-2xl font-bold">
-                {customerTrends.returnRate.toFixed(1)}%
-              </p>
-              <p className="text-xs text-muted-foreground">Return Rate</p>
-            </div>
-            <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
-              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <p className="text-2xl font-bold">{customerTrends.newCustomers}</p>
-              <p className="text-xs text-muted-foreground">New (this period)</p>
-            </div>
-            <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
-              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/30">
-                <Users className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-              </div>
-              <p className="text-2xl font-bold">
-                {customerTrends.repeatCustomers}
-              </p>
-              <p className="text-xs text-muted-foreground">Repeat Customers</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Booking Activity Heatmap */}
       <Card className="overflow-hidden border-t-2 border-t-orange-500">
         <CardHeader className="gap-5 pb-3 sm:flex-row sm:items-start sm:justify-between">
@@ -636,6 +563,7 @@ function FinancialTab({
   loading,
   overview,
   metrics,
+  customerTrends,
   totalRevenue,
   pendingCount,
   pendingPayments,
@@ -644,6 +572,7 @@ function FinancialTab({
   loading: boolean;
   overview: Overview | null;
   metrics: FinancialMetrics | null;
+  customerTrends: Analytics["customerTrends"] | null;
   totalRevenue: number;
   pendingCount: number;
   pendingPayments: Payment[];
@@ -680,6 +609,77 @@ function FinancialTab({
 
   return (
     <div className="space-y-6">
+      {/* Moved from Graphical Data: numeric KPIs belong in Financial Oversight */}
+      {overview && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[
+            { label: "Bookings", value: overview.totalBookings.toLocaleString(), detail: `${overview.activeBookings} currently active`, color: "border-t-blue-500", icon: Package, iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
+            { label: "Collected Revenue", value: formatCurrency(overview.totalRevenue), detail: `${formatCurrency(overview.averagePrice)} average payment`, color: "border-t-emerald-500", icon: DollarSign, iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" },
+            { label: "Average Bags", value: overview.averageBags.toFixed(1), detail: "per booking in selected period", color: "border-t-violet-500", icon: Luggage, iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" },
+            { label: "Storage Utilization", value: `${overview.storageUtilization.toFixed(1)}%`, detail: `${overview.newCustomers} new customers`, color: "border-t-orange-500", icon: Warehouse, iconBg: "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" },
+          ].map((metric) => {
+            const Icon = metric.icon;
+            return (
+              <Card key={metric.label} className={`border-t-2 ${metric.color}`}>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground">{metric.label}</CardTitle>
+                  <div className={`rounded-lg p-2 ${metric.iconBg}`}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{metric.value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{metric.detail}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {customerTrends && (
+        <Card className="border-t-2 border-t-amber-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Users className="h-4 w-4" />
+              Customer Trends
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
+                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                  <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <p className="text-2xl font-bold">{customerTrends.totalCustomers}</p>
+                <p className="text-xs text-muted-foreground">Total Customers</p>
+              </div>
+              <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
+                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
+                  <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+                <p className="text-2xl font-bold">{customerTrends.returnRate.toFixed(1)}%</p>
+                <p className="text-xs text-muted-foreground">Return Rate</p>
+              </div>
+              <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
+                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+                  <Users className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <p className="text-2xl font-bold">{customerTrends.newCustomers}</p>
+                <p className="text-xs text-muted-foreground">New (this period)</p>
+              </div>
+              <div className="rounded-xl border bg-card p-4 text-center shadow-sm">
+                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/30">
+                  <Users className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                </div>
+                <p className="text-2xl font-bold">{customerTrends.repeatCustomers}</p>
+                <p className="text-xs text-muted-foreground">Repeat Customers</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Operational & financial metric grid */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         {metricCards.map((m) => {
