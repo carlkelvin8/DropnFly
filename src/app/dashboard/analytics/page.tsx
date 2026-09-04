@@ -1059,39 +1059,120 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
       )}
 
       {report && (
-        <Card className="border-t-2 border-t-primary shadow-md">
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <FileText className="h-4 w-4 text-primary" />
-                {report.title}
-              </CardTitle>
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] text-muted-foreground">Generated {new Date(report.generatedAt).toLocaleString()}</span>
-                <Button size="sm" variant="outline" onClick={downloadPdf} disabled={pdfLoading}>
-                  <Download className="mr-2 h-4 w-4" />{pdfLoading ? "Preparing..." : "Download PDF"}
-                </Button>
-              </div>
-            </div>
-            <div className="mt-2 rounded-lg border bg-muted/20 p-3 text-sm leading-relaxed">
-              <span className="mr-2 font-semibold text-primary">Summary</span>
-              {report.summary}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {report.sections.map((section, i) => (
-              <div key={i} className="rounded-lg border bg-card p-4">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                    {i + 1}
-                  </span>
-                  <h4 className="font-medium text-sm">{section.heading}</h4>
+        <div className="space-y-5">
+          {/* Report Header — organized & detailed for decision making */}
+          <Card className="overflow-hidden border-t-4 shadow-lg" style={{ borderTopColor: selected.bar.replace('bg-','') } as React.CSSProperties}>
+            <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-6 py-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className={`gap-1.5 ${selected.iconBg} border-0`}>
+                      <selected.icon className="h-3.5 w-3.5" />
+                      {selected.label}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs font-normal">
+                      Period: {period === "custom" ? `${dateFrom || "—"} → ${dateTo || "—"}` : period.charAt(0).toUpperCase() + period.slice(1)}
+                    </Badge>
+                    <span className="text-[11px] text-muted-foreground">Generated {new Date(report.generatedAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}</span>
+                  </div>
+                  <h3 className="mt-2 text-xl font-bold tracking-tight">{report.title}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">For admin decision-making — grounded in the selected period’s live data. Verify figures in Financial Oversight before acting.</p>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">{section.content}</p>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={downloadPdf} disabled={pdfLoading} className="shadow-sm">
+                    <Download className="mr-2 h-4 w-4" />{pdfLoading ? "Preparing PDF…" : "Download PDF"}
+                  </Button>
+                </div>
               </div>
-            ))}
-          </CardContent>
-        </Card>
+            </div>
+            <CardContent className="space-y-5 p-6">
+              {/* Executive Summary — detailed */}
+              <div className="rounded-xl border-l-4 bg-muted/30 p-4" style={{ borderLeftColor: "hsl(var(--primary))" }}>
+                <div className="mb-1 flex items-center gap-2">
+                  <div className="rounded-md bg-primary/10 p-1.5">
+                    <FileText className="h-4 w-4 text-primary" />
+                  </div>
+                  <h4 className="text-sm font-bold">Executive Summary</h4>
+                  <Badge variant="secondary" className="ml-auto text-[10px]">Decision-ready</Badge>
+                </div>
+                <p className="text-sm leading-relaxed text-foreground/90">{report.summary}</p>
+              </div>
+
+              {/* Table of Contents — organized navigation */}
+              <div className="rounded-xl border bg-card p-4">
+                <h4 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  <BarChart3 className="h-3.5 w-3.5" />
+                  Report Contents
+                </h4>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {report.sections.map((s, i) => (
+                    <a key={i} href={`#report-section-${i}`} className="flex items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-sm transition-colors hover:bg-muted/40 hover:text-primary">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">{i + 1}</span>
+                      <span className="truncate font-medium">{s.heading}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              {/* Detailed Sections — organized with icons & hierarchy */}
+              <div className="space-y-4">
+                {report.sections.map((section, i) => {
+                  const isRecommendation = /recommend|action|decision/i.test(section.heading);
+                  const isRisk = /risk|limit|caveat/i.test(section.heading);
+                  const Icon = isRecommendation ? TrendingUp : isRisk ? AlertCircle : i === 0 ? Package : i === 1 ? DollarSign : i === 2 ? Warehouse : Users;
+                  return (
+                    <div
+                      key={i}
+                      id={`report-section-${i}`}
+                      className={`scroll-mt-6 rounded-xl border p-5 transition-shadow hover:shadow-sm ${isRecommendation ? "bg-amber-50/50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/50" : isRisk ? "bg-slate-50 border-slate-200 dark:bg-slate-900/30" : "bg-card"}`}
+                    >
+                      <div className="mb-3 flex items-start gap-3">
+                        <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${isRecommendation ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" : isRisk ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300" : "bg-primary/10 text-primary"}`}>
+                          <Icon className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="text-sm font-bold leading-tight">{section.heading}</h4>
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Section {i + 1} of {report.sections.length}</span>
+                          </div>
+                          <div className="mt-1 h-0.5 w-8 rounded bg-primary/20" />
+                        </div>
+                        <span className="hidden sm:inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">{i + 1}</span>
+                      </div>
+                      <div className="prose prose-sm max-w-none text-sm leading-relaxed text-muted-foreground">
+                        {section.content.split(/(?<=[.!?])\s+/).map((para, idx) => (
+                          <p key={idx} className={idx > 0 ? "mt-2" : ""}>{para}</p>
+                        ))}
+                      </div>
+                      {isRecommendation && (
+                        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                          <TrendingUp className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <span className="font-medium">For decision: prioritize, assign owner, and set a review date for each action before closing this report.</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Footer — detailed & decision-support */}
+              <div className="rounded-xl border bg-muted/20 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold"><AlertCircle className="h-3.5 w-3.5 text-muted-foreground" /> How to use this report</p>
+                    <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                      Cross-check figures in <span className="font-medium text-foreground">Financial Oversight</span> and <span className="font-medium text-foreground">Graphical Data</span>, reconcile pending collections, and validate capacity/staffing against the selected period before committing resources. Re-generate for another period to compare.
+                    </p>
+                  </div>
+                  <div className="text-right text-[11px] text-muted-foreground">
+                    <p>Report ID: {report.generatedAt.slice(0, 10)}-{reportType}</p>
+                    <p>Source: live bookings/payments • Not financial advice</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );
