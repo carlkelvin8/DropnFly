@@ -48,18 +48,14 @@ export async function sendNotification({
     await prisma.notification.create({
       data: { userId, type, title, message, link },
     });
-  } catch {
-    if (process.env.NODE_ENV === "development") {
-      console.warn("Failed to create in-app notification");
-    }
+  } catch (e) {
+    console.warn("Failed to create in-app notification:", e);
   }
 
   try {
     await sendPushToUser(userId, { title, body: message, url: link });
-  } catch {
-    if (process.env.NODE_ENV === "development") {
-      console.warn("Failed to send push notification");
-    }
+  } catch (e) {
+    console.warn("Failed to send push notification:", e);
   }
 
   if (sendEmail) {
@@ -92,10 +88,8 @@ export async function sendNotification({
           `,
         });
       }
-    } catch {
-      if (process.env.NODE_ENV === "development") {
-        console.warn("Failed to send email notification");
-      }
+    } catch (e) {
+      console.warn("Failed to send email notification:", e);
     }
   }
 }
@@ -215,17 +209,13 @@ export async function sendCustomerNotification({
     await prisma.customerNotification.create({
       data: { customerId, type, title, message, link },
     });
-  } catch {
-    if (process.env.NODE_ENV === "development") {
-      console.warn("Failed to send customer notification");
-    }
+  } catch (e) {
+    console.warn("Failed to send customer notification:", e);
   }
 
   try {
     await sendPushToCustomer(customerId, { title, body: message, url: link });
-  } catch {
-    if (process.env.NODE_ENV === "development") {
-      console.warn("Failed to send customer push notification");
-    }
+  } catch (e) {
+    console.warn("Failed to send customer push notification:", e);
   }
 }

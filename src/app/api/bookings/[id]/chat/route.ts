@@ -33,10 +33,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     messages = await prisma.chatMessage.findMany(baseQuery);
   }
 
-  await prisma.chatMessage.updateMany({
-    where: { bookingId: id, isFromCustomer: true, isRead: false },
-    data: { isRead: true },
-  });
+  // Only mark as read when explicitly requested or when not polling with limit (avoids clearing badge on background poll)
+  const shouldMarkRead = url.searchParams.get("markRead") === "true" || !limitParam;
+  if (shouldMarkRead) {
+    await prisma.chatMessage.updateMany({
+      where: { bookingId: id, isFromCustomer: true, isRead: false },
+      data: { isRead: true },
+    });
+  }
 
   return NextResponse.json(total === undefined ? messages : { messages, total });
 }

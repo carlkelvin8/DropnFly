@@ -364,7 +364,7 @@ export async function POST(req: Request) {
           link: `/my-account/bookings/${booking.id}`,
         });
       } catch (e) {
-        if (process.env.NODE_ENV === "development") console.warn("Notification failed:", e);
+        console.warn("Notification failed:", e);
       }
     }
 
@@ -380,7 +380,7 @@ export async function POST(req: Request) {
         name
       );
     } catch (e) {
-      if (process.env.NODE_ENV === "development") console.warn("Staff notification failed:", e);
+      console.warn("Staff notification failed:", e);
     }
 
     return NextResponse.json(

@@ -35,8 +35,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
+    const normalizedEmail = String(body.email).trim().toLowerCase();
     const existing = await prisma.customer.findUnique({
-      where: { email: body.email },
+      where: { email: normalizedEmail },
     });
 
     if (existing) {
@@ -48,9 +49,9 @@ export async function POST(req: Request) {
 
     const customer = await prisma.customer.create({
       data: {
-        name: body.name,
-        email: body.email,
-        phone: body.phone,
+        name: String(body.name).trim(),
+        email: normalizedEmail,
+        phone: String(body.phone).trim(),
         countryOfOrigin: body.countryOfOrigin || null,
         cityOfOrigin: body.cityOfOrigin || null,
       },
