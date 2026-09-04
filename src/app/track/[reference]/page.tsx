@@ -262,7 +262,7 @@ export default function TrackResultPage() {
 
   if (notFound) {
     return (
-      <div className="min-h-screen bg-blue-50/50">
+      <div className="min-h-screen bg-blue-50/50 pt-16">
         <PublicHeader showBackToHome />
         <div className="flex flex-col items-center justify-center gap-4 py-24">
           <h1 className="text-2xl font-bold">Booking Not Found</h1>
@@ -295,7 +295,7 @@ export default function TrackResultPage() {
   const currentStep = config.step;
 
   return (
-    <div className="min-h-screen bg-blue-50/50">
+    <div className="min-h-screen bg-blue-50/50 pt-16">
       <PublicHeader showBackToHome />
 
       <main className="mx-auto max-w-3xl px-4 py-8">

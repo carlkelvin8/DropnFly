@@ -28,6 +28,8 @@ interface PickupStepProps {
   setPickupSlot: (v: string) => void;
   deliveryTerminal: string;
   setDeliveryTerminal: (v: string) => void;
+  deliveryAirline: string;
+  setDeliveryAirline: (v: string) => void;
   deliveryDate: string;
   setDeliveryDate: (v: string) => void;
   setDeliverySlotsLoading: (v: boolean) => void;
@@ -45,7 +47,7 @@ export function PickupStep({
   pickupTerminal, setPickupTerminal, setPickupAirline, pickupAirline,
   pickupDate, setPickupDate, setPickupSlotsLoading,
   pickupSlots, pickupSlotsLoading, pickupSlot, setPickupSlot,
-  deliveryTerminal, setDeliveryTerminal,
+  deliveryTerminal, setDeliveryTerminal, deliveryAirline, setDeliveryAirline,
   deliveryDate, setDeliveryDate, setDeliverySlotsLoading,
   deliverySlots, deliverySlotsLoading, deliverySlot, setDeliverySlot,
   storageDays, error, onNext, onPrev,
@@ -151,7 +153,10 @@ export function PickupStep({
         </Label>
         <select
           value={deliveryTerminal}
-          onChange={(e) => setDeliveryTerminal(e.target.value)}
+          onChange={(e) => {
+            setDeliveryTerminal(e.target.value);
+            setDeliveryAirline("");
+          }}
           className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           required
         >
@@ -161,6 +166,26 @@ export function PickupStep({
           ))}
         </select>
       </div>
+
+      {deliveryTerminal && (
+        <div className="mt-4 space-y-2">
+          <Label className="flex items-center gap-1.5">
+            <Plane className="h-4 w-4 text-indigo-500" />
+            Drop-off Airline Carrier <span className="text-red-500">*</span>
+          </Label>
+          <select
+            value={deliveryAirline}
+            onChange={(e) => setDeliveryAirline(e.target.value)}
+            className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            required
+          >
+            <option value="">Select your airline...</option>
+            {AIRLINES.map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="mt-4">
         <Label className="flex items-center gap-1.5">

@@ -73,14 +73,31 @@ export async function GET(req: NextRequest) {
   }
 
   const isPickup = type === "pickup";
-  const maxConcurrent = parseInt(isPickup ? settings.max_concurrent_pickups : settings.max_concurrent_deliveries);
-  const slotDuration = parseInt(isPickup ? settings.pickup_slot_duration : settings.delivery_slot_duration);
-  // The service operates 24 hours a day (customers may have flights at any hour), so time slots
-  // always span the full day regardless of any stored operating-hours/day settings.
-  const operatingStart = "00:00";
-  const operatingEnd = "23:59";
+  const maxConcurrent = Math.max(1, parseInt(isPickup ? settings.max_concurrent_pickups : settings.max_concurrent_deliveries) || 1);
+  const slotDuration = Math.max(15, parseInt(isPickup ? settings.pickup_slot_duration : settings.delivery_slot_duration) || 60);
+  // Senior: respect admin operating hours but default to 24h (00:00-23:59) for flight-flexible service
+  const operatingStart = settings.operating_start || "00:00";
+  const operatingEnd = settings.operating_end || "23:59";
 
   const slots = generateSlots(operatingStart, operatingEnd, slotDuration);
+
+  // Respect store_operating_days — if admin closed that weekday, return empty (with hint)
+  const { manilaWeekday } = await import("@/lib/manila-time");
+  const manilaDay = String(manilaWeekday(manilaDayStart(dateStr)));
+  const operatingDays = (settings.store_operating_days || "0,1,2,3,4,5,6").split(",").map((s) => s.trim());
+  if (!operatingDays.includes(manilaDay)) {
+    return NextResponse.json({
+      date: dateStr,
+      type,
+      maxConcurrent,
+      slotDuration,
+      operatingStart,
+      operatingEnd,
+      storeOperatingDays: settings.store_operating_days,
+      slots: [],
+      closedReason: "Store is closed on this weekday per admin settings",
+    }, { headers: { "Cache-Control": "no-store, must-revalidate" } });
+  }
 
   const selectedDate = manilaDayStart(dateStr);
   const nextDate = new Date(selectedDate);

@@ -12,6 +12,7 @@ interface PaymentStepProps {
   pickupTerminal: string;
   pickupAirline: string;
   deliveryTerminal: string;
+  deliveryAirline: string;
   deliveryDate: string;
   deliverySlot: string;
   luggageQty: Record<string, number>;
@@ -39,7 +40,7 @@ interface PaymentStepProps {
 
 export function PaymentStep({
   pickupDate, pickupSlot, pickupTerminal, pickupAirline,
-  deliveryTerminal, deliveryDate, deliverySlot,
+  deliveryTerminal, deliveryAirline, deliveryDate, deliverySlot,
   luggageQty, selectedServices, fees, luggagePrices, discountCodesEnabled,
   promoCode, setPromoCode, promoApplied, setPromoApplied,
   promoDiscount, setPromoDiscount, promoError, setPromoError,
@@ -67,7 +68,9 @@ export function PaymentStep({
   }
 
   function getDropOffLocationText() {
-    return deliveryTerminal || "";
+    let text = deliveryTerminal || "";
+    if (deliveryAirline) text += ` - ${deliveryAirline}`;
+    return text;
   }
 
   return (

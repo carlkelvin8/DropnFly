@@ -40,6 +40,11 @@ export function LuggageStep({
       <div className="mb-4 flex items-center gap-2">
         <Luggage className="h-5 w-5 text-blue-600" />
         <h3 className="text-lg font-semibold">Luggage Details</h3>
+        {maxBags > 0 && (
+          <span className="ml-auto rounded-full border bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-800">
+            Max {maxBags} bag{maxBags !== 1 ? "s" : ""} per booking (admin set)
+          </span>
+        )}
       </div>
 
       {storageDays > 0 && (

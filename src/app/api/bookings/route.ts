@@ -318,11 +318,11 @@ export async function POST(req: Request) {
       if (maxSimultaneousBags > 0) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
         const activeBagTotal = await tx.booking.aggregate({
-          where: { status: { notIn: ["PENDING", "DELIVERED", "CANCELLED", "NO_SHOW"] } },
+          where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
           _sum: { numberOfBags: true },
         });
         if (Number(activeBagTotal._sum.numberOfBags || 0) + computed.totalBags > maxSimultaneousBags) {
-          throw new Error("Storage capacity is full for the requested booking");
+          throw new Error(`Storage capacity is full (${activeBagTotal._sum.numberOfBags || 0}/${maxSimultaneousBags} bags in storage). Please try a later date or contact admin to increase capacity.`);
         }
       }
       await slotQueryStaff(checkInDate, "pickup", tx);

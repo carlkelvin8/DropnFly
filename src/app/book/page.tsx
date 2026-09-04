@@ -71,6 +71,7 @@ export default function BookPage() {
   const [deliverySlots, setDeliverySlots] = useState<TimeSlot[]>([]);
   const [deliverySlotsLoading, setDeliverySlotsLoading] = useState(false);
   const [deliveryTerminal, setDeliveryTerminal] = useState("");
+  const [deliveryAirline, setDeliveryAirline] = useState("");
   const [luggageQty, setLuggageQty] = useState<Record<string, number>>({});
   const [selectedServices, setSelectedServices] = useState<Record<string, boolean>>({});
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -162,7 +163,11 @@ export default function BookPage() {
       setOnlineBookingEnabled(data.features?.online_booking_enabled !== false);
       setDiscountCodesEnabled(data.features?.discount_codes_enabled !== false);
       if (data.luggage_prices) setLuggagePrices(data.luggage_prices);
-      if (data.booking_limits?.max_bags_per_booking > 0) setMaxBags(data.booking_limits.max_bags_per_booking);
+      // Senior: reflect admin max_bags immediately (0 = unlimited)
+      const adminMax = data.booking_limits?.max_bags_per_booking;
+      if (typeof adminMax === "number" && Number.isFinite(adminMax)) {
+        setMaxBags(Math.max(0, Math.floor(adminMax)));
+      }
       if (data.pricing) {
         setFees({
           pickupFee: data.pricing.pickup_fee || 180,
@@ -221,6 +226,11 @@ export default function BookPage() {
     if (pickupAirline) text += ` - ${pickupAirline}`;
     return text;
   }
+  function getDropOffLocationText() {
+    let text = deliveryTerminal;
+    if (deliveryAirline) text += ` - ${deliveryAirline}`;
+    return text;
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -261,7 +271,7 @@ export default function BookPage() {
       countryOfOrigin: selectedCountry || undefined,
       cityOfOrigin: selectedCity || undefined,
       pickupLocation: getPickupLocationText(),
-      dropOffLocation: deliveryTerminal || "",
+      dropOffLocation: getDropOffLocationText(),
       numberOfBags: String(numBags),
       luggageDetails: luggageDetailsPayload,
       preferredDate: pickupDateTime,
@@ -308,8 +318,9 @@ export default function BookPage() {
       if (!pickupDate) errors.push("Please select your Pickup Date");
       if (!pickupSlot) errors.push("Please select your Pickup Time Slot");
       if (!pickupTerminal) errors.push("Please select your Pickup Terminal");
-      if (!pickupAirline) errors.push("Please select your Airline Carrier");
+      if (!pickupAirline) errors.push("Please select your Pickup Airline Carrier");
       if (!deliveryTerminal) errors.push("Please select your Drop-off Terminal");
+      if (!deliveryAirline) errors.push("Please select your Drop-off Airline Carrier");
       if (!deliveryDate) errors.push("Please select your Delivery Date");
       if (!deliverySlot) errors.push("Please select your Delivery Time Slot");
       if (pickupDate && deliveryDate) {
@@ -329,7 +340,7 @@ export default function BookPage() {
 
   if (maintenance?.enabled || !onlineBookingEnabled) {
     return (
-      <div className="min-h-screen bg-blue-50/50">
+      <div className="min-h-screen bg-blue-50/50 pt-16">
         <PublicHeader showBackToHome />
         <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-24 text-center">
           <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 shadow-lg shadow-amber-200">
@@ -347,7 +358,7 @@ export default function BookPage() {
   }
 
   return (
-    <div className="min-h-screen bg-blue-50/50">
+    <div className="min-h-screen bg-blue-50/50 pt-16">
       <PublicHeader showBackToHome />
       <main className="mx-auto max-w-3xl px-4 py-12">
         <div className="mb-8 text-center">
@@ -405,6 +416,7 @@ export default function BookPage() {
                     pickupSlots={pickupSlots} pickupSlotsLoading={pickupSlotsLoading}
                     pickupSlot={pickupSlot} setPickupSlot={setPickupSlot}
                     deliveryTerminal={deliveryTerminal} setDeliveryTerminal={setDeliveryTerminal}
+                    deliveryAirline={deliveryAirline} setDeliveryAirline={setDeliveryAirline}
                     deliveryDate={deliveryDate} setDeliveryDate={updateDeliveryDate}
                     setDeliverySlotsLoading={setDeliverySlotsLoading}
                     deliverySlots={deliverySlots} deliverySlotsLoading={deliverySlotsLoading}
@@ -428,7 +440,7 @@ export default function BookPage() {
                   <PaymentStep
                     pickupDate={pickupDate} pickupSlot={pickupSlot}
                     pickupTerminal={pickupTerminal} pickupAirline={pickupAirline}
-                    deliveryTerminal={deliveryTerminal} deliveryDate={deliveryDate} deliverySlot={deliverySlot}
+                    deliveryTerminal={deliveryTerminal} deliveryAirline={deliveryAirline} deliveryDate={deliveryDate} deliverySlot={deliverySlot}
                     luggageQty={luggageQty} selectedServices={selectedServices} fees={fees}
                     luggagePrices={luggagePrices} discountCodesEnabled={discountCodesEnabled}
                     promoCode={promoCode} setPromoCode={setPromoCode}

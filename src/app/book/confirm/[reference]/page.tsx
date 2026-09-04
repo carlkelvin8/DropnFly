@@ -84,7 +84,7 @@ export default function ConfirmPage() {
     }[error];
 
     return (
-      <div className="min-h-screen bg-blue-50/50">
+      <div className="min-h-screen bg-blue-50/50 pt-16">
         <PublicHeader showBackToHome />
         <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-24 text-center">
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
@@ -120,7 +120,7 @@ export default function ConfirmPage() {
   }
 
   return (
-    <div className="min-h-screen bg-blue-50/50">
+    <div className="min-h-screen bg-blue-50/50 pt-16">
       <PublicHeader showBackToHome />
 
       <main className="mx-auto max-w-3xl px-4 py-12">

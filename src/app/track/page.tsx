@@ -61,7 +61,7 @@ export default function TrackPage() {
   }
 
   return (
-    <div className="min-h-screen bg-blue-50/50">
+    <div className="min-h-screen bg-blue-50/50 pt-16">
       <PublicHeader showBackToHome />
 
       <main className="mx-auto max-w-xl px-4 py-16">

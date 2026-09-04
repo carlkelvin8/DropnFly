@@ -151,21 +151,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Luggage count mismatch" }, { status: 400 });
     }
 
-    // Enforce time-slot capacity
+    // Enforce time-slot capacity and admin operating hours/days (senior: reflect settings immediately)
     const slotQuery = async (date: Date, type: "pickup" | "delivery", db: Pick<Prisma.TransactionClient, "booking"> | typeof prisma = prisma): Promise<void> => {
       const defaults: Record<string, string> = {
         max_concurrent_pickups: "1",
         max_concurrent_deliveries: "1",
         pickup_slot_duration: "60",
         delivery_slot_duration: "60",
+        operating_start: "00:00",
+        operating_end: "23:59",
+        store_operating_days: "0,1,2,3,4,5,6",
       };
       const isPickup = type === "pickup";
-      const maxConcurrent = parseInt(setting(settings, isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries", defaults[isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries"]));
-      const durationMin = parseInt(setting(settings, isPickup ? "pickup_slot_duration" : "delivery_slot_duration", defaults[isPickup ? "pickup_slot_duration" : "delivery_slot_duration"]));
-      // The service operates 24 hours a day (customers may have flights at any hour), so the
-      // selected hour is never rejected here based on an operating-hours window. Capacity is
-      // still enforced below to prevent overbooking a slot.
+      const maxConcurrent = Math.max(1, parseInt(setting(settings, isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries", defaults[isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries"])) || 1);
+      const durationMin = Math.max(15, parseInt(setting(settings, isPickup ? "pickup_slot_duration" : "delivery_slot_duration", defaults[isPickup ? "pickup_slot_duration" : "delivery_slot_duration"])) || 60);
+      // Respect admin operating days
+      const { manilaWeekday } = await import("@/lib/manila-time");
+      const weekday = String(manilaWeekday(date));
+      const operatingDays = setting(settings, "store_operating_days", defaults.store_operating_days).split(",").map((s) => s.trim());
+      if (!operatingDays.includes(weekday)) {
+        throw new Error("The store is closed on the selected pickup day. Please choose another date.");
+      }
+      // Respect admin operating hours (default 24h)
+      const operatingStart = setting(settings, "operating_start", defaults.operating_start);
+      const operatingEnd = setting(settings, "operating_end", defaults.operating_end);
+      const parseHM = (v: string) => {
+        const [h, m] = v.split(":").map(Number);
+        return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+      };
+      let startMin = parseHM(operatingStart);
+      let endMin = parseHM(operatingEnd);
+      if (endMin === 1439) endMin = 1440;
+      if (endMin === 0 && (operatingEnd === "24:00" || operatingEnd === "00:00")) endMin = 1440;
       const slotStartMinutes = manilaMinutesOfDay(date);
+      if (slotStartMinutes < startMin || slotStartMinutes + durationMin > endMin) {
+        throw new Error(`Selected ${type} time is outside operating hours (${operatingStart}–${operatingEnd}). Please choose another time.`);
+      }
       const { start: dayStart, end: dayEnd } = manilaDayRange(date);
       const existing = await db.booking.findMany({
         where: {
@@ -244,13 +265,14 @@ export async function POST(req: Request) {
           }
           if (maxSimultaneousBags > 0) {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
-            // PENDING reservations don't occupy physical storage yet
+            // Senior: only bags physically in storage count toward capacity (RECEIVED/IN_STORAGE/OUT_FOR_DELIVERY)
+            // CONFIRMED/PENDING are reservations not yet occupying a slot
             const activeBagTotal = await tx.booking.aggregate({
-              where: { status: { notIn: ["PENDING", "DELIVERED", "CANCELLED", "NO_SHOW"] } },
+              where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
               _sum: { numberOfBags: true },
             });
             if (Number(activeBagTotal._sum.numberOfBags || 0) + pricing.totalBags > maxSimultaneousBags) {
-              throw new StorageCapacityError("Storage capacity is full for the requested booking");
+              throw new StorageCapacityError(`Storage capacity is full (${activeBagTotal._sum.numberOfBags || 0}/${maxSimultaneousBags} bags in storage). Please try a later date or contact admin to increase capacity.`);
             }
           }
           await slotQuery(checkInDate, "pickup", tx);
