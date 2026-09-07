@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useEffect } from "react";
 import { signIn, getSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Luggage, Eye, EyeOff, LogIn, ShieldCheck, ExternalLink } from "lucide-react";
+import { Luggage, Eye, EyeOff, LogIn, ShieldCheck, ExternalLink, AlertTriangle, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,6 +76,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
+  const [existingSession, setExistingSession] = useState<{ email?: string; role?: string } | null>(null);
   const [alternateOrigin] = useState(() => {
     if (typeof window === "undefined") return "";
     const url = new URL(window.location.href);
@@ -86,8 +87,21 @@ function LoginForm() {
     return url.toString();
   });
 
+  useEffect(() => {
+    getSession().then((s) => {
+      if (s?.user) setExistingSession({ email: (s.user as { email?: string }).email, role: (s.user as { role?: string }).role });
+    });
+  }, []);
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Prevent accidental sign-out: same browser = single staff cookie (src/lib/auth-config.ts:48 JWT). Warn before overwriting.
+    if (existingSession?.email && existingSession.email.toLowerCase() !== email.trim().toLowerCase()) {
+      const ok = window.confirm(
+        `You are currently logged in as ${existingSession.email} (${existingSession.role}). Logging in as ${email} will sign out the current account in this browser.\n\nTo keep both accounts logged in at the same time, use a different Chrome Profile, Incognito/Private window, or a second browser/device.\n\nContinue and sign out ${existingSession.email}?`
+      );
+      if (!ok) return;
+    }
     setLoading(true);
     setError("");
     setSuccess("");
@@ -289,16 +303,30 @@ function LoginForm() {
               </div>
             </form>
 
+            {existingSession?.email && (
+              <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-200">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                <div>
+                  <p className="font-medium">Already logged in as {existingSession.email} ({existingSession.role})</p>
+                  <p className="mt-1 text-amber-200/80">This browser shares one staff session cookie. Logging in here will sign out {existingSession.email}. To keep both, use a different Chrome Profile, Incognito/Private window, or a second device.</p>
+                </div>
+              </div>
+            )}
             <p
               style={{ animation: "fade-in 0.4s ease-out 0.6s backwards" }}
               className="mt-6 text-center text-sm text-white/50"
             >
               Employee accounts are created by your administrator.
             </p>
-            {alternateOrigin && (
+            {alternateOrigin ? (
               <a href={alternateOrigin} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-1.5 text-xs text-blue-300 hover:text-blue-200">
-                <ExternalLink className="h-3.5 w-3.5" /> Open an independent login tab
+                <ExternalLink className="h-3.5 w-3.5" /> Open an independent login tab (localhost ↔ 127.0.0.1)
               </a>
+            ) : (
+              <div className="mt-3 rounded-lg border border-white/5 bg-white/[0.03] p-2.5 text-center">
+                <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-white/60"><Users className="h-3.5 w-3.5" /> Need admin + employee at the same time?</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-white/40">Browsers share one staff cookie — use <span className="text-white/70">Chrome Profile</span> (Profile → Add), <span className="text-white/70">Incognito</span> (Ctrl+Shift+N), or a second browser/device. Example: Admin on Chrome Profile “Work”, Employee on “Incognito”.</p>
+              </div>
             )}
           </div>
         </div>
