@@ -322,11 +322,12 @@ export default function TrackResultPage() {
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-600 text-lg font-bold text-white shadow-md">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-md overflow-hidden border-2 border-green-200">
                   {rider.profilePic ? (
                     <Image unoptimized width={56} height={56} src={rider.profilePic} alt={rider.name} className="h-14 w-14 rounded-full object-cover" />
                   ) : (
-                    rider.name.charAt(0)
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src="/logo.svg" alt="DropnFly logo" className="h-10 w-10 object-contain" />
                   )}
                 </div>
                 <div className="flex-1">

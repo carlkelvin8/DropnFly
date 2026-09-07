@@ -14,7 +14,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
-import { User, Mail, Shield, Calendar, ShieldCheck, Smartphone, QrCode as QrCodeIcon } from "lucide-react";
+import { User, Mail, Shield, Calendar, ShieldCheck, Smartphone, QrCode as QrCodeIcon, Camera, Upload, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 interface Profile {
@@ -24,6 +24,7 @@ interface Profile {
   role: string;
   createdAt: string;
   totpEnabled?: boolean;
+  profilePic?: string | null;
 }
 
 export default function ProfilePage() {
@@ -31,6 +32,9 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [profilePic, setProfilePic] = useState<string | null>(null);
+  const [picPreview, setPicPreview] = useState<string | null>(null);
+  const [picSaving, setPicSaving] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -48,11 +52,80 @@ export default function ProfilePage() {
       .then((data) => {
         setProfile(data);
         setName(data.name || "");
+        setProfilePic(data.profilePic || null);
         setTotpEnabled(data.totpEnabled === true);
       })
       .catch(() => toast.error("Failed to load profile"))
       .finally(() => setLoading(false));
   }, []);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+    if (file.size > 2_500_000) {
+      toast.error("Image must be under 2.5MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setPicPreview(result);
+    };
+    reader.readAsDataURL(file);
+    // reset input so same file can be re-selected
+    e.target.value = "";
+  }
+
+  async function handleSavePic() {
+    const toSave = picPreview;
+    if (!toSave) {
+      toast.error("No image selected");
+      return;
+    }
+    setPicSaving(true);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profilePic: toSave }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload");
+      setProfilePic(data.profilePic || toSave);
+      setProfile((prev) => (prev ? { ...prev, profilePic: data.profilePic } : prev));
+      setPicPreview(null);
+      toast.success("Profile picture updated — it will now appear when you are assigned to a task");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to upload");
+    } finally {
+      setPicSaving(false);
+    }
+  }
+
+  async function handleRemovePic() {
+    setPicSaving(true);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profilePic: null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to remove");
+      setProfilePic(null);
+      setPicPreview(null);
+      setProfile((prev) => (prev ? { ...prev, profilePic: null } : prev));
+      toast.success("Profile picture removed — default DropnFly logo will be used");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to remove");
+    } finally {
+      setPicSaving(false);
+    }
+  }
 
   async function handleTotpSetup() {
     setTotpLoading(true);
@@ -246,6 +319,62 @@ export default function ProfilePage() {
             <div>
               <p className="text-sm text-muted-foreground">Member Since</p>
               <p className="font-medium">{profile?.createdAt ? formatDate(profile.createdAt) : "N/A"}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Profile Picture — visible to EMPLOYEE/ADMIN/ST AFF so assigned task shows their face; fallback is DropnFly logo */}
+      <Card className="border-t-2 border-t-orange-500">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Camera className="h-5 w-5 text-orange-600" />
+            Profile Picture
+          </CardTitle>
+          <CardDescription>Visible to customers when you are assigned to a pickup or delivery. Default is the DropnFly logo.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+            <div className="relative">
+              {picPreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={picPreview} alt="Preview" className="h-24 w-24 rounded-full object-cover border-4 border-orange-200 shadow-md" />
+              ) : profilePic ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={profilePic} alt={profile?.name || "Profile"} className="h-24 w-24 rounded-full object-cover border-4 border-orange-200 shadow-md" />
+              ) : (
+                <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-orange-200 bg-white shadow-md overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/logo.svg" alt="DropnFly logo" className="h-20 w-20 object-contain" />
+                </div>
+              )}
+              <div className="absolute -bottom-1 -right-1 rounded-full bg-orange-500 p-1.5 text-white shadow">
+                <Camera className="h-3.5 w-3.5" />
+              </div>
+            </div>
+            <div className="flex-1 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {profilePic ? "Your photo will appear in the assigned employee email and tracking pages." : "No photo yet — customers will see the DropnFly logo when you are assigned."}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Label htmlFor="picUpload" className="inline-flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-orange-50">
+                  <Upload className="h-4 w-4" />
+                  Choose Image
+                </Label>
+                <input id="picUpload" type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={handleFileChange} />
+                {picPreview && (
+                  <Button onClick={handleSavePic} disabled={picSaving} className="bg-orange-500 text-white hover:bg-orange-600">
+                    {picSaving ? "Saving..." : "Save Picture"}
+                  </Button>
+                )}
+                {(profilePic || picPreview) && (
+                  <Button variant="outline" onClick={() => { setPicPreview(null); if (profilePic && !picPreview) handleRemovePic(); else if (picPreview) setPicPreview(null); }} disabled={picSaving}>
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    {picPreview ? "Cancel" : "Remove"}
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">PNG, JPEG, WEBP or GIF, max 2.5MB. Recommended square image.</p>
             </div>
           </div>
         </CardContent>

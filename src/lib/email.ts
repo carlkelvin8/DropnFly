@@ -205,10 +205,12 @@ export async function sendRiderAssignedEmail({
     }
     return;
   }
+  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const defaultLogo = `${baseUrl}/logo.svg`;
   const profilePicUrl =
     riderProfilePic && (riderProfilePic.startsWith("https://") || riderProfilePic.startsWith("data:image/"))
       ? riderProfilePic
-      : null;
+      : defaultLogo;
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #ea7d3d; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
@@ -220,7 +222,7 @@ export async function sendRiderAssignedEmail({
         <p>A rider has been assigned to your booking. Here are the details:</p>
 
         <div style="text-align: center; margin: 24px 0;">
-          ${profilePicUrl ? `<img src="${profilePicUrl}" alt="${sanitizeHtml(riderName)}" style="width: 96px; height: 96px; border-radius: 50%; object-fit: cover; border: 3px solid #ea7d3d;" />` : `<div style="width: 96px; height: 96px; border-radius: 50%; background: #ea7d3d; color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; border: 3px solid #e3f0fb;">${sanitizeHtml(riderName.charAt(0))}</div>`}
+          <img src="${profilePicUrl}" alt="${sanitizeHtml(riderName)}" style="width: 96px; height: 96px; border-radius: 50%; object-fit: cover; border: 3px solid #ea7d3d; background: #fff;" />
           <h3 style="margin: 12px 0 4px;">${sanitizeHtml(riderName)}</h3>
         </div>
 

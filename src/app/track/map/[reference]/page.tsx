@@ -316,11 +316,12 @@ export default function LiveTrackingPage() {
                     {employee ? (
                       <div className="space-y-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-green-500 to-emerald-500 text-base font-bold text-white shadow-md">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-md overflow-hidden border-2 border-green-200">
                             {employee.profilePic ? (
                               <Image unoptimized width={48} height={48} src={employee.profilePic} alt={employee.name} className="h-12 w-12 rounded-full object-cover" />
                             ) : (
-                              employee.name.charAt(0)
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src="/logo.svg" alt="DropnFly logo" className="h-8 w-8 object-contain" />
                             )}
                           </div>
                           <div>
