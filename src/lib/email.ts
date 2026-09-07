@@ -527,3 +527,75 @@ export async function sendReceiptEmail({
   });
   return true;
 }
+
+export async function sendFeedbackInvitationEmail({
+  to,
+  customerName,
+  referenceNumber,
+  completionDate,
+  bookingId,
+}: {
+  to: string;
+  customerName: string;
+  referenceNumber: string;
+  completionDate: string;
+  bookingId: string;
+}) {
+  const config = await getEmailConfig();
+  if (!config.enabled) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[EMAIL] Email notifications are disabled");
+    }
+    return false;
+  }
+  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const feedbackUrl = `${baseUrl}/my-account/feedback/${encodeURIComponent(bookingId)}`;
+  const safeName = sanitizeHtml(customerName);
+  const safeRef = sanitizeHtml(referenceNumber);
+  const safeDate = sanitizeHtml(completionDate);
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #ea7d3d; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+        <h1 style="margin: 0; font-size: 22px;">Thank You for Choosing DropnFly!</h1>
+        <p style="margin: 8px 0 0; opacity: 0.9;">Booking Reference: <strong>${safeRef}</strong></p>
+      </div>
+      <div style="background: #f8fafc; padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
+        <p>Hi <strong>${safeName}</strong>,</p>
+        <p>Your transaction <strong>${safeRef}</strong> was successfully completed on ${safeDate}. We hope you had a great experience with our luggage storage and delivery service.</p>
+        <p>We would love to hear your feedback — it helps us improve and helps other travelers choose DropnFly with confidence.</p>
+
+        <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr><td style="padding: 6px; color: #6b7280; font-size: 13px;">Booking Reference</td><td style="padding: 6px; font-weight: 600; text-align: right;">${safeRef}</td></tr>
+            <tr><td style="padding: 6px; color: #6b7280; font-size: 13px;">Completion Date</td><td style="padding: 6px; font-weight: 600; text-align: right;">${safeDate}</td></tr>
+          </table>
+        </div>
+
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="${feedbackUrl}"
+             style="display: inline-block; background: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px;">
+            Write Feedback
+          </a>
+          <p style="margin: 12px 0 0; font-size: 12px; color: #6b7280;">Secure link — requires login. One review per transaction.</p>
+          <p style="margin: 8px 0 0; font-size: 11px; color: #9ca3af; word-break: break-all;">${feedbackUrl}</p>
+        </div>
+
+        <p style="font-size: 13px; color: #6b7280;">If the button doesn't work, copy and paste the link into your browser while logged into your DropnFly account.</p>
+
+        <hr style="border: none; border-top: 1px solid #d1d5db; margin: 24px 0;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center;">
+          ${sanitizeHtml(config.companyName)} &bull; Reference: ${safeRef}
+        </p>
+      </div>
+    </div>
+  `;
+
+  await (await getTransporter()).sendMail({
+    from: config.from,
+    to,
+    subject: `How was your DropnFly experience? - ${referenceNumber}`,
+    html,
+  });
+  return true;
+}

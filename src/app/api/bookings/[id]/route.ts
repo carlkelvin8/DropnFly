@@ -205,7 +205,22 @@ export async function PUT(
         });
       }
 
-      if (body.status === "DELIVERED") await awardDeliveryPoints(booking);
+      if (body.status === "DELIVERED") {
+        await awardDeliveryPoints(booking);
+        try {
+          const { trySendFeedbackInvitation } = await import("@/lib/feedback");
+          await trySendFeedbackInvitation({
+            id: booking.id,
+            referenceNumber: booking.referenceNumber,
+            customerId: booking.customerId as string,
+            status: body.status,
+            updatedAt: booking.updatedAt,
+            feedbackInviteSentAt: (booking as { feedbackInviteSentAt?: Date | null }).feedbackInviteSentAt ?? null,
+          });
+        } catch (e) {
+          console.warn("[FEEDBACK] invite failed after booking PUT", e);
+        }
+      }
     }
 
     return NextResponse.json(decimalsToNumbers(booking));

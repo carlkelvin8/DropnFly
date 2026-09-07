@@ -539,6 +539,20 @@ export async function POST(req: Request) {
           ]);
         }
       }
+      // Feedback invitation — idempotent, only once per delivered booking
+      try {
+        const { trySendFeedbackInvitation } = await import("@/lib/feedback");
+        await trySendFeedbackInvitation({
+          id: updatedBooking.id,
+          referenceNumber: updatedBooking.referenceNumber,
+          customerId: booking.customerId,
+          status: updatedBooking.status,
+          updatedAt: updatedBooking.updatedAt,
+          feedbackInviteSentAt: (updatedBooking as { feedbackInviteSentAt?: Date | null }).feedbackInviteSentAt ?? null,
+        });
+      } catch (e) {
+        console.warn("[FEEDBACK] invite failed after QR scan", e);
+      }
     }
 
     return NextResponse.json({

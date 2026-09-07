@@ -179,8 +179,9 @@ export default function AnalyticsPage() {
       .finally(() => setPaymentsLoading(false));
   }, [tab, period, dateFrom, dateTo]);
 
-  const totalRevenue = payments.filter((p) => p.status === "PAID").reduce((sum, p) => sum + p.amount, 0);
-  const pendingPayments = payments.filter((p) => p.status === "PENDING");
+  // Strict: PAID requires paidAt timestamp, otherwise it's not collected revenue (pending/outstanding). This fixes the bug where a new pending booking appeared as Paid in Recent Payments.
+  const totalRevenue = payments.filter((p) => p.status === "PAID" && !!p.paidAt).reduce((sum, p) => sum + p.amount, 0);
+  const pendingPayments = payments.filter((p) => p.status === "PENDING" || (p.status === "PAID" && !p.paidAt));
 
   return (
     <div className="space-y-6">
@@ -558,6 +559,8 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
   );
 }
 
+type AnalyticsCategory = "all" | "customer" | "operations" | "revenue";
+
 function FinancialTab({
   payments,
   loading,
@@ -567,6 +570,7 @@ function FinancialTab({
   totalRevenue,
   pendingCount,
   pendingPayments,
+  period,
 }: {
   payments: Payment[];
   loading: boolean;
@@ -578,66 +582,157 @@ function FinancialTab({
   pendingPayments: Payment[];
   period: string;
 }) {
-  const paidPayments = payments.filter((p) => p.status === "PAID");
+  const [category, setCategory] = useState<AnalyticsCategory>("all");
+  // Authoritative revenue: use overview total (PAID + paidAt filtered by period) if available, otherwise payments sum filtered by PAID+paidAt
+  const authoritativeRevenue = overview?.totalRevenue ?? payments.filter((p) => p.status === "PAID" && p.paidAt).reduce((s, p) => s + p.amount, 0);
+  const paidPayments = payments.filter((p) => p.status === "PAID" && p.paidAt);
   const refundedPayments = payments.filter((p) => p.status === "REFUNDED");
-  const methodTotals = Array.from(
-    paidPayments.reduce((map, p) => {
-      const key = p.method || "OTHER";
-      map.set(key, (map.get(key) || 0) + p.amount);
-      return map;
-    }, new Map<string, number>())
-  ).sort((a, b) => b[1] - a[1]);
-  const maxMethodTotal = Math.max(...methodTotals.map(([, amt]) => amt), 1);
-  const collectibleAmount = totalRevenue + pendingPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const collectibleAmount = authoritativeRevenue + pendingPayments.reduce((sum, payment) => sum + payment.amount, 0);
 
   const today = new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric" });
   const monthLabel = new Date().toLocaleDateString("en-PH", { month: "long" });
 
-  const metricCards = [
-    { label: "Walk-ins Today", sub: `as of ${today}`, value: metrics?.walkInsToday.toLocaleString() || "0", display: "number", color: "border-t-cyan-500", icon: UserPlus, iconBg: "bg-cyan-100 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400" },
-    { label: "Ongoing Bags in Storage", sub: "currently in storage", value: metrics?.ongoingBagsInStorage.toLocaleString() || "0", display: "number", color: "border-t-indigo-500", icon: Luggage, iconBg: "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400" },
-    { label: "Bags Stored Today", sub: `as of ${today}`, value: metrics?.bagsStoredToday.toLocaleString() || "0", display: "number", color: "border-t-blue-500", icon: PackagePlus, iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
-    { label: "Total Bags Stored (Monthly)", sub: `for ${monthLabel}`, value: metrics?.totalBagsStoredMonthly.toLocaleString() || "0", display: "number", color: "border-t-violet-500", icon: Archive, iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" },
-    { label: "Storage Utilization", sub: "of configured capacity", value: `${(metrics?.storageUtilization || 0).toFixed(1)}%`, display: "progress", color: "border-t-orange-500", icon: Warehouse, iconBg: "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" },
-    { label: "Outstanding Balance", sub: "all open (pending) payments", value: formatCurrency(metrics?.outstandingBalance || 0), display: "number", color: "border-t-amber-500", icon: Wallet, iconBg: "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" },
-    { label: "Refunds Issued", sub: metrics ? `${formatCurrency(metrics.refundsAmount)} total` : "no refunds", value: metrics?.refundsIssued.toLocaleString() || "0", display: "number", color: "border-t-rose-500", icon: Undo2, iconBg: "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400" },
-    { label: "Canceled / No-Show", sub: "for selected period", value: metrics?.canceledNoShow.toLocaleString() || "0", display: "number", color: "border-t-red-500", icon: XCircle, iconBg: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" },
-    { label: "Customer Satisfaction", sub: "avg rating · selected period", value: metrics && metrics.customerSatisfaction > 0 ? `${metrics.customerSatisfaction.toFixed(1)} / 5` : null, display: "number", color: "border-t-emerald-500", icon: Star, iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" },
-  ];
-
   const satisfactionNoData = !metrics || metrics.customerSatisfaction <= 0;
+
+  // Helpers for reorganized rows
+  const showAll = category === "all";
+  const showCustomer = showAll || category === "customer";
+  const showOperations = showAll || category === "operations";
+  const showRevenue = showAll || category === "revenue";
+
+  const categories: { id: AnalyticsCategory; label: string }[] = [
+    { id: "all", label: "All" },
+    { id: "customer", label: "Customer" },
+    { id: "operations", label: "Operations" },
+    { id: "revenue", label: "Revenue" },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Moved from Graphical Data: numeric KPIs belong in Financial Oversight */}
-      {overview && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {[
-            { label: "Bookings", value: overview.totalBookings.toLocaleString(), detail: `${overview.activeBookings} currently active`, color: "border-t-blue-500", icon: Package, iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
-            { label: "Collected Revenue", value: formatCurrency(overview.totalRevenue), detail: `${formatCurrency(overview.averagePrice)} average payment`, color: "border-t-emerald-500", icon: DollarSign, iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" },
-            { label: "Average Bags", value: overview.averageBags.toFixed(1), detail: "per booking in selected period", color: "border-t-violet-500", icon: Luggage, iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400" },
-            { label: "Storage Utilization", value: `${overview.storageUtilization.toFixed(1)}%`, detail: `${overview.newCustomers} new customers`, color: "border-t-orange-500", icon: Warehouse, iconBg: "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" },
-          ].map((metric) => {
-            const Icon = metric.icon;
-            return (
-              <Card key={metric.label} className={`border-t-2 ${metric.color}`}>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">{metric.label}</CardTitle>
-                  <div className={`rounded-lg p-2 ${metric.iconBg}`}>
-                    <Icon className="h-4 w-4" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-2xl font-bold">{metric.value}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{metric.detail}</p>
-                </CardContent>
-              </Card>
-            );
-          })}
+      {/* Category Filter */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 shadow-sm">
+        <span className="px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Filter:</span>
+        <div className="flex gap-1.5">
+          {categories.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setCategory(c.id)}
+              className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                category === c.id
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">Period: {period === "custom" ? "Custom" : period.charAt(0).toUpperCase() + period.slice(1)}</span>
+      </div>
+
+      {/* FIRST ROW — PRIMARY ADMIN OVERVIEW: Total Bookings | Walk-ins Today | Storage Utilization */}
+      {( (showAll || showOperations) || showCustomer || showOperations ) && ((showAll || showOperations) || showCustomer || showOperations) && (
+        (() => {
+          const hasTotal = !!(showAll || showOperations) && !!overview;
+          const hasWalkins = !!showCustomer;
+          const hasUtil = !!showOperations;
+          if (!hasTotal && !hasWalkins && !hasUtil) return null;
+          return (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {hasTotal && overview && (
+            <Card className="border-t-2 border-t-blue-500">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
+                <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
+                  <Package className="h-4 w-4 text-blue-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{overview.totalBookings.toLocaleString()}</div>
+                <p className="mt-1 text-xs text-muted-foreground">{overview.activeBookings} currently active • period filtered</p>
+              </CardContent>
+            </Card>
+          )}
+          {hasWalkins && (
+            <Card className="border-t-2 border-t-cyan-500">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Walk-ins Today</CardTitle>
+                <div className="rounded-lg bg-cyan-100 p-2 dark:bg-cyan-900/30">
+                  <UserPlus className="h-4 w-4 text-cyan-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{metrics?.walkInsToday.toLocaleString() || "0"}</div>
+                <p className="mt-1 text-xs text-muted-foreground">as of {today}</p>
+              </CardContent>
+            </Card>
+          )}
+          {hasUtil && (
+            <Card className="border-t-2 border-t-orange-500">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Storage Utilization</CardTitle>
+                <div className="rounded-lg bg-orange-100 p-2 dark:bg-orange-900/30">
+                  <Warehouse className="h-4 w-4 text-orange-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{(metrics?.storageUtilization || 0).toFixed(1)}%</div>
+                <div className="mt-2 h-2 w-full rounded-full bg-muted">
+                  <div className="h-2 rounded-full bg-gradient-to-r from-orange-400 to-orange-500" style={{ width: `${Math.min(Math.max(metrics?.storageUtilization || 0, 0), 100)}%` }} />
+                </div>
+                <p className="mt-1 text-xs text-orange-600">of configured capacity</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+          );
+        })()
+      )}
+
+      {/* SECOND ROW — OPERATIONS STATUS */}
+      {showOperations && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Card className="border-t-2 border-t-indigo-500">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Ongoing Bags in Storage</CardTitle>
+              <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+                <Luggage className="h-4 w-4 text-indigo-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{metrics?.ongoingBagsInStorage.toLocaleString() || "0"}</div>
+              <p className="mt-1 text-xs text-muted-foreground">currently in storage</p>
+            </CardContent>
+          </Card>
+          <Card className="border-t-2 border-t-blue-500">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Bags Stored Today</CardTitle>
+              <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
+                <PackagePlus className="h-4 w-4 text-blue-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{metrics?.bagsStoredToday.toLocaleString() || "0"}</div>
+              <p className="mt-1 text-xs text-muted-foreground">as of {today}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-t-2 border-t-red-500">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Canceled / No-Show</CardTitle>
+              <div className="rounded-lg bg-red-100 p-2 dark:bg-red-900/30">
+                <XCircle className="h-4 w-4 text-red-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{metrics?.canceledNoShow.toLocaleString() || "0"}</div>
+              <p className="mt-1 text-xs text-muted-foreground">for selected period</p>
+            </CardContent>
+          </Card>
         </div>
       )}
 
-      {customerTrends && (
+      {/* THIRD ROW — CUSTOMER TRENDS (full width) */}
+      {showCustomer && customerTrends && (
         <Card className="border-t-2 border-t-amber-500">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
@@ -680,130 +775,114 @@ function FinancialTab({
         </Card>
       )}
 
-      {/* Operational & financial metric grid */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-        {metricCards.map((m) => {
-          const Icon = m.icon;
-          return (
-            <Card key={m.label} className={`border-t-2 ${m.color}`}>
+      {/* FOURTH ROW — REMAINING ANALYTICS (logically arranged, no dead space) */}
+      {(showAll || showCustomer || showOperations || showRevenue) && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {showOperations && (
+            <Card className="border-t-2 border-t-violet-500">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">{m.label}</CardTitle>
-                <div className={`rounded-lg p-2 ${m.iconBg}`}>
-                  <Icon className="h-4 w-4" />
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Bags Stored (Monthly)</CardTitle>
+                <div className="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
+                  <Archive className="h-4 w-4 text-violet-600" />
                 </div>
               </CardHeader>
               <CardContent>
-                {m.label === "Customer Satisfaction" && satisfactionNoData ? (
-                  <div className="text-sm font-medium text-muted-foreground">No customer feedback available yet.</div>
-                ) : (
-                  <div className="text-2xl font-bold">{m.value}</div>
-                )}
-                {m.display === "progress" && (
-                  <div className="mt-2 h-2 w-full rounded-full bg-muted">
-                    <div
-                      className="h-2 rounded-full bg-gradient-to-r from-orange-400 to-orange-500"
-                      style={{ width: `${Math.min(Math.max(metrics?.storageUtilization || 0, 0), 100)}%` }}
-                    />
-                  </div>
-                )}
-                <p className={`mt-1 text-xs ${m.display === "progress" ? "text-orange-600" : "text-muted-foreground"}`}>{m.sub}</p>
+                <div className="text-2xl font-bold">{metrics?.totalBagsStoredMonthly.toLocaleString() || "0"}</div>
+                <p className="mt-1 text-xs text-muted-foreground">for {monthLabel}</p>
               </CardContent>
             </Card>
-          );
-        })}
-      </div>
-
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <Card className="border-t-2 border-t-green-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
-            <div className="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
-              <DollarSign className="h-4 w-4 text-green-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground">{paidPayments.length} paid transactions</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-t-2 border-t-blue-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Transactions</CardTitle>
-            <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
-              <CreditCard className="h-4 w-4 text-blue-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{payments.length}</div>
-            <p className="text-xs text-muted-foreground">{pendingCount} pending</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-t-2 border-t-violet-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
-            <div className="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
-              <Package className="h-4 w-4 text-violet-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{overview?.totalBookings || 0}</div>
-            <p className="text-xs text-muted-foreground">{overview?.activeBookings || 0} active</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-t-2 border-t-cyan-500">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Avg. per Booking</CardTitle>
-            <div className="rounded-lg bg-cyan-100 p-2 dark:bg-cyan-900/30">
-              <TrendingUp className="h-4 w-4 text-cyan-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(overview?.averagePrice || 0)}</div>
-            <p className="text-xs text-muted-foreground">Storage utilization: {overview?.storageUtilization?.toFixed(1) || 0}%</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Payment Methods */}
-        <Card className="border-t-2 border-t-blue-500">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <CreditCard className="h-4 w-4" />
-              Payment Methods
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {methodTotals.length === 0 ? (
-              <div className="py-6 text-center text-muted-foreground">
-                <DollarSign className="mx-auto mb-2 h-8 w-8 text-gray-300" />
-                <p className="text-sm">No payments recorded</p>
-              </div>
-            ) : (
-              methodTotals.map(([method, amt]) => (
-                <div key={method}>
-                  <div className="mb-1.5 flex justify-between text-sm">
-                    <span className="font-medium">{method}</span>
-                    <span className="font-semibold text-muted-foreground">
-                      {formatCurrency(amt)} &middot; {totalRevenue > 0 ? ((amt / totalRevenue) * 100).toFixed(0) : 0}%
-                    </span>
+          )}
+          {showRevenue && (
+            <>
+              <Card className="border-t-2 border-t-amber-500">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Outstanding Balance</CardTitle>
+                  <div className="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
+                    <Wallet className="h-4 w-4 text-amber-600" />
                   </div>
-                  <div className="h-2.5 w-full rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400"
-                      style={{ width: `${Math.max((amt / maxMethodTotal) * 100, 2)}%` }}
-                    />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(metrics?.outstandingBalance || 0)}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">all open (pending) payments</p>
+                </CardContent>
+              </Card>
+              <Card className="border-t-2 border-t-rose-500">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Refunds Issued</CardTitle>
+                  <div className="rounded-lg bg-rose-100 p-2 dark:bg-rose-900/30">
+                    <Undo2 className="h-4 w-4 text-rose-600" />
                   </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{metrics?.refundsIssued.toLocaleString() || "0"}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">{formatCurrency(metrics?.refundsAmount || 0)} total</p>
+                </CardContent>
+              </Card>
+            </>
+          )}
+          {showCustomer && (
+            <Card className="border-t-2 border-t-emerald-500">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Customer Satisfaction</CardTitle>
+                <div className="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
+                  <Star className="h-4 w-4 text-emerald-600" />
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+              </CardHeader>
+              <CardContent>
+                {satisfactionNoData ? (
+                  <div className="text-sm font-medium text-muted-foreground">No customer feedback available yet.</div>
+                ) : (
+                  <div className="text-2xl font-bold">{metrics && metrics.customerSatisfaction > 0 ? `${metrics.customerSatisfaction.toFixed(1)} / 5` : "—"}</div>
+                )}
+                <p className="mt-1 text-xs text-muted-foreground">avg rating · selected period</p>
+              </CardContent>
+            </Card>
+          )}
+          {showRevenue && (
+            <>
+              <Card className="border-t-2 border-t-green-500">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
+                  <div className="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
+                    <DollarSign className="h-4 w-4 text-green-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(authoritativeRevenue)}</div>
+                  <p className="text-xs text-muted-foreground">{paidPayments.length} paid transactions (paidAt verified)</p>
+                </CardContent>
+              </Card>
+              <Card className="border-t-2 border-t-blue-500">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Transactions</CardTitle>
+                  <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
+                    <CreditCard className="h-4 w-4 text-blue-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{payments.length}</div>
+                  <p className="text-xs text-muted-foreground">{pendingCount} pending</p>
+                </CardContent>
+              </Card>
+              <Card className="border-t-2 border-t-cyan-500">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Avg. per Booking</CardTitle>
+                  <div className="rounded-lg bg-cyan-100 p-2 dark:bg-cyan-900/30">
+                    <TrendingUp className="h-4 w-4 text-cyan-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(overview?.averagePrice || 0)}</div>
+                  <p className="text-xs text-muted-foreground">per paid booking in period</p>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
+      )}
 
-        {/* Collection Status */}
+      {/* Collection Summary — revenue only, no Payment Methods duplication */}
+      {showRevenue && (
         <Card className="border-t-2 border-t-emerald-500">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
@@ -813,8 +892,8 @@ function FinancialTab({
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
-              <span className="text-muted-foreground">Collected (PAID)</span>
-              <span className="font-bold text-emerald-600">{formatCurrency(totalRevenue)}</span>
+              <span className="text-muted-foreground">Collected (PAID · paidAt verified)</span>
+              <span className="font-bold text-emerald-600">{formatCurrency(authoritativeRevenue)}</span>
             </div>
             <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
               <span className="text-muted-foreground">Outstanding (PENDING)</span>
@@ -831,65 +910,70 @@ function FinancialTab({
               <span className="font-bold">
                 {collectibleAmount === 0
                   ? "0%"
-                  : `${((totalRevenue / collectibleAmount) * 100).toFixed(1)}%`}
+                  : `${((authoritativeRevenue / collectibleAmount) * 100).toFixed(1)}%`}
               </span>
             </div>
           </CardContent>
         </Card>
-      </div>
+      )}
 
-      {/* Recent Payments Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm font-medium">
-            <CreditCard className="h-4 w-4" />
-            Recent Payments
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="py-12 text-center text-muted-foreground">Loading payments...</div>
-          ) : payments.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">
-              <DollarSign className="mx-auto h-12 w-12 mb-3 text-gray-300" />
-              <p>No payments yet</p>
-            </div>
-          ) : (
-            <div className="max-h-[460px] overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b bg-muted/50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium">Reference</th>
-                    <th className="px-4 py-3 text-left font-medium">Customer</th>
-                    <th className="px-4 py-3 text-left font-medium">Amount</th>
-                    <th className="px-4 py-3 text-left font-medium">Method</th>
-                    <th className="px-4 py-3 text-left font-medium">Status</th>
-                    <th className="px-4 py-3 text-left font-medium">Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {payments.slice(0, 10).map((p) => (
-                    <tr key={p.id} className="hover:bg-muted/30">
-                      <td className="px-4 py-3 font-medium">{p.booking.referenceNumber}</td>
-                      <td className="px-4 py-3">{p.customer.name.split(" ").map((part) => `${part.charAt(0)}${"•".repeat(Math.max(part.length - 1, 1))}`).join(" ")}</td>
-                      <td className="px-4 py-3 font-semibold">{formatCurrency(p.amount)}</td>
-                      <td className="px-4 py-3">{p.method}</td>
-                      <td className="px-4 py-3">
-                        <Badge variant={p.status === "PAID" ? "default" : "secondary"}>
-                          {p.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {new Date(p.createdAt).toLocaleDateString()}
-                      </td>
+      {/* Recent Payments Table — authoritative payment status */}
+      {showRevenue && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <CreditCard className="h-4 w-4" />
+              Recent Payments
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="py-12 text-center text-muted-foreground">Loading payments...</div>
+            ) : payments.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">
+                <DollarSign className="mx-auto h-12 w-12 mb-3 text-gray-300" />
+                <p>No payments yet</p>
+              </div>
+            ) : (
+              <div className="max-h-[460px] overflow-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/50">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium">Reference</th>
+                      <th className="px-4 py-3 text-left font-medium">Customer</th>
+                      <th className="px-4 py-3 text-left font-medium">Amount</th>
+                      <th className="px-4 py-3 text-left font-medium">Method</th>
+                      <th className="px-4 py-3 text-left font-medium">Status</th>
+                      <th className="px-4 py-3 text-left font-medium">Date</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  </thead>
+                  <tbody className="divide-y">
+                    {payments.slice(0, 10).map((p) => {
+                      const isPaid = p.status === "PAID" && !!p.paidAt;
+                      return (
+                        <tr key={p.id} className="hover:bg-muted/30">
+                          <td className="px-4 py-3 font-medium">{p.booking.referenceNumber}</td>
+                          <td className="px-4 py-3">{p.customer.name.split(" ").map((part) => `${part.charAt(0)}${"•".repeat(Math.max(part.length - 1, 1))}`).join(" ")}</td>
+                          <td className="px-4 py-3 font-semibold">{formatCurrency(p.amount)}</td>
+                          <td className="px-4 py-3">{p.method}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant={isPaid ? "default" : "secondary"}>
+                              {isPaid ? "Paid" : p.status === "PENDING" ? "Pending" : p.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {new Date(p.paidAt || p.createdAt).toLocaleDateString("en-PH")}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -937,16 +1021,83 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
     if (!report) return;
     setPdfLoading(true);
     try {
+      const dateRange = period === "custom" ? `${dateFrom || "—"}-to-${dateTo || "—"}` : period;
+      // Build detailed KPIs + tables from live analytics so PDF is not plain text but mirrors the GDrive template (cover, KPIs, data tables, sections)
+      let kpis: { label: string; value: string }[] = [];
+      let tables: { title: string; headers: string[]; rows: string[][] }[] = [];
+      try {
+        const params = new URLSearchParams({ period });
+        if (period === "custom") {
+          if (dateFrom) params.set("from", dateFrom);
+          if (dateTo) params.set("to", dateTo);
+        }
+        const aRes = await fetch(`/api/analytics?${params.toString()}`, { cache: "no-store" });
+        if (aRes.ok) {
+          const a = await aRes.json();
+          const fmt = (n: number) => n.toLocaleString();
+          const fmtPHP = (n: number) => `PHP ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          kpis = [
+            { label: "Total Bookings (period)", value: fmt(a.overview?.totalBookings ?? 0) },
+            { label: "Active Bookings", value: fmt(a.overview?.activeBookings ?? 0) },
+            { label: "Total Revenue (paidAt verified)", value: fmtPHP(a.overview?.totalRevenue ?? 0) },
+            { label: "Avg Price / Booking", value: fmtPHP(a.overview?.averagePrice ?? 0) },
+            { label: "Storage Utilization", value: `${(a.overview?.storageUtilization ?? 0).toFixed(1)}%` },
+            { label: "Walk-ins Today", value: fmt(a.financialMetrics?.walkInsToday ?? 0) },
+            { label: "Ongoing Bags In Storage", value: fmt(a.financialMetrics?.ongoingBagsInStorage ?? 0) },
+            { label: "Outstanding Balance", value: fmtPHP(a.financialMetrics?.outstandingBalance ?? 0) },
+          ];
+          if (a.bookingsByStatus?.length) {
+            tables.push({
+              title: "Bookings by Status (period)",
+              headers: ["Status", "Count"],
+              rows: a.bookingsByStatus.map((s: { status: string; count: number }) => [s.status, fmt(s.count)]),
+            });
+          }
+          if (a.bookingsByDay?.length) {
+            const recent = a.bookingsByDay.slice(-7);
+            tables.push({
+              title: "Daily Bookings & Revenue (last 7 days of period)",
+              headers: ["Date", "Bookings", "Revenue"],
+              rows: recent.map((d: { date: string; count: number; revenue: number }) => [d.date, fmt(d.count), fmtPHP(d.revenue)]),
+            });
+          }
+          if (a.financialMetrics) {
+            tables.push({
+              title: "Financial Snapshot (today / period)",
+              headers: ["Metric", "Value"],
+              rows: [
+                ["Walk-ins Today", fmt(a.financialMetrics.walkInsToday ?? 0)],
+                ["Bags Stored Today", fmt(a.financialMetrics.bagsStoredToday ?? 0)],
+                ["Total Bags Stored (Monthly)", fmt(a.financialMetrics.totalBagsStoredMonthly ?? 0)],
+                ["Canceled / No-Show (period)", fmt(a.financialMetrics.canceledNoShow ?? 0)],
+                ["Refunds Issued", `${fmt(a.financialMetrics.refundsIssued ?? 0)} (${fmtPHP(a.financialMetrics.refundsAmount ?? 0)})`],
+                ["Customer Satisfaction", a.financialMetrics.customerSatisfaction ? `${a.financialMetrics.customerSatisfaction.toFixed(1)} / 5` : "—"],
+              ],
+            });
+          }
+        }
+      } catch {}
       const res = await fetch("/api/analytics/reports/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(report),
+        body: JSON.stringify({
+          report,
+          reportType,
+          dateRange: period === "custom" ? `${dateFrom || ""} to ${dateTo || ""}`.trim() : `${period} (${new Date().toISOString().slice(0,10)})`,
+          kpis,
+          tables,
+        }),
       });
       if (!res.ok) throw new Error();
-      const url = URL.createObjectURL(await res.blob());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `dropnfly-${reportType}-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+      // Professional filename as per spec: Financial-Oversight-Report-YYYY-MM-DD-to-YYYY-MM-DD.pdf
+      const fromStr = period === "custom" ? (dateFrom || new Date().toISOString().slice(0,10)) : new Date(Date.now() - (period==="week"?7:period==="year"?365:30)*86400000).toISOString().slice(0,10);
+      const toStr = period === "custom" ? (dateTo || new Date().toISOString().slice(0,10)) : new Date().toISOString().slice(0,10);
+      const formattedType = reportType.charAt(0).toUpperCase() + reportType.slice(1);
+      link.download = `Financial-Oversight-Report-${formattedType}-${fromStr}-to-${toStr}.pdf`;
       link.click();
       URL.revokeObjectURL(url);
       toast.success("PDF report downloaded");

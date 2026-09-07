@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { getSystemSettings, setting } from "@/lib/settings";
+import { manilaDateStr, manilaDayStart } from "@/lib/manila-time";
 
 function toLocalDayKey(d: Date): string {
   const year = d.getFullYear();
@@ -27,16 +28,14 @@ export async function GET(req: Request) {
 
   let since = new Date();
   since.setDate(since.getDate() - days);
-  since.setHours(0, 0, 0, 0);
+  since = manilaDayStart(manilaDateStr(since));
 
   if (fromDate) {
-    since = new Date(fromDate + "T00:00:00");
-    since.setHours(0, 0, 0, 0);
+    since = manilaDayStart(fromDate);
   }
   let until: Date | undefined;
   if (toDate) {
-    until = new Date(toDate + "T00:00:00");
-    until.setHours(23, 59, 59, 999);
+    until = new Date(toDate + "T23:59:59.999+08:00");
   }
 
   const actualDays = period === "custom" && fromDate
@@ -125,24 +124,27 @@ export async function GET(req: Request) {
 
   const settings = await getSystemSettings();
   const totalCapacity = parseInt(setting(settings, "max_simultaneous_bags", "0"));
-  const activeBookings = await prisma.booking.count({
-    where: { status: { notIn: ["DELIVERED", "CANCELLED"] } },
+  // Authoritative active storage: bags physically in storage (RECEIVED/IN_STORAGE/OUT_FOR_DELIVERY are in-system but not yet delivered)
+  // For utilization, use ongoing bags count so capacity (bags) matches unit.
+  const activeBookingsCount = await prisma.booking.count({
+    where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
   });
 
+  // Use Manila date keys so containers match the “Asia/Manila” calendar admins see (avoids UTC off-by-one)
   const bookingsPerDay: Record<string, number> = {};
   const revenuePerDay: Record<string, number> = {};
   const lastDay = until || new Date();
   for (let cursor = new Date(since); cursor <= lastDay; cursor.setDate(cursor.getDate() + 1)) {
-    bookingsPerDay[toLocalDayKey(cursor)] = 0;
-    revenuePerDay[toLocalDayKey(cursor)] = 0;
+    bookingsPerDay[manilaDateStr(cursor)] = 0;
+    revenuePerDay[manilaDateStr(cursor)] = 0;
   }
   for (const b of bookingsByDay) {
-    const day = toLocalDayKey(b.createdAt);
+    const day = manilaDateStr(b.createdAt);
     bookingsPerDay[day] = (bookingsPerDay[day] || 0) + 1;
   }
   for (const p of paidPayments) {
     if (!p.paidAt) continue;
-    const day = toLocalDayKey(p.paidAt);
+    const day = manilaDateStr(p.paidAt);
     revenuePerDay[day] = (revenuePerDay[day] || 0) + Number(p.amount);
   }
 
@@ -152,11 +154,13 @@ export async function GET(req: Request) {
     revenueByStatusMap[status] = (revenueByStatusMap[status] || 0) + Number(p.amount);
   }
 
+  // Peak hours in Manila time (consistent with time-slot system)
   const hourlyDistribution: Record<number, number> = Object.fromEntries(
     Array.from({ length: 24 }, (_, hour) => [hour, 0])
   );
   for (const b of bookingsByHour) {
-    const hour = b.checkIn.getHours();
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", hour: "2-digit", hourCycle: "h23" }).formatToParts(b.checkIn);
+    const hour = Number(parts.find((p) => p.type === "hour")?.value || "0");
     hourlyDistribution[hour] = (hourlyDistribution[hour] || 0) + 1;
   }
 
@@ -203,9 +207,10 @@ export async function GET(req: Request) {
   });
   const totalCustomers = await prisma.customer.count();
 
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const startOfMonth = new Date(startOfToday.getFullYear(), startOfToday.getMonth(), 1);
+  const manilaTodayStr = manilaDateStr(new Date());
+  const startOfToday = manilaDayStart(manilaTodayStr);
+  const manilaMonthStr = manilaTodayStr.slice(0, 7) + "-01";
+  const startOfMonth = manilaDayStart(manilaMonthStr);
 
   const [
     walkInsToday,
@@ -248,12 +253,15 @@ export async function GET(req: Request) {
     }),
   ]);
 
+  const ongoingBagsCount = ongoingBags._sum.numberOfBags || 0;
+  const storageUtilization = totalCapacity > 0 ? (ongoingBagsCount / totalCapacity) * 100 : 0;
+
   const financialMetrics = {
     walkInsToday,
-    ongoingBagsInStorage: ongoingBags._sum.numberOfBags || 0,
+    ongoingBagsInStorage: ongoingBagsCount,
     bagsStoredToday: bagsStoredToday._sum.numberOfBags || 0,
     totalBagsStoredMonthly: totalBagsStoredMonthly._sum.numberOfBags || 0,
-    storageUtilization: totalCapacity > 0 ? (activeBookings / totalCapacity) * 100 : 0,
+    storageUtilization,
     outstandingBalance: Number(outstandingAgg._sum.amount || 0),
     refundsIssued: refundAgg._count,
     refundsAmount: Number(refundAgg._sum.amount || 0),
@@ -264,13 +272,13 @@ export async function GET(req: Request) {
   return NextResponse.json({
     overview: {
       totalBookings: periodBookings,
-      activeBookings,
+      activeBookings: activeBookingsCount,
       totalRevenue,
       averagePrice: paidPayments.length > 0 ? totalRevenue / paidPayments.length : 0,
       averageBags: periodBookingStats._avg.numberOfBags || 0,
       totalCustomers,
       newCustomers,
-      storageUtilization: totalCapacity > 0 ? (activeBookings / totalCapacity) * 100 : 0,
+      storageUtilization,
     },
     bookingsByStatus: bookingsByStatus.map((s) => ({
       status: s.status,
@@ -312,6 +320,6 @@ export async function GET(req: Request) {
     cityDistribution,
     countryDistribution,
     financialMetrics,
-    storageUtilization: totalCapacity > 0 ? (activeBookings / totalCapacity) * 100 : 0,
+    storageUtilization,
   });
 }

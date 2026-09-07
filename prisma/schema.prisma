@@ -136,6 +136,7 @@ model Booking {
   scanEvents       ScanEvent[]
   baggageTags      BaggageTag[]
   incidentReports  IncidentReport[]
+  feedbackInviteSentAt DateTime?
 
   @@index([status])
   @@index([customerId])
@@ -428,6 +429,7 @@ model BookingReview {
   rating     Int
   comment    String?
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   booking  Booking  @relation(fields: [bookingId], references: [id])
   customer Customer @relation(fields: [customerId], references: [id])

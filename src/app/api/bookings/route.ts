@@ -161,6 +161,8 @@ export async function GET(req: Request) {
   return NextResponse.json(filtered);
 }
 
+class StorageCapacityError extends Error {}
+
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) {
@@ -186,15 +188,22 @@ export async function POST(req: Request) {
       promoCode,
     } = body;
 
-    if (!customerId || !numberOfBags || !checkIn) {
+    // Require same complete information as online booking: customer, pickup + delivery, luggage
+    if (!customerId || !numberOfBags || !checkIn || !body.pickupLocation || !body.dropOffLocation) {
       const missing: string[] = [];
       if (!customerId) missing.push("Customer");
+      if (!body.pickupLocation) missing.push("Pickup Location (Terminal + Airline)");
+      if (!body.dropOffLocation) missing.push("Drop-off Location (Terminal + Airline)");
       if (!numberOfBags) missing.push("Luggage");
-      if (!checkIn) missing.push("Check-in date");
+      if (!checkIn) missing.push("Pickup Date & Time Slot");
+      if (!checkOut) missing.push("Delivery Date & Time Slot");
       return NextResponse.json(
         { error: `Missing required fields: ${missing.join(", ")}` },
         { status: 400 }
       );
+    }
+    if (String(body.pickupLocation).length > 500 || String(body.dropOffLocation).length > 500) {
+      return NextResponse.json({ error: "Pickup or drop-off location is too long" }, { status: 400 });
     }
 
     const VALID_STATUSES: BookingStatus[] = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW"];
@@ -213,6 +222,15 @@ export async function POST(req: Request) {
     if (isNaN(checkInDate.getTime())) {
       return NextResponse.json({ error: "Invalid check-in date" }, { status: 400 });
     }
+    // Enforce max advance booking (same as online)
+    const maxAdvanceDays = parseInt(setting(settings, "max_advance_booking_days", "0"));
+    if (maxAdvanceDays > 0) {
+      const maxDate = new Date();
+      maxDate.setDate(maxDate.getDate() + maxAdvanceDays);
+      if (checkInDate > maxDate) {
+        return NextResponse.json({ error: `Pickup date cannot be more than ${maxAdvanceDays} days ahead` }, { status: 400 });
+      }
+    }
 
     let checkOutDate: Date | null = null;
     if (checkOut) {
@@ -223,6 +241,21 @@ export async function POST(req: Request) {
       if (checkOutDate <= checkInDate) {
         return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
       }
+      const minStorageDays = parseInt(setting(settings, "min_storage_days", "1"));
+      const storageHours = (checkOutDate.getTime() - checkInDate.getTime()) / 3_600_000;
+      if (minStorageDays > 0 && storageHours < minStorageDays * 24) {
+        return NextResponse.json({ error: `Storage period must be at least ${minStorageDays} day${minStorageDays === 1 ? "" : "s"}` }, { status: 400 });
+      }
+      const maxStorageDays = parseInt(setting(settings, "max_storage_days", "0"));
+      if (maxStorageDays > 0) {
+        const maxCheckOut = new Date(checkInDate);
+        maxCheckOut.setDate(maxCheckOut.getDate() + maxStorageDays);
+        if (checkOutDate > maxCheckOut) {
+          return NextResponse.json({ error: `Storage period cannot exceed ${maxStorageDays} days` }, { status: 400 });
+        }
+      }
+    } else {
+      return NextResponse.json({ error: "Delivery date & time slot is required (same as online booking)" }, { status: 400 });
     }
 
     // Compute the authoritative price server-side from the declared luggage lines and the
@@ -239,6 +272,11 @@ export async function POST(req: Request) {
     const declaredBags = parseInt(numberOfBags);
     if (computed.totalBags <= 0) {
       return NextResponse.json({ error: "Please select at least one bag" }, { status: 400 });
+    }
+    // Enforce max_bags_per_booking (same as online booking)
+    const maxBags = parseInt(setting(settings, "max_bags_per_booking", "0"));
+    if (maxBags > 0 && computed.totalBags > maxBags) {
+      return NextResponse.json({ error: `Maximum of ${maxBags} bags per booking` }, { status: 400 });
     }
     if (isNaN(declaredBags) || declaredBags !== computed.totalBags) {
       return NextResponse.json({ error: "Luggage count mismatch" }, { status: 400 });
@@ -278,12 +316,40 @@ export async function POST(req: Request) {
     const qrCode = await QRCode.toDataURL(referenceNumber, { width: 300, margin: 2 });
     const qrBase64 = qrCode.replace(/^data:image\/png;base64,/, "");
 
-    // Capacity & slot checks (same as public flow) — prevent overbooking via staff path
+    // Capacity & slot checks — identical to public flow (operating hours/days + slot fullness)
     const slotQueryStaff = async (date: Date, type: "pickup" | "delivery", db: typeof prisma | Parameters<Parameters<typeof prisma.$transaction>[0]>[0] = prisma): Promise<void> => {
+      const defaults: Record<string, string> = {
+        max_concurrent_pickups: "1",
+        max_concurrent_deliveries: "1",
+        pickup_slot_duration: "60",
+        delivery_slot_duration: "60",
+        operating_start: "00:00",
+        operating_end: "23:59",
+        store_operating_days: "0,1,2,3,4,5,6",
+      };
       const isPickup = type === "pickup";
-      const maxConcurrent = parseInt(setting(settings, isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries", "1"));
-      const durationMin = parseInt(setting(settings, isPickup ? "pickup_slot_duration" : "delivery_slot_duration", "60"));
+      const maxConcurrent = Math.max(1, parseInt(setting(settings, isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries", defaults[isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries"])) || 1);
+      const durationMin = Math.max(15, parseInt(setting(settings, isPickup ? "pickup_slot_duration" : "delivery_slot_duration", defaults[isPickup ? "pickup_slot_duration" : "delivery_slot_duration"])) || 60);
+      const { manilaWeekday } = await import("@/lib/manila-time");
+      const weekday = String(manilaWeekday(date));
+      const operatingDays = setting(settings, "store_operating_days", defaults.store_operating_days).split(",").map((s) => s.trim());
+      if (!operatingDays.includes(weekday)) {
+        throw new Error("The store is closed on the selected pickup day. Please choose another date.");
+      }
+      const operatingStart = setting(settings, "operating_start", defaults.operating_start);
+      const operatingEnd = setting(settings, "operating_end", defaults.operating_end);
+      const parseHM = (v: string) => {
+        const [h, m] = v.split(":").map(Number);
+        return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+      };
+      let startMin = parseHM(operatingStart);
+      let endMin = parseHM(operatingEnd);
+      if (endMin === 1439) endMin = 1440;
+      if (endMin === 0 && (operatingEnd === "24:00" || operatingEnd === "00:00")) endMin = 1440;
       const slotStartMinutes = manilaMinutesOfDay(date);
+      if (slotStartMinutes < startMin || slotStartMinutes + durationMin > endMin) {
+        throw new Error(`Selected ${type} time is outside operating hours (${operatingStart}–${operatingEnd}). Please choose another time.`);
+      }
       const { start: dayStart, end: dayEnd } = manilaDayRange(date);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const existing: any[] = await (db as typeof prisma).booking.findMany({
@@ -322,7 +388,7 @@ export async function POST(req: Request) {
           _sum: { numberOfBags: true },
         });
         if (Number(activeBagTotal._sum.numberOfBags || 0) + computed.totalBags > maxSimultaneousBags) {
-          throw new Error(`Storage capacity is full (${activeBagTotal._sum.numberOfBags || 0}/${maxSimultaneousBags} bags in storage). Please try a later date or contact admin to increase capacity.`);
+          throw new StorageCapacityError(`Storage capacity is full (${activeBagTotal._sum.numberOfBags || 0}/${maxSimultaneousBags} bags in storage). Please try a later date or contact admin to increase capacity.`);
         }
       }
       await slotQueryStaff(checkInDate, "pickup", tx);
@@ -377,7 +443,17 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(decimalsToNumbers(booking), { status: 201 });
-  } catch {
+  } catch (e) {
+    if (e instanceof StorageCapacityError) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
+    }
+    const msg = e instanceof Error ? e.message : "";
+    if (msg.includes("fully booked") || msg.includes("outside operating hours") || msg.includes("closed on the selected")) {
+      return NextResponse.json({ error: msg }, { status: 409 });
+    }
+    if (msg.includes("Promo code")) {
+      return NextResponse.json({ error: msg }, { status: 409 });
+    }
     return NextResponse.json({ error: "Failed to create booking" }, { status: 500 });
   }
 }
