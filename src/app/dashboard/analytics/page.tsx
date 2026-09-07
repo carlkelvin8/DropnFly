@@ -180,7 +180,6 @@ export default function AnalyticsPage() {
   }, [tab, period, dateFrom, dateTo]);
 
   // Strict: PAID requires paidAt timestamp, otherwise it's not collected revenue (pending/outstanding). This fixes the bug where a new pending booking appeared as Paid in Recent Payments.
-  const totalRevenue = payments.filter((p) => p.status === "PAID" && !!p.paidAt).reduce((sum, p) => sum + p.amount, 0);
   const pendingPayments = payments.filter((p) => p.status === "PENDING" || (p.status === "PAID" && !p.paidAt));
 
   return (
@@ -276,7 +275,6 @@ export default function AnalyticsPage() {
           overview={data?.overview || null}
           metrics={data?.financialMetrics || null}
           customerTrends={data?.customerTrends || null}
-          totalRevenue={totalRevenue}
           pendingCount={pendingPayments.length}
           pendingPayments={pendingPayments}
           period={period}
@@ -325,6 +323,7 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
   });
   const heatmapPeak = Math.max(...heatmapSource.map((day) => day.count), 0);
   const heatmapTotal = heatmapSource.reduce((sum, day) => sum + day.count, 0);
+  const heatmapDayCount = Math.max(heatmapSource.length, 1);
   const heatmapActiveDays = heatmapSource.filter((day) => day.count > 0).length;
   const heatmapPeakDay = heatmapSource.reduce<DayData | null>(
     (peak, day) => (!peak || day.count > peak.count ? day : peak),
@@ -357,7 +356,7 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
         </CardHeader>
         <CardContent>
           <RechartsLine
-            data={bookingsByDay.slice(-30).map((d) => ({ date: d.date, bookings: d.count, revenue: d.revenue }))}
+            data={bookingsByDay.map((d) => ({ date: d.date, bookings: d.count, revenue: d.revenue }))}
             dataKeys={["bookings", "revenue"]}
             labels={["Bookings", "Revenue"]}
             colors={["#3b82f6", "#10b981"]}
@@ -476,7 +475,7 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
               <Users className="h-4 w-4" />
               Employee Performance
             </CardTitle>
-            <CardDescription>Assignments completed by each employee in the selected period.</CardDescription>
+            <CardDescription>Assignments created for each employee in the selected period.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {employeePerformance.slice(0, 5).map((emp, i) => (
@@ -515,11 +514,11 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
         <CardHeader className="gap-5 pb-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle className="text-sm font-semibold">Booking Activity Heatmap</CardTitle>
-            <CardDescription className="mt-1">Bookings per day — last 12 weeks</CardDescription>
+            <CardDescription className="mt-1">Bookings per day — up to the latest 12 weeks in the selected period</CardDescription>
           </div>
           <div className="grid grid-cols-3 gap-6 text-center sm:gap-9">
             <div><p className="text-xl font-bold text-orange-500">{heatmapPeak}</p><p className="text-[10px] text-muted-foreground">Peak Bookings</p></div>
-            <div><p className="text-xl font-bold">{(heatmapTotal / 84).toFixed(1)}</p><p className="text-[10px] text-muted-foreground">Daily Avg</p></div>
+            <div><p className="text-xl font-bold">{(heatmapTotal / heatmapDayCount).toFixed(1)}</p><p className="text-[10px] text-muted-foreground">Daily Avg</p></div>
             <div><p className="text-xl font-bold">{heatmapActiveDays}</p><p className="text-[10px] text-muted-foreground">Active Days</p></div>
           </div>
         </CardHeader>
@@ -567,7 +566,6 @@ function FinancialTab({
   overview,
   metrics,
   customerTrends,
-  totalRevenue,
   pendingCount,
   pendingPayments,
   period,
@@ -577,7 +575,6 @@ function FinancialTab({
   overview: Overview | null;
   metrics: FinancialMetrics | null;
   customerTrends: Analytics["customerTrends"] | null;
-  totalRevenue: number;
   pendingCount: number;
   pendingPayments: Payment[];
   period: string;
@@ -630,15 +627,14 @@ function FinancialTab({
         <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">Period: {period === "custom" ? "Custom" : period.charAt(0).toUpperCase() + period.slice(1)}</span>
       </div>
 
-      {/* FIRST ROW — PRIMARY ADMIN OVERVIEW: Total Bookings | Walk-ins Today | Storage Utilization */}
-      {( (showAll || showOperations) || showCustomer || showOperations ) && ((showAll || showOperations) || showCustomer || showOperations) && (
+      {/* FIRST ROW — PRIMARY ADMIN OVERVIEW */}
+      {((showAll || showOperations) || showCustomer) && (
         (() => {
           const hasTotal = !!(showAll || showOperations) && !!overview;
           const hasWalkins = !!showCustomer;
-          const hasUtil = !!showOperations;
-          if (!hasTotal && !hasWalkins && !hasUtil) return null;
+          if (!hasTotal && !hasWalkins) return null;
           return (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           {hasTotal && overview && (
             <Card className="border-t-2 border-t-blue-500">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -656,7 +652,7 @@ function FinancialTab({
           {hasWalkins && (
             <Card className="border-t-2 border-t-cyan-500">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Walk-ins Today</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Bookings Created Today</CardTitle>
                 <div className="rounded-lg bg-cyan-100 p-2 dark:bg-cyan-900/30">
                   <UserPlus className="h-4 w-4 text-cyan-600" />
                 </div>
@@ -664,23 +660,6 @@ function FinancialTab({
               <CardContent>
                 <div className="text-2xl font-bold">{metrics?.walkInsToday.toLocaleString() || "0"}</div>
                 <p className="mt-1 text-xs text-muted-foreground">as of {today}</p>
-              </CardContent>
-            </Card>
-          )}
-          {hasUtil && (
-            <Card className="border-t-2 border-t-orange-500">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Storage Utilization</CardTitle>
-                <div className="rounded-lg bg-orange-100 p-2 dark:bg-orange-900/30">
-                  <Warehouse className="h-4 w-4 text-orange-600" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{(metrics?.storageUtilization || 0).toFixed(1)}%</div>
-                <div className="mt-2 h-2 w-full rounded-full bg-muted">
-                  <div className="h-2 rounded-full bg-gradient-to-r from-orange-400 to-orange-500" style={{ width: `${Math.min(Math.max(metrics?.storageUtilization || 0, 0), 100)}%` }} />
-                </div>
-                <p className="mt-1 text-xs text-orange-600">of configured capacity</p>
               </CardContent>
             </Card>
           )}
@@ -781,7 +760,7 @@ function FinancialTab({
           {showOperations && (
             <Card className="border-t-2 border-t-violet-500">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Bags Stored (Monthly)</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Bags Stored This Month</CardTitle>
                 <div className="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
                   <Archive className="h-4 w-4 text-violet-600" />
                 </div>
@@ -1021,10 +1000,9 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
     if (!report) return;
     setPdfLoading(true);
     try {
-      const dateRange = period === "custom" ? `${dateFrom || "—"}-to-${dateTo || "—"}` : period;
       // Build detailed KPIs + tables from live analytics so PDF is not plain text but mirrors the GDrive template (cover, KPIs, data tables, sections)
       let kpis: { label: string; value: string }[] = [];
-      let tables: { title: string; headers: string[]; rows: string[][] }[] = [];
+      const tables: { title: string; headers: string[]; rows: string[][] }[] = [];
       try {
         const params = new URLSearchParams({ period });
         if (period === "custom") {
@@ -1042,7 +1020,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
             { label: "Total Revenue (paidAt verified)", value: fmtPHP(a.overview?.totalRevenue ?? 0) },
             { label: "Avg Price / Booking", value: fmtPHP(a.overview?.averagePrice ?? 0) },
             { label: "Storage Utilization", value: `${(a.overview?.storageUtilization ?? 0).toFixed(1)}%` },
-            { label: "Walk-ins Today", value: fmt(a.financialMetrics?.walkInsToday ?? 0) },
+            { label: "Bookings Created Today", value: fmt(a.financialMetrics?.walkInsToday ?? 0) },
             { label: "Ongoing Bags In Storage", value: fmt(a.financialMetrics?.ongoingBagsInStorage ?? 0) },
             { label: "Outstanding Balance", value: fmtPHP(a.financialMetrics?.outstandingBalance ?? 0) },
           ];
@@ -1066,9 +1044,9 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
               title: "Financial Snapshot (today / period)",
               headers: ["Metric", "Value"],
               rows: [
-                ["Walk-ins Today", fmt(a.financialMetrics.walkInsToday ?? 0)],
+                ["Bookings Created Today", fmt(a.financialMetrics.walkInsToday ?? 0)],
                 ["Bags Stored Today", fmt(a.financialMetrics.bagsStoredToday ?? 0)],
-                ["Total Bags Stored (Monthly)", fmt(a.financialMetrics.totalBagsStoredMonthly ?? 0)],
+                ["Bags Stored This Month", fmt(a.financialMetrics.totalBagsStoredMonthly ?? 0)],
                 ["Canceled / No-Show (period)", fmt(a.financialMetrics.canceledNoShow ?? 0)],
                 ["Refunds Issued", `${fmt(a.financialMetrics.refundsIssued ?? 0)} (${fmtPHP(a.financialMetrics.refundsAmount ?? 0)})`],
                 ["Customer Satisfaction", a.financialMetrics.customerSatisfaction ? `${a.financialMetrics.customerSatisfaction.toFixed(1)} / 5` : "—"],

@@ -50,7 +50,7 @@ export default function FeedbackPage() {
         if (!bookingRes.ok) {
           const data = await bookingRes.json().catch(() => ({}));
           if (bookingRes.status === 401) {
-            router.push("/my-account/login");
+            router.replace(`/my-account/login?callbackUrl=${encodeURIComponent(`/my-account/feedback/${id}`)}`);
             return;
           }
           if (bookingRes.status === 403) {

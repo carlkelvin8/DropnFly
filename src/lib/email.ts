@@ -317,7 +317,6 @@ export async function sendIncidentEmail({  to,
     </div>
   `;
 
-  const subjectPrefix = status === "PENDING" ? "Incident Report Received" : "Incident Report Update";
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #dc2626; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">

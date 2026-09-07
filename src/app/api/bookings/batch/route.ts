@@ -94,6 +94,27 @@ export async function PATCH(req: Request) {
 
       for (const booking of deliverable) await awardDeliveryPoints(booking);
 
+      const completedBookings = await prisma.booking.findMany({
+        where: { id: { in: deliverableIds } },
+        select: {
+          id: true,
+          referenceNumber: true,
+          customerId: true,
+          status: true,
+          updatedAt: true,
+          feedbackInviteSentAt: true,
+        },
+      });
+      const { trySendFeedbackInvitation } = await import("@/lib/feedback");
+      const inviteResults = await Promise.allSettled(
+        completedBookings.map((booking) => trySendFeedbackInvitation(booking)),
+      );
+      inviteResults.forEach((result, index) => {
+        if (result.status === "rejected") {
+          console.warn("[FEEDBACK] batch invite failed for", completedBookings[index]?.referenceNumber, result.reason);
+        }
+      });
+
       await logActivity({
         userId: session.user.id,
         action: "UPDATE",

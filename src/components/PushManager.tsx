@@ -82,15 +82,15 @@ export function PushManager({ subscribeUrl, unsubscribeUrl, vapidKeyUrl }: PushM
           }
         }
       }}
-      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      className="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm text-muted-foreground transition-colors hover:text-foreground"
       title={error
         ? "Push notifications failed. Click to retry."
         : subscribed ? "Disable push notifications" : "Enable push notifications"}
     >
-      <span className={`h-2 w-2 rounded-full ${
+      <span className={`h-2 w-2 shrink-0 rounded-full ${
         error ? "bg-red-500" : subscribed ? "bg-green-500" : "bg-muted-foreground/40"
       }`} />
-      {subscribed ? "Notifications On" : "Enable Notifications"}
+      <span className="hidden md:inline">{subscribed ? "Notifications On" : "Enable Notifications"}</span>
     </button>
   );
 }

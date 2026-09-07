@@ -39,7 +39,11 @@ export default function CustomerLoginPage() {
         return;
       }
 
-      router.push("/my-account");
+      const requestedPath = new URLSearchParams(window.location.search).get("callbackUrl");
+      const safeCallback = requestedPath?.startsWith("/my-account/") && !requestedPath.startsWith("//")
+        ? requestedPath
+        : "/my-account";
+      router.push(safeCallback);
       router.refresh();
     } catch {
       setError("Network error. Please try again.");

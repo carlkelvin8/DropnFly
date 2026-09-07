@@ -43,8 +43,9 @@ export async function GET() {
       prisma.booking.count({
         where: { status: "DELIVERED", createdAt: { gte: startOfMonth } },
       }),
-      prisma.booking.count({
-        where: { status: { in: ["RECEIVED", "IN_STORAGE"] } },
+      prisma.booking.aggregate({
+        where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
+        _sum: { numberOfBags: true },
       }),
       prisma.user.count(),
       prisma.booking.findMany({
@@ -86,7 +87,8 @@ export async function GET() {
 
     const settings = await getSystemSettings();
     const capacityTotal = parseInt(setting(settings, "max_simultaneous_bags", "0"));
-    const usagePercent = capacityTotal > 0 ? Math.round((bookingCapacity / capacityTotal) * 100) : 0;
+    const bagsUsingCapacity = bookingCapacity._sum.numberOfBags || 0;
+    const usagePercent = capacityTotal > 0 ? Math.round((bagsUsingCapacity / capacityTotal) * 100) : 0;
     const completionRateWeekly = bookingsThisWeek > 0 ? Math.round((deliveredThisWeek / bookingsThisWeek) * 100) : 0;
 
     const durationBuckets: Record<string, number> = { "0-1": 0, "2-3": 0, "4-7": 0, "8-14": 0, "15+": 0 };
@@ -114,7 +116,7 @@ export async function GET() {
 
     return NextResponse.json(
       {
-        capacityUsage: { used: bookingCapacity, total: capacityTotal, percent: usagePercent },
+        capacityUsage: { used: bagsUsingCapacity, total: capacityTotal, percent: usagePercent },
         bookingsThisMonth: monthlyBookings,
         claimedThisMonth: monthlyDelivered,
         totalUsers,

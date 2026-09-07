@@ -85,11 +85,6 @@ export default function CustomerBookingDetailPage() {
   const [showChat, setShowChat] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const [review, setReview] = useState<BookingReview | null>(null);
-  const [showReview, setShowReview] = useState(false);
-  const [rating, setRating] = useState(0);
-  const [hoverRating, setHoverRating] = useState(0);
-  const [comment, setComment] = useState("");
-  const [submittingReview, setSubmittingReview] = useState(false);
   const verifyFileRef = useRef<HTMLInputElement>(null);
   const [verifyPhoto, setVerifyPhoto] = useState<string | null>(null);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
@@ -170,17 +165,6 @@ export default function CustomerBookingDetailPage() {
       setMessages((prev) => [...prev, msg]); setChatText("");
     } catch { toast.error("Failed to send"); }
     setSendingChat(false);
-  }
-
-  async function handleSubmitReview() {
-    if (rating === 0) return;
-    setSubmittingReview(true);
-    try {
-      const res = await fetch(`/api/bookings/${id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rating, comment }) });
-      if (!res.ok) throw new Error();
-      setReview(await res.json()); toast.success("Review submitted");
-    } catch { toast.error("Failed"); }
-    setSubmittingReview(false);
   }
 
   async function handlePayNow() {
@@ -856,8 +840,10 @@ export default function CustomerBookingDetailPage() {
             <MessageCircle className="mr-2 h-4 w-4" /> Chat
           </Button>
           {booking.status === "DELIVERED" && !review && (
-            <Button variant="outline" className="flex-1" onClick={() => setShowReview(true)}>
-              <Star className="mr-2 h-4 w-4" /> Rate
+            <Button variant="outline" className="flex-1" asChild>
+              <Link href={`/my-account/feedback/${booking.id}`}>
+                <Star className="mr-2 h-4 w-4" /> Write Feedback
+              </Link>
             </Button>
           )}
           <Link href={`/track/${booking.referenceNumber}`} className="flex-1">
@@ -935,24 +921,15 @@ export default function CustomerBookingDetailPage() {
         )}
 
         {/* Review */}
-        {(review || showReview) && (
+        {review && (
           <Card>
             <CardHeader><CardTitle className="text-base">Your Review</CardTitle></CardHeader>
             <CardContent>
-              {review ? (
-                <div className="space-y-2">
-                  <div className="flex gap-1">{[1,2,3,4,5].map((s) => <Star key={s} className={`h-5 w-5 ${s <= review.rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} />)}</div>
-                  {review.comment && <p className="text-sm text-gray-600">{review.comment}</p>}
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex gap-1">{[1,2,3,4,5].map((s) => <button key={s} type="button" onMouseEnter={() => setHoverRating(s)} onMouseLeave={() => setHoverRating(0)} onClick={() => setRating(s)}><Star className={`h-8 w-8 cursor-pointer transition-colors ${(hoverRating || rating) >= s ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} /></button>)}</div>
-                  <Input placeholder="Share your feedback (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />
-                  <Button onClick={handleSubmitReview} disabled={rating === 0 || submittingReview} className="w-full">
-                    {submittingReview ? "Submitting..." : "Submit Review"}
-                  </Button>
-                </div>
-              )}
+              <div className="space-y-2">
+                <div className="flex gap-1">{[1,2,3,4,5].map((s) => <Star key={s} className={`h-5 w-5 ${s <= review.rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} />)}</div>
+                {review.comment && <p className="text-sm text-gray-600">{review.comment}</p>}
+                <p className="text-xs text-muted-foreground">Submitted {formatDate(review.createdAt)} · one review per transaction</p>
+              </div>
             </CardContent>
           </Card>
         )}

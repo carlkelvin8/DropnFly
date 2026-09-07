@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { generatePredictions } from "@/lib/gemini";
 import { prisma } from "@/lib/prisma";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {
@@ -16,10 +17,9 @@ export async function GET() {
       bookingsByStatus,
       recentBookings,
       employeeCount,
-      locationCapacity,
     ] = await Promise.all([
-      prisma.booking.count(),
-      prisma.booking.aggregate({ _sum: { totalPrice: true } }),
+      prisma.booking.count({ where: { status: { notIn: ["CANCELLED", "NO_SHOW"] } } }),
+      prisma.payment.aggregate({ where: { status: "PAID", paidAt: { not: null } }, _sum: { amount: true } }),
       prisma.booking.groupBy({
         by: ["status"],
         _count: true,
@@ -27,6 +27,7 @@ export async function GET() {
       prisma.booking.findMany({
         where: {
           createdAt: { gte: new Date(Date.now() - 30 * 86400000) },
+          status: { notIn: ["CANCELLED", "NO_SHOW"] },
         },
         select: { createdAt: true, totalPrice: true, checkIn: true },
         orderBy: { createdAt: "asc" },
@@ -34,23 +35,26 @@ export async function GET() {
       prisma.user.count({
         where: { role: "EMPLOYEE", isActive: true },
       }),
-      prisma.storageLocation.aggregate({ _sum: { capacity: true } }),
     ]);
 
-    const totalCapacity = locationCapacity._sum.capacity || 0;
-    const activeBookings = await prisma.booking.count({
-      where: { status: { notIn: ["DELIVERED", "CANCELLED"] } },
+    const settings = await getSystemSettings();
+    const totalCapacity = parseInt(setting(settings, "max_simultaneous_bags", "0"));
+    const activeBagTotal = await prisma.booking.aggregate({
+      where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
+      _sum: { numberOfBags: true },
     });
+    const activeBags = activeBagTotal._sum.numberOfBags || 0;
 
     const hourlyDist: Record<number, number> = {};
     for (const b of recentBookings) {
-      const h = b.checkIn.getHours();
+      const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", hour: "2-digit", hourCycle: "h23" }).formatToParts(b.checkIn);
+      const h = Number(parts.find((part) => part.type === "hour")?.value || "0");
       hourlyDist[h] = (hourlyDist[h] || 0) + 1;
     }
 
     const analyticsData = {
       totalBookings,
-      totalRevenue: Number(totalRevenue._sum.totalPrice || 0),
+      totalRevenue: Number(totalRevenue._sum.amount || 0),
       bookingsByStatus,
       bookingsLast30Days: recentBookings.length,
       averageDailyBookings:
@@ -61,10 +65,10 @@ export async function GET() {
         .map(([h]) => parseInt(h)),
       activeEmployees: employeeCount,
       storageCapacity: totalCapacity,
-      storageUsed: activeBookings,
+      storageUsed: activeBags,
       storageUtilization:
         totalCapacity > 0
-          ? Math.round((activeBookings / totalCapacity) * 100)
+          ? Math.round((activeBags / totalCapacity) * 100)
           : 0,
     };
 

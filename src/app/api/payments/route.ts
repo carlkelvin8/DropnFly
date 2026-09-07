@@ -17,8 +17,8 @@ export async function GET(req: Request) {
   const to = searchParams.get("to");
   const createdAt = from || to
     ? {
-        ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
-        ...(to ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+        ...(from ? { gte: new Date(`${from}T00:00:00+08:00`) } : {}),
+        ...(to ? { lte: new Date(`${to}T23:59:59.999+08:00`) } : {}),
       }
     : undefined;
 

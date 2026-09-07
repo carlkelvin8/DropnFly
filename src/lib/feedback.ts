@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { sendFeedbackInvitationEmail } from "@/lib/email";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 /**
  * Attempt to send feedback invitation email for a booking that just became DELIVERED.
@@ -20,6 +21,9 @@ export async function trySendFeedbackInvitation(booking: {
 }): Promise<boolean> {
   if (booking.status !== "DELIVERED") return false;
 
+  const settings = await getSystemSettings();
+  if (setting(settings, "customer_reviews_enabled", "true") === "false") return false;
+
   // Idempotency guard 1: booking column
   if (booking.feedbackInviteSentAt) return false;
 
@@ -34,35 +38,23 @@ export async function trySendFeedbackInvitation(booking: {
       feedbackInviteSentAt: true,
       checkOut: true,
       updatedAt: true,
+      review: { select: { id: true } },
+      scanEvents: {
+        where: { status: "DELIVERED" },
+        orderBy: { scannedAt: "desc" },
+        take: 1,
+        select: { scannedAt: true },
+      },
       customer: { select: { name: true, email: true } },
     },
   });
   if (!fresh) return false;
   if (fresh.status !== "DELIVERED") return false;
   if (fresh.feedbackInviteSentAt) return false;
-
-  // Idempotency guard 2: existing CustomerNotification of type feedback_invite
-  const existingInvite = await prisma.customerNotification.findFirst({
-    where: {
-      customerId: fresh.customerId,
-      type: "feedback_invite",
-      link: { contains: fresh.id },
-    },
-    select: { id: true },
-  });
-  if (existingInvite) {
-    // Mark booking so future checks short-circuit without notification lookup
-    try {
-      await prisma.booking.update({
-        where: { id: fresh.id },
-        data: { feedbackInviteSentAt: new Date() },
-      });
-    } catch {}
-    return false;
-  }
+  if (fresh.review) return false;
 
   const completionDate =
-    fresh.checkOut || fresh.updatedAt || new Date();
+    fresh.scanEvents[0]?.scannedAt || fresh.updatedAt || fresh.checkOut || new Date();
   const formattedDate = completionDate.toLocaleDateString("en-PH", {
     year: "numeric",
     month: "short",
@@ -70,44 +62,61 @@ export async function trySendFeedbackInvitation(booking: {
   });
 
   // Atomic claim: only one caller can set feedbackInviteSentAt from null to now
-  let claimed = false;
+  const claimedAt = new Date();
   try {
     const updated = await prisma.booking.updateMany({
       where: { id: fresh.id, feedbackInviteSentAt: null },
-      data: { feedbackInviteSentAt: new Date() },
+      data: { feedbackInviteSentAt: claimedAt },
     });
     if (updated.count === 0) return false;
-    claimed = true;
   } catch {
     return false;
   }
 
-  if (!claimed) return false;
-
   try {
-    await sendFeedbackInvitationEmail({
-      to: fresh.customer.email,
-      customerName: fresh.customer.name,
-      referenceNumber: fresh.referenceNumber,
-      completionDate: formattedDate,
-      bookingId: fresh.id,
-    });
+    let sent = false;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3 && !sent; attempt += 1) {
+      try {
+        sent = await sendFeedbackInvitationEmail({
+          to: fresh.customer.email,
+          customerName: fresh.customer.name,
+          referenceNumber: fresh.referenceNumber,
+          completionDate: formattedDate,
+          bookingId: fresh.id,
+        });
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!sent) throw lastError || new Error("Feedback email is disabled or unavailable");
   } catch (e) {
-    // Log but don't revert invite flag; email failures should be retried via admin? keep flag to avoid spam.
     console.warn("[FEEDBACK] Failed to send feedback email for", fresh.referenceNumber, e);
-    // Still create notification even if email failed, so customer sees invite in-app
+    // Release the claim so a later completion retry can attempt delivery again.
+    await prisma.booking.updateMany({
+      where: { id: fresh.id, feedbackInviteSentAt: claimedAt },
+      data: { feedbackInviteSentAt: null },
+    }).catch(() => {});
+    return false;
   }
 
   try {
-    await prisma.customerNotification.create({
-      data: {
-        customerId: fresh.customerId,
-        type: "feedback_invite",
-        title: "Share your feedback",
-        message: `How was your experience with booking ${fresh.referenceNumber}? Tap to leave a review.`,
-        link: `/my-account/feedback/${fresh.id}`,
-      },
+    const link = `/my-account/feedback/${fresh.id}`;
+    const existingInvite = await prisma.customerNotification.findFirst({
+      where: { customerId: fresh.customerId, type: "feedback_invite", link },
+      select: { id: true },
     });
+    if (!existingInvite) {
+      await prisma.customerNotification.create({
+        data: {
+          customerId: fresh.customerId,
+          type: "feedback_invite",
+          title: "Share your feedback",
+          message: `How was your experience with booking ${fresh.referenceNumber}? Tap to leave a review.`,
+          link,
+        },
+      });
+    }
   } catch {}
 
   return true;

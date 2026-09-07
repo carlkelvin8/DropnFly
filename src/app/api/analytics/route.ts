@@ -5,13 +5,6 @@ import { Prisma } from "@/generated/prisma/client";
 import { getSystemSettings, setting } from "@/lib/settings";
 import { manilaDateStr, manilaDayStart } from "@/lib/manila-time";
 
-function toLocalDayKey(d: Date): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user || session.user.role !== "ADMIN") {
@@ -26,9 +19,7 @@ export async function GET(req: Request) {
   const fromDate: string | null = searchParams.get("from");
   const toDate: string | null = searchParams.get("to");
 
-  let since = new Date();
-  since.setDate(since.getDate() - days);
-  since = manilaDayStart(manilaDateStr(since));
+  let since = new Date(manilaDayStart(manilaDateStr(new Date())).getTime() - (days - 1) * 86400000);
 
   if (fromDate) {
     since = manilaDayStart(fromDate);
@@ -51,7 +42,7 @@ export async function GET(req: Request) {
     periodBookingStats,
     paidPayments,
     bookingsByHour,
-    repeatCustomers,
+    periodCustomerBookings,
     luggageDetails,
     employeeUsers,
     cityCountryRows,
@@ -76,22 +67,21 @@ export async function GET(req: Request) {
       select: {
         amount: true,
         paidAt: true,
+        bookingId: true,
         booking: { select: { status: true } },
       },
     }),
     prisma.booking.findMany({
-      where: periodFilter,
+      where: { ...periodFilter, status: { notIn: ["CANCELLED", "NO_SHOW"] } },
       select: { checkIn: true },
     }),
-    prisma.$queryRaw<Array<{ email: string; booking_count: bigint }>>`
-      SELECT c.email, COUNT(b.id) as booking_count
-      FROM "Customer" c
-      INNER JOIN "Booking" b ON b."customerId" = c.id
-      GROUP BY c.email
-      HAVING COUNT(b.id) > 1
-    `,
+    prisma.booking.groupBy({
+      by: ["customerId"],
+      where: { ...periodFilter, status: { notIn: ["CANCELLED", "NO_SHOW"] } },
+      _count: true,
+    }),
     prisma.booking.findMany({
-      where: { ...periodFilter, luggageDetails: { not: null }, status: { not: "CANCELLED" as const } },
+      where: { ...periodFilter, luggageDetails: { not: null }, status: { notIn: ["CANCELLED", "NO_SHOW"] } },
       select: { luggageDetails: true },
       take: 2000,
     }),
@@ -104,6 +94,7 @@ export async function GET(req: Request) {
       FROM "Booking" b
       INNER JOIN "Customer" c ON c.id = b."customerId"
       WHERE b."createdAt" >= ${since}${until ? Prisma.sql` AND b."createdAt" <= ${until}` : Prisma.empty}
+        AND b.status NOT IN ('CANCELLED', 'NO_SHOW')
       GROUP BY c."cityOfOrigin", c."countryOfOrigin"
     `,
   ]);
@@ -121,6 +112,7 @@ export async function GET(req: Request) {
     : [];
 
   const totalRevenue = paidPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const paidBookingCount = new Set(paidPayments.map((payment) => payment.bookingId)).size;
 
   const settings = await getSystemSettings();
   const totalCapacity = parseInt(setting(settings, "max_simultaneous_bags", "0"));
@@ -203,12 +195,17 @@ export async function GET(req: Request) {
     .sort((a, b) => b.value - a.value);
 
   const newCustomers = await prisma.customer.count({
-    where: { createdAt: { gte: since, ...(until ? { lte: until } : {}) } },
+    where: {
+      id: { in: periodCustomerBookings.map((customer) => customer.customerId) },
+      createdAt: { gte: since, ...(until ? { lte: until } : {}) },
+    },
   });
-  const totalCustomers = await prisma.customer.count();
+  const totalCustomers = periodCustomerBookings.length;
+  const repeatCustomers = periodCustomerBookings.filter((customer) => customer._count > 1).length;
 
   const manilaTodayStr = manilaDateStr(new Date());
   const startOfToday = manilaDayStart(manilaTodayStr);
+  const startOfTomorrow = new Date(startOfToday.getTime() + 86400000);
   const manilaMonthStr = manilaTodayStr.slice(0, 7) + "-01";
   const startOfMonth = manilaDayStart(manilaMonthStr);
 
@@ -222,17 +219,23 @@ export async function GET(req: Request) {
     canceledNoShow,
     satisfactionAgg,
   ] = await Promise.all([
-    prisma.booking.count({ where: { createdAt: { gte: startOfToday } } }),
+    prisma.booking.count({ where: { createdAt: { gte: startOfToday, lt: startOfTomorrow } } }),
     prisma.booking.aggregate({
-      where: { status: { in: ["RECEIVED", "IN_STORAGE"] } },
+      where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
       _sum: { numberOfBags: true },
     }),
     prisma.booking.aggregate({
-      where: { checkIn: { gte: startOfToday } },
+      where: {
+        status: { notIn: ["CANCELLED", "NO_SHOW"] },
+        scanEvents: { some: { status: { in: ["RECEIVED", "IN_STORAGE"] }, scannedAt: { gte: startOfToday, lt: startOfTomorrow } } },
+      },
       _sum: { numberOfBags: true },
     }),
     prisma.booking.aggregate({
-      where: { createdAt: { gte: startOfMonth } },
+      where: {
+        status: { notIn: ["CANCELLED", "NO_SHOW"] },
+        scanEvents: { some: { status: { in: ["RECEIVED", "IN_STORAGE"] }, scannedAt: { gte: startOfMonth, lt: startOfTomorrow } } },
+      },
       _sum: { numberOfBags: true },
     }),
     prisma.payment.aggregate({
@@ -274,7 +277,7 @@ export async function GET(req: Request) {
       totalBookings: periodBookings,
       activeBookings: activeBookingsCount,
       totalRevenue,
-      averagePrice: paidPayments.length > 0 ? totalRevenue / paidPayments.length : 0,
+      averagePrice: paidBookingCount > 0 ? totalRevenue / paidBookingCount : 0,
       averageBags: periodBookingStats._avg.numberOfBags || 0,
       totalCustomers,
       newCustomers,
@@ -311,8 +314,8 @@ export async function GET(req: Request) {
     customerTrends: {
       totalCustomers,
       newCustomers,
-      repeatCustomers: repeatCustomers.length,
-      returnRate: totalCustomers > 0 ? (repeatCustomers.length / totalCustomers) * 100 : 0,
+      repeatCustomers,
+      returnRate: totalCustomers > 0 ? (repeatCustomers / totalCustomers) * 100 : 0,
     },
     bagBreakdown: Object.entries(bagBreakdown)
       .map(([name, value]) => ({ name, value }))
