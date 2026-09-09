@@ -40,9 +40,14 @@ export default async function RootLayout({
 }) {
   const { enabled, message } = await getMaintenanceMode();
   const headersList = await headers();
-  const pathname = headersList.get("x-pathname") || "";
+  const pathname = headersList.get("x-pathname") || headersList.get("x-url")?.split("?")[0] || "";
+  const trackBypass = headersList.get("x-track-bypass") === "1";
 
-  const showMaintenance = enabled && isPublicRoute(pathname);
+  // Senior: tracker must stay reachable even if x-pathname missing (RSC, hard reload, Vercel edge)
+  // Fallback to referer/x-url and explicit bypass header
+  const effectivePathname = pathname || headersList.get("x-url")?.split("?")[0] || "";
+  const isTrackRequest = effectivePathname.startsWith("/track") || trackBypass || headersList.get("referer")?.includes("/track");
+  const showMaintenance = enabled && !isTrackRequest && isPublicRoute(effectivePathname || pathname);
 
   return (
     <html lang="en" suppressHydrationWarning>

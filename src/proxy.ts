@@ -41,9 +41,15 @@ export default async function middleware(req: NextRequest) {
   const passThrough = () => {
     const requestHeaders = new Headers(req.headers);
     requestHeaders.set("x-pathname", path);
+    requestHeaders.set("x-url", req.nextUrl.pathname + req.nextUrl.search);
     const res = NextResponse.next({ request: { headers: requestHeaders } });
     // also expose on response for debugging / client usage
     res.headers.set("x-pathname", path);
+    res.headers.set("x-url", req.nextUrl.pathname + req.nextUrl.search);
+    // Hard bypass for tracker during maintenance — ensure RSC + hard reload both see allow
+    if (path.startsWith("/track")) {
+      res.headers.set("x-track-bypass", "1");
+    }
     return res;
   };
   if (path.startsWith("/api/") && mutating) {
