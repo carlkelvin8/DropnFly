@@ -49,9 +49,7 @@ export function createReportPdf(report: PdfReport): Uint8Array {
     | { kind: "title"; text: string }
     | { kind: "subtitle"; text: string }
     | { kind: "meta"; text: string }
-    | { kind: "kpiBoxLabel"; text: string }
-    | { kind: "kpiBoxValue"; text: string }
-    | { kind: "kpiBoxSub"; text: string }
+    | { kind: "kpiRow"; left: string; right: string }
     | { kind: "sectionHeading"; text: string }
     | { kind: "body"; text: string }
     | { kind: "tableTitle"; text: string }
@@ -80,25 +78,19 @@ export function createReportPdf(report: PdfReport): Uint8Array {
   rows.push({ kind: "footerNote", text: "How to use: Cross-check figures below with Financial Oversight & Graphical Data tabs, reconcile pending collections, and validate capacity vs. staffing for the selected period before committing resources." });
   rows.push({ kind: "spacer", h: 8 });
 
-  // KPIs - professional 2-col grid with boxes (like the GDrive reference: KPI cards with borders)
+  // KPIs — clean 2-col grid, each pair on one row (max level)
   if (report.kpis && report.kpis.length) {
     rows.push({ kind: "sectionHeading", text: "Key Performance Indicators — Period Snapshot" });
-    // Render KPIs as paired rows: label/value boxes drawn via table-like rows
     const kpis = report.kpis.slice(0, 8);
     for (let i = 0; i < kpis.length; i += 2) {
       const left = kpis[i];
       const right = kpis[i + 1];
-      // Use tableRow to simulate KPI boxes: two columns
       const leftStr = left ? `${left.label}: ${left.value}` : "";
       const rightStr = right ? `${right.label}: ${right.value}` : "";
-      // We'll push as special kpiBox rows that renderer will draw as bordered boxes side-by-side
-      rows.push({ kind: "kpiBoxLabel", text: leftStr });
-      if (rightStr) rows.push({ kind: "kpiBoxValue", text: rightStr });
-      // Add spacing
-      rows.push({ kind: "spacer", h: 2 });
+      rows.push({ kind: "kpiRow", left: leftStr, right: rightStr });
+      rows.push({ kind: "spacer", h: 4 });
     }
-    // If odd number, ensure last single still rendered
-    rows.push({ kind: "spacer", h: 6 });
+    rows.push({ kind: "spacer", h: 4 });
   }
 
   // TOC
@@ -122,14 +114,18 @@ export function createReportPdf(report: PdfReport): Uint8Array {
     }
   }
 
-  // Sections - detailed paragraphs with hierarchy
+  // Sections — clean paragraphs (split only on blank lines, preserve sentences)
   for (const section of report.sections) {
     rows.push({ kind: "sectionHeading", text: section.heading });
-    const paragraphs = section.content.split(/\n\s*\n|(?<=[.!?])\s+(?=[A-Z])/);
-    for (const para of paragraphs) {
-      if (!para.trim()) continue;
-      for (const line of wrap(para.trim(), 86)) rows.push({ kind: "body", text: line });
-      rows.push({ kind: "spacer", h: 4 });
+    const paragraphs = section.content.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+    // If no blank-line paragraphs, treat whole content as one block and wrap cleanly
+    const blocks = paragraphs.length ? paragraphs : [section.content.trim()];
+    for (const para of blocks) {
+      if (!para) continue;
+      // Remove any residual markdown bullets/numbers for clean PDF
+      const cleanPara = para.replace(/^\s*[-•]\s*/gm, "").replace(/^\s*\d+\.\s*/gm, "").trim();
+      for (const line of wrap(cleanPara, 86)) rows.push({ kind: "body", text: line });
+      rows.push({ kind: "spacer", h: 5 });
     }
   }
 
@@ -150,9 +146,7 @@ export function createReportPdf(report: PdfReport): Uint8Array {
     meta: 10,
     sectionHeading: 22,
     body: 11,
-    kpiBoxLabel: 18,
-    kpiBoxValue: 18,
-    kpiBoxSub: 10,
+    kpiRow: 26,
     tableTitle: 14,
     tableHeader: 16,
     tableRow: 14,
@@ -238,50 +232,34 @@ export function createReportPdf(report: PdfReport): Uint8Array {
         case "body":
           size = 8.5; color = "0.18 0.18 0.18"; x = 28;
           break;
-        case "kpiBoxLabel":
-        case "kpiBoxValue": {
-          // Render as bordered KPI card (two side-by-side boxes per row pair)
-          const isLeft = row.kind === "kpiBoxLabel";
-          const boxX = isLeft ? 20 : 306;
+        case "kpiRow": {
+          const kpi = row as { left: string; right: string };
           const boxW = 270;
-          const boxH = 18;
-          // Box border + light bg
-          cmds.push(`q 0.96 0.96 0.96 rg ${boxX} ${y - boxH + 6} ${boxW} ${boxH} re f Q`);
-          cmds.push(`q 0.85 0.85 0.85 rg ${boxX} ${y - boxH + 6} ${boxW} ${boxH} re S Q`);
-          // Text inside
-          const parts = text.split(": ");
-          const label = parts[0] || "";
-          const val = parts.slice(1).join(": ") || "";
-          cmds.push(`BT /F1 6.5 Tf 0.5 0.5 0.5 rg ${boxX + 8} ${y - 2} Td (${pdfText(label)}) Tj ET`);
-          cmds.push(`BT /F2 9 Tf 0 0 0 rg ${boxX + 8} ${y - 12} Td (${pdfText(val || label)}) Tj ET`);
-          if (!isLeft) y -= boxH + 4;
-          else {
-            // For left, don't advance y yet, wait for right to advance. If no right, advance.
-            // Check next row is value? We'll peek: if next is kpiBoxValue, don't advance; else advance
-            // Simplified: if this is left and next is right, keep y for right on same line via not advancing beyond box.
-            // So we stash y offset: left draws at current y, right will draw at same y, then y advances after right.
-            // To achieve, we temporarily not move y for left, but need to remember. For simplicity, left advances half?
-            // We already handled by right advancing. So for left, we need to keep y same for next right.
-            // Do nothing, keep y for right to overwrite same y baseline.
-            // We'll handle by not moving y now, and letting right's advance do the work.
-            // But we already subtracted? For left we didn't subtract y yet except box. Set y still at same line for right.
-            // So revert y shift: y already at top, we want y to stay for right.
-            // Left drew at y, right will draw at same y (we need to not have decremented y before right draws).
-            // Our code for left already drew, but we didn't decrement y for left's next line; right will handle decrement.
-            // So return early without y decrement beyond box already accounted via boxH.
-            // Instead, we need to manage: left draws, y stays; right draws and decrements.
-            // For left, we should not decrement y here; we already drew at y, so keep y unchanged for right.
-            // But we already included boxH in drawing; we need to ensure y not double-counted.
-            // Quick fix: for left, restore y by not subtracting extra; right will subtract.
+          const boxH = 22;
+          const leftX = 20;
+          const rightX = 306;
+          // Left box
+          if (kpi.left) {
+            cmds.push(`q 0.96 0.96 1 rg ${leftX} ${y - boxH + 4} ${boxW} ${boxH} re f Q`);
+            cmds.push(`q 0.8 0.82 0.96 rg ${leftX} ${y - boxH + 4} ${boxW} ${boxH} re S Q`);
+            const parts = kpi.left.split(": ");
+            const label = parts[0] || "";
+            const val = parts.slice(1).join(": ") || "";
+            cmds.push(`BT /F1 6 Tf 0.45 0.45 0.6 rg ${leftX + 8} ${y - 4} Td (${pdfText(label)}) Tj ET`);
+            cmds.push(`BT /F2 9 Tf 0.12 0.18 0.6 rg ${leftX + 8} ${y - 14} Td (${pdfText(val || label)}) Tj ET`);
           }
-          // For left case, undo the upcoming generic y decrement by returning early with custom y handling
-          if (isLeft) {
-            // Don't apply generic gap below; gap handled by right or spacer
-            continue;
-          } else {
-            // Right case already advanced via boxH, need small gap handled by spacer row
-            continue;
+          // Right box
+          if (kpi.right) {
+            cmds.push(`q 0.96 0.96 1 rg ${rightX} ${y - boxH + 4} ${boxW} ${boxH} re f Q`);
+            cmds.push(`q 0.8 0.82 0.96 rg ${rightX} ${y - boxH + 4} ${boxW} ${boxH} re S Q`);
+            const parts = kpi.right.split(": ");
+            const label = parts[0] || "";
+            const val = parts.slice(1).join(": ") || "";
+            cmds.push(`BT /F1 6 Tf 0.45 0.45 0.6 rg ${rightX + 8} ${y - 4} Td (${pdfText(label)}) Tj ET`);
+            cmds.push(`BT /F2 9 Tf 0.12 0.18 0.6 rg ${rightX + 8} ${y - 14} Td (${pdfText(val || label)}) Tj ET`);
           }
+          y -= boxH + 6;
+          continue;
         }
         case "tableTitle":
           size = 9; isBold = true; color = "0.15 0.23 0.84"; x = 20;
