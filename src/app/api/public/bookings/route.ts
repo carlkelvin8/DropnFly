@@ -222,13 +222,20 @@ export async function POST(req: Request) {
         data: { name: String(name).trim(), email: normalizedEmail, phone: String(phone).trim(), countryOfOrigin: safeCountry || null, cityOfOrigin: safeCity || null },
       });
     } else {
-      const updateData: Record<string, string> = { name: String(name).trim(), phone: String(phone).trim() };
-      if (safeCountry) updateData.countryOfOrigin = safeCountry;
-      if (safeCity) updateData.cityOfOrigin = safeCity;
-      customer = await prisma.customer.update({
-        where: { email: normalizedEmail },
-        data: updateData,
-      });
+      // Senior: do not overwrite existing customer's name/phone — same email
+      // is an identity, but each booking's passenger name must stay as
+      // originally booked. Overwriting would make the earlier booking's
+      // displayed name change to the second booking's name (reported bug).
+      // Only enrich missing origin fields, never name/phone.
+      const enrich: Record<string, string> = {};
+      if (safeCountry && !customer.countryOfOrigin) enrich.countryOfOrigin = safeCountry;
+      if (safeCity && !customer.cityOfOrigin) enrich.cityOfOrigin = safeCity;
+      if (Object.keys(enrich).length > 0) {
+        customer = await prisma.customer.update({
+          where: { email: normalizedEmail },
+          data: enrich,
+        });
+      }
     }
 
     const txPrefix = setting(settings, "tx_prefix", "DROPFLY");

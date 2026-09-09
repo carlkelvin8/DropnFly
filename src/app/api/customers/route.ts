@@ -52,15 +52,28 @@ export async function POST(req: Request) {
     const isWalkInReuse = body.reuseExisting === true;
 
     if (isWalkInReuse) {
-      const customer = await prisma.customer.upsert({
-        where: { email: normalizedEmail },
-        update: {
-          name: trimmedName,
-          phone: trimmedPhone,
-          ...(countryOfOrigin ? { countryOfOrigin } : {}),
-          ...(cityOfOrigin ? { cityOfOrigin } : {}),
-        },
-        create: {
+      // Senior: walk-in returnee must not mutate the earlier passenger's
+      // displayed name — same email reuses the Customer identity, but we
+      // preserve name/phone per first booking. Only fill missing origin.
+      const existing = await prisma.customer.findUnique({ where: { email: normalizedEmail } });
+      if (existing) {
+        const enrich: Record<string, string> = {};
+        if (countryOfOrigin && !existing.countryOfOrigin) enrich.countryOfOrigin = countryOfOrigin;
+        if (cityOfOrigin && !existing.cityOfOrigin) enrich.cityOfOrigin = cityOfOrigin;
+        if (Object.keys(enrich).length > 0) {
+          const updated = await prisma.customer.update({
+            where: { email: normalizedEmail },
+            data: enrich,
+            omit: { password: true },
+          });
+          return NextResponse.json(updated);
+        }
+        const { password, ...safe } = existing as unknown as Record<string, unknown>;
+        void password;
+        return NextResponse.json(safe);
+      }
+      const customer = await prisma.customer.create({
+        data: {
           name: trimmedName,
           email: normalizedEmail,
           phone: trimmedPhone,
