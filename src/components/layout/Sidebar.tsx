@@ -71,6 +71,8 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   );
 
   const visibleItems = allNavItems.filter((item) => {
+    // Geolocation study focus — Logistics & Routes must be visible to EMPLOYEE/STAFF/ADMIN to test live tracking
+    if (item.href === "/dashboard/logistics") return true;
     if (isAdmin) {
       if (item.href === "/dashboard/notifications") return false;
       return true;
