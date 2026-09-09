@@ -31,11 +31,26 @@ test("fallback analytics reports have focus-specific content", async () => {
   assert.equal(descriptive.source, "deterministic");
   assert.equal(predictive.source, "deterministic");
   assert.equal(financial.source, "deterministic");
-  assert.match(descriptive.sections[0].heading, /Booking Volume/);
-  assert.match(predictive.sections[0].heading, /Forecast/);
-  assert.match(financial.sections[0].heading, /Revenue/);
+  // Exact admin outline — ensure distinct titles/summaries/headings per Final Separation
+  assert.match(descriptive.title, /Descriptive/);
+  assert.match(predictive.title, /Predictive/);
+  assert.match(financial.title, /Financial/);
+  // Headings must be from required outline, not duplicated generic
+  const dHeadings = descriptive.sections.map((s) => s.heading);
+  const pHeadings = predictive.sections.map((s) => s.heading);
+  const fHeadings = financial.sections.map((s) => s.heading);
+  assert.ok(dHeadings.includes("Booking Performance"));
+  assert.ok(dHeadings.includes("Luggage and Storage Patterns"));
+  assert.ok(pHeadings.includes("7-Day Forecast"));
+  assert.ok(pHeadings.includes("Capacity Forecast"));
+  assert.ok(fHeadings.includes("Gross Booked Value"));
+  assert.ok(fHeadings.includes("Revenue by Service"));
+  // Financial must NOT contain standalone Payment Method Analysis per spec — only the "completely removed" placeholder
+  assert.ok(!fHeadings.includes("Payment Method Analysis"));
+  assert.ok(fHeadings.includes("Payment Method Analysis is completely removed."));
   assert.notDeepEqual(descriptive.sections, predictive.sections);
   assert.notDeepEqual(predictive.sections, financial.sections);
   assert.match(predictive.summary, /60 days/);
   assert.match(financial.summary, /collection rate/);
+  assert.match(descriptive.summary, /bookings/);
 });
