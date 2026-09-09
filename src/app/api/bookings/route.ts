@@ -243,8 +243,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
       }
       const minStorageDays = parseInt(setting(settings, "min_storage_days", "1"));
-      const storageHours = (checkOutDate.getTime() - checkInDate.getTime()) / 3_600_000;
-      if (minStorageDays > 0 && storageHours < minStorageDays * 24) {
+      const storageDaysForMin = Math.max(1, Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)));
+      if (minStorageDays > 0 && storageDaysForMin < minStorageDays) {
         return NextResponse.json({ error: `Storage period must be at least ${minStorageDays} day${minStorageDays === 1 ? "" : "s"}` }, { status: 400 });
       }
       const maxStorageDays = parseInt(setting(settings, "max_storage_days", "0"));
