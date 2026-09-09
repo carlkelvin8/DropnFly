@@ -216,6 +216,53 @@ Keep predictions realistic based on the data. Values must be numbers.`;
   }
 }
 
+function cleanGeminiContent(text: string): string {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/```[\s\S]*?```/g, (m) => m.replace(/```json\s*/g, "").replace(/```/g, ""))
+    .replace(/^\s*#{1,6}\s*/gm, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/__+/g, "")
+    .trim();
+}
+
+function normalizeSections(
+  sections: { heading?: unknown; content?: unknown }[] | undefined,
+  type: "descriptive" | "predictive" | "financial"
+): { heading: string; content: string }[] {
+  if (!Array.isArray(sections)) return [];
+  return sections
+    .filter((s) => s && typeof s.heading === "string" && typeof s.content === "string")
+    .map((s) => ({
+      heading: String(s.heading).trim().replace(/\s+/g, " ").slice(0, 80),
+      content: cleanGeminiContent(String(s.content))
+        .replace(/[ \t]+/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+        .slice(0, 4000),
+    }))
+    .filter((s) => s.heading.length > 0 && s.content.length > 20);
+}
+
+function isDistinctReport(
+  parsed: { title?: unknown; summary?: unknown; sections?: unknown },
+  type: "descriptive" | "predictive" | "financial"
+): boolean {
+  if (!parsed || typeof parsed !== "object") return false;
+  const sections = parsed.sections as { heading?: unknown }[] | undefined;
+  if (!Array.isArray(sections) || sections.length < 4) return false;
+  const headings = sections.map((s) => String(s.heading || "").toLowerCase());
+  const wants: Record<string, string[]> = {
+    descriptive: ["booking performance", "revenue", "operational", "customer", "risk"],
+    predictive: ["forecast", "revenue", "capacity", "resource", "risk"],
+    financial: ["revenue overview", "average", "payment", "cost", "financial risks"],
+  };
+  const need = wants[type] || [];
+  const hits = need.filter((kw) => headings.some((h) => h.includes(kw)));
+  return hits.length >= 3;
+}
+
 export async function generateReport(
   type: "descriptive" | "predictive" | "financial",
   analyticsData: Record<string, unknown>
@@ -223,7 +270,12 @@ export async function generateReport(
   if (!GEMINI_API_KEY) {
     return reportWithoutGemini(type, analyticsData);
   }
-  const reportInstructions = `Use the selected report period exactly. Ground every conclusion in the supplied data and quote relevant numeric values. Clearly distinguish gross booked value, paid revenue, outstanding value, and collection rate. Include limitations when the dataset is sparse or a required cost metric is unavailable. Do not invent costs, profit, customer demographics, or causal explanations. Each section should be a substantial analytical paragraph with findings, interpretation, and a specific operational implication.`;
+  const baseInstructions = `Use the selected report period exactly. Ground every conclusion in the supplied data and quote relevant numeric values. Clearly distinguish gross booked value, paid revenue, outstanding value, and collection rate. Include limitations when the dataset is sparse or a required cost metric is unavailable. Do not invent costs, profit, customer demographics, or causal explanations. Each section must be a substantial analytical paragraph (3-5 sentences) with findings, interpretation, and a specific operational implication. Write in clean plain paragraphs — no markdown headings, no bullet symbols, no code fences. Separate paragraphs with a blank line.`;
+  const typeInstructions: Record<string, string> = {
+    descriptive: `REPORT FOCUS: DESCRIPTIVE (past performance only). Do NOT forecast. Analyze what happened in the period: booking volume/status mix, revenue/collection facts, operational snapshot, customer activity. Title must contain "Descriptive" and summary must describe past period results, not future.`,
+    predictive: `REPORT FOCUS: PREDICTIVE (future forecast only). Do NOT merely describe history. Forecast 30/60/90-day booking volumes and revenue ranges with confidence, capacity and staffing outlook, risks and assumptions. Title must contain "Predictive" and summary must be a future outlook (mention 30/60/90 days). Use run-rate × average as baseline and state confidence limits.`,
+    financial: `REPORT FOCUS: FINANCIAL (collections and revenue health). Center on paid vs outstanding, collection rate, payment method mix, and profitability limits (costs unavailable). Title must contain "Financial" and summary must state collection rate and outstanding value. Do NOT present revenue as profit.`,
+  };
   const prompts: Record<string, string> = {
     descriptive: `You are a business analyst for Dropnfly, a luggage storage service. Generate a DESCRIPTIVE report analyzing past performance.
 
@@ -231,19 +283,20 @@ DATA:
 ${JSON.stringify(analyticsData, null, 2)}
 
 INSTRUCTIONS:
-${reportInstructions}
+${baseInstructions}
+${typeInstructions.descriptive}
 
 Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 {
   "title": "Descriptive Analytics Report",
-  "summary": "<2-3 sentence executive summary of the data>",
+  "summary": "<2-3 sentence executive summary of PAST period data>",
   "sections": [
-    { "heading": "Booking Performance", "content": "<detailed analysis of booking trends, status distribution, and patterns>" },
-    { "heading": "Revenue Analysis", "content": "<analysis of revenue, average booking value, and payment insights>" },
-    { "heading": "Operational Efficiency", "content": "<analysis of storage utilization, employee workload, and capacity>" },
-    { "heading": "Customer Insights", "content": "<analysis of customer base, booking behavior, and trends>" },
+    { "heading": "Booking Performance", "content": "<past booking trends, status distribution, and patterns>" },
+    { "heading": "Revenue Analysis", "content": "<past revenue, average booking value, and payment insights>" },
+    { "heading": "Operational Efficiency", "content": "<past storage utilization, employee workload, and capacity>" },
+    { "heading": "Customer Insights", "content": "<past customer base, booking behavior, and trends>" },
     { "heading": "Risks and Data Limitations", "content": "<data quality, uncertainty, and interpretation limits>" },
-    { "heading": "Recommendations", "content": "<prioritized, measurable actions based on the data>" }
+    { "heading": "Recommendations", "content": "<prioritized, measurable actions based on past data>" }
   ]
 }`,
     predictive: `You are a business analyst for Dropnfly, a luggage storage service. Generate a PREDICTIVE report forecasting future trends.
@@ -252,12 +305,13 @@ DATA:
 ${JSON.stringify(analyticsData, null, 2)}
 
 INSTRUCTIONS:
-${reportInstructions}
+${baseInstructions}
+${typeInstructions.predictive}
 
 Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 {
   "title": "Predictive Analytics Report",
-  "summary": "<2-3 sentence summary of future outlook based on trends>",
+  "summary": "<2-3 sentence summary of FUTURE outlook (include 30/60/90 days)>",
   "sections": [
     { "heading": "Booking Forecast", "content": "<predicted booking volumes for next 30/60/90 days with confidence levels>" },
     { "heading": "Revenue Projection", "content": "<expected revenue ranges and growth trajectory>" },
@@ -274,12 +328,13 @@ DATA:
 ${JSON.stringify(analyticsData, null, 2)}
 
 INSTRUCTIONS:
-${reportInstructions}
+${baseInstructions}
+${typeInstructions.financial}
 
 Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 {
   "title": "Financial Analytics Report",
-  "summary": "<2-3 sentence financial health summary>",
+  "summary": "<2-3 sentence summary centered on collection rate and outstanding value>",
   "sections": [
     { "heading": "Revenue Overview", "content": "<detailed revenue breakdown, trends, and performance indicators>" },
     { "heading": "Average Revenue per Booking", "content": "<analysis of ARPB, factors affecting it, and optimization opportunities>" },
@@ -300,18 +355,49 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
     const prompt = prompts[type] || prompts.descriptive;
     const raw = await queryGemini(prompt);
     const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-    const parsed = JSON.parse(cleaned);
-    const result = {
-      title: parsed.title || `${type.charAt(0).toUpperCase() + type.slice(1)} Report`,
-      summary: parsed.summary || "",
-      sections: parsed.sections || [],
+    // Extract JSON object if Gemini wrapped it in extra text
+    const jsonStart = cleaned.indexOf("{");
+    const jsonEnd = cleaned.lastIndexOf("}");
+    const jsonSlice = jsonStart >= 0 && jsonEnd >= 0 ? cleaned.slice(jsonStart, jsonEnd + 1) : cleaned;
+    const parsed = JSON.parse(jsonSlice);
+
+    const sections = normalizeSections(parsed.sections, type);
+    const title = cleanGeminiContent(String(parsed.title || "")).slice(0, 120) || `${type.charAt(0).toUpperCase() + type.slice(1)} Report`;
+    const summary = cleanGeminiContent(String(parsed.summary || "")).replace(/\s+/g, " ").trim().slice(0, 600);
+
+    // Validate distinctness — if Gemini returned generic/duplicated headings, fall back to deterministic
+    if (!isDistinctReport({ title, summary, sections }, type) || sections.length < 4) {
+      console.warn(`[GEMINI] ${type} report failed distinctness check, falling back to deterministic`);
+      const fallback = reportWithoutGemini(type, analyticsData);
+      setCache(cacheKey, fallback);
+      return fallback;
+    }
+
+    // Additional guard: if summary doesn't contain type-specific keywords, consider it not distinct
+    const summaryLower = summary.toLowerCase();
+    const summaryOk =
+      (type === "descriptive" && (summaryLower.includes("bookings") || summaryLower.includes("period"))) ||
+      (type === "predictive" && (summaryLower.includes("30") || summaryLower.includes("forecast") || summaryLower.includes("60 days"))) ||
+      (type === "financial" && (summaryLower.includes("collection") || summaryLower.includes("outstanding") || summaryLower.includes("revenue")));
+    if (!summaryOk) {
+      console.warn(`[GEMINI] ${type} report summary failed keyword check, falling back`);
+      const fallback = reportWithoutGemini(type, analyticsData);
+      setCache(cacheKey, fallback);
+      return fallback;
+    }
+
+    const result: AnalyticsReport = {
+      title,
+      summary,
+      sections,
       generatedAt: new Date().toISOString(),
       source: "gemini" as const,
     };
     setCache(cacheKey, result);
     return result;
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Report generation failed";
-    throw new Error(message);
+    // On any Gemini error/parse failure, gracefully degrade to deterministic distinct reports
+    console.warn(`[GEMINI] ${type} report generation failed, using deterministic:`, err instanceof Error ? err.message : err);
+    return reportWithoutGemini(type, analyticsData);
   }
 }
