@@ -64,12 +64,12 @@ export default async function RootLayout({
             <p className="mt-3 max-w-md text-muted-foreground">
               {message || "We are currently undergoing scheduled maintenance. Please check back shortly."}
             </p>
-            <Link
+            <a
               href="/track"
               className="mt-8 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-md transition-all hover:bg-blue-700"
             >
               Track Existing Booking
-            </Link>
+            </a>
           </main>
         ) : (
           <ThemeProvider>

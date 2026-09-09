@@ -351,9 +351,9 @@ export default function BookPage() {
           </div>
           <h1 className="text-2xl font-bold text-foreground">Under Maintenance</h1>
           <p className="mt-3 text-muted-foreground">{maintenance?.enabled ? (maintenance.message || "We are currently undergoing scheduled maintenance. Please check back shortly.") : "Online booking is temporarily disabled. Please contact DropnFly staff for assistance."}</p>
-          <Link href="/track" className="mt-8 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-md transition-all hover:bg-blue-700">
+          <a href="/track" className="mt-8 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-md transition-all hover:bg-blue-700">
             <Search className="h-4 w-4" /> Track Existing Booking
-          </Link>
+          </a>
         </main>
         <PublicFooter />
       </div>
