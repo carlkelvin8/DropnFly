@@ -52,6 +52,8 @@ export async function GET() {
       rider,
       isAssignedToMe: rider?.id === session.user.id,
       createdAt: b.createdAt,
+      checkIn: b.checkIn,
+      checkOut: b.checkOut,
       pickupStartedAt: b.pickupStartedAt,
     };
   });

@@ -39,6 +39,8 @@ interface Task {
   rider: { id: string; name: string; profilePic: string | null; vehicleType: string | null; plateNumber: string | null } | null;
   isAssignedToMe: boolean;
   createdAt: string;
+  checkIn: string;
+  checkOut: string | null;
   pickupStartedAt: string | null;
 }
 
@@ -78,6 +80,8 @@ export default function LogisticsPage() {
   const [now, setNow] = useState(() => Date.now());
   const [taskSearch, setTaskSearch] = useState("");
   const [taskTypeFilter, setTaskTypeFilter] = useState("all");
+  const [taskDateFilter, setTaskDateFilter] = useState<"today" | "all" | "custom">("today");
+  const [taskDate, setTaskDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [taskPage, setTaskPage] = useState(1);
   const [locationStatus, setLocationStatus] = useState<"requesting" | "active" | "denied" | "error" | "idle">("idle");
   const handleLocationStatus = useCallback((status: "requesting" | "active" | "denied" | "error") => setLocationStatus(status), []);
@@ -155,7 +159,12 @@ export default function LogisticsPage() {
   const filteredTasks = roleTasks.filter((task) => {
     const query = taskSearch.toLowerCase();
     const matchesSearch = !query || `${task.referenceNumber} ${task.customer.name} ${task.rider?.name || ""}`.toLowerCase().includes(query);
-    return matchesSearch && (taskTypeFilter === "all" || task.taskType === taskTypeFilter);
+    const matchesType = taskTypeFilter === "all" || task.taskType === taskTypeFilter;
+    // Active Task is per-day (today) by default — Manila date of checkIn
+    const taskDay = task.checkIn ? new Date(task.checkIn).toISOString().split("T")[0] : new Date(task.createdAt).toISOString().split("T")[0];
+    const todayStr = new Date().toISOString().split("T")[0];
+    const matchesDate = taskDateFilter === "all" ? true : taskDateFilter === "today" ? taskDay === todayStr : taskDay === taskDate;
+    return matchesSearch && matchesType && matchesDate;
   });
   const taskPageSize = 5;
   const taskTotalPages = Math.max(1, Math.ceil(filteredTasks.length / taskPageSize));
@@ -218,33 +227,60 @@ export default function LogisticsPage() {
                 <p className="text-sm text-muted-foreground">No employees found</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  {employees.map((emp) => (
-                    <button
-                      key={emp.id}
-                      onClick={() => setSelectedEmpId(emp.id)}
-                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all ${
-                        selectedEmpId === emp.id
-                          ? "border-cyan-500 bg-cyan-50 text-cyan-700 shadow-sm dark:bg-cyan-950/30 dark:text-cyan-400"
-                          : "border-muted hover:border-muted-foreground/30 hover:bg-muted/50"
-                      }`}
-                    >
-                      <span className={`h-2 w-2 rounded-full ${
-                        emp.lastLocationUpdate && (now - new Date(emp.lastLocationUpdate).getTime() < 300000)
-                          ? "bg-green-500"
-                          : "bg-gray-300"
-                      }`} />
-                      <span className="font-medium">{emp.name}</span>
-                      <span className="text-xs text-muted-foreground">{emp.role}</span>
-                    </button>
-                  ))}
+                  {employees.map((emp) => {
+                    const hasLiveForEmp = tasks.some((t) => t.rider?.id === emp.id && !!t.pickupStartedAt);
+                    const isRecent = !!(emp.lastLocationUpdate && (now - new Date(emp.lastLocationUpdate).getTime() < 300000));
+                    const showGreen = hasLiveForEmp && isRecent;
+                    return (
+                      <button
+                        key={emp.id}
+                        onClick={() => setSelectedEmpId(emp.id)}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all ${
+                          selectedEmpId === emp.id
+                            ? "border-cyan-500 bg-cyan-50 text-cyan-700 shadow-sm dark:bg-cyan-950/30 dark:text-cyan-400"
+                            : "border-muted hover:border-muted-foreground/30 hover:bg-muted/50"
+                        }`}
+                        title={hasLiveForEmp ? (isRecent ? "Live tracking active" : "Started but no recent GPS") : "No active pick-up/drop-off — no live map"}
+                      >
+                        <span className={`h-2 w-2 rounded-full ${showGreen ? "bg-green-500" : "bg-gray-300"}`} />
+                        <span className="font-medium">{emp.name}</span>
+                        <span className="text-xs text-muted-foreground">{emp.role}</span>
+                        {!hasLiveForEmp && <span className="text-[10px] text-muted-foreground">(idle)</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {selectedEmpId && (
-            <LocationPlayback userId={selectedEmpId} userName={employees.find((e) => e.id === selectedEmpId)?.name} />
-          )}
+          {selectedEmpId && (() => {
+            const hasLive = tasks.some((t) => t.rider?.id === selectedEmpId && !!t.pickupStartedAt);
+            const emp = employees.find((e) => e.id === selectedEmpId);
+            const hasRecentPing = emp?.lastLocationUpdate ? (now - new Date(emp.lastLocationUpdate).getTime() < 300000) : false;
+            const showMap = hasLive && hasRecentPing;
+            // Real-time is employee→customer: only show map when employee started pickup/drop-off
+            if (!hasLive) {
+              return (
+                <Card className="border-dashed"><CardContent className="p-8 text-center text-sm text-muted-foreground">
+                  <Navigation className="mx-auto mb-2 h-8 w-8 opacity-30" />
+                  <p className="font-medium">No live tracking — {emp?.name || "employee"} hasn&apos;t started any pick-up/drop-off yet</p>
+                  <p className="mt-1 text-xs">Live map appears only after employee taps <strong>Start Pickup</strong> or <strong>Start Delivery</strong> (sets pickupStartedAt and enables LocationUpdater).</p>
+                </CardContent></Card>
+              );
+            }
+            if (!showMap) {
+              return (
+                <Card className="border-amber-200 bg-amber-50/50"><CardContent className="p-6 text-center text-sm text-amber-800">
+                  <p className="font-medium">Waiting for live location…</p>
+                  <p className="mt-1 text-xs">Employee started task but no recent GPS ping (last: {emp?.lastLocationUpdate ? new Date(emp.lastLocationUpdate).toLocaleString("en-PH") : "never"}). Ask employee to allow Location and keep app open.</p>
+                  <div className="mt-4"><LocationPlayback userId={selectedEmpId} userName={emp?.name} /></div>
+                  <p className="mt-2 text-[11px] text-muted-foreground">History playback still available even without live ping.</p>
+                </CardContent></Card>
+              );
+            }
+            return <LocationPlayback userId={selectedEmpId} userName={emp?.name} />;
+          })()}
         </div>
       ) : loading ? (
         <div className="space-y-3">
@@ -257,10 +293,17 @@ export default function LogisticsPage() {
           ))}
         </div>
       ) : <>
-        <div className="grid gap-2 sm:grid-cols-[1fr_180px]">
+        <div className="grid gap-2 sm:grid-cols-[1fr_140px_140px_150px]">
           <input value={taskSearch} onChange={(e) => { setTaskSearch(e.target.value); setTaskPage(1); }} placeholder="Filter by reference, customer, or rider" className="h-10 rounded-lg border bg-background px-3 text-sm" />
           <select value={taskTypeFilter} onChange={(e) => { setTaskTypeFilter(e.target.value); setTaskPage(1); }} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="all">All task types</option><option value="pickup">Pickup</option><option value="delivery">Delivery</option></select>
+          <select value={taskDateFilter} onChange={(e) => { const v = e.target.value as "today"|"all"|"custom"; setTaskDateFilter(v); setTaskPage(1); if (v === "today") setTaskDate(new Date().toISOString().split("T")[0]); }} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="today">Today only</option><option value="all">All dates</option><option value="custom">Pick date…</option></select>
+          {taskDateFilter === "custom" ? (
+            <input type="date" value={taskDate} onChange={(e) => { setTaskDate(e.target.value); setTaskPage(1); }} className="h-10 rounded-lg border bg-background px-3 text-sm" />
+          ) : (
+            <div className="flex h-10 items-center rounded-lg border bg-muted/30 px-3 text-xs text-muted-foreground">{taskDateFilter === "today" ? `Today • ${new Date().toISOString().split("T")[0]}` : "All dates — previous & future"}</div>
+          )}
         </div>
+        <p className="text-[11px] text-muted-foreground">Active Tasks are filtered to {taskDateFilter === "today" ? "today" : taskDateFilter === "custom" ? taskDate : "all dates"} (by pickup date). Use All/Custom to see previous and future taskings.</p>
       {filteredTasks.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">

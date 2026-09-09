@@ -62,6 +62,8 @@ interface LogisticsTask {
   rider: { id: string; name: string; profilePic: string | null; vehicleType: string | null; plateNumber: string | null } | null;
   isAssignedToMe: boolean;
   createdAt: string;
+  checkIn: string;
+  checkOut: string | null;
   pickupStartedAt: string | null;
 }
 
@@ -80,6 +82,8 @@ export default function TrackingDashboardPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [locationStatus, setLocationStatus] = useState<"requesting" | "active" | "denied" | "error" | "idle">("idle");
   const handleLocationStatus = useCallback((s: "requesting" | "active" | "denied" | "error") => setLocationStatus(s), []);
+  const [myTaskDateFilter, setMyTaskDateFilter] = useState<"today" | "all" | "custom">("today");
+  const [myTaskDate, setMyTaskDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   const fetchAssignments = useCallback(async (signal?: AbortSignal) => {
     if (!session?.user?.id) return;
@@ -245,6 +249,13 @@ export default function TrackingDashboardPage() {
       { label: "Complete Delivery", action: "complete-delivery" },
     ],
   };
+  const filteredMyTasks = logisticsTasks.filter((t) => {
+    const d = t.checkIn ? new Date(t.checkIn).toISOString().split("T")[0] : new Date(t.createdAt).toISOString().split("T")[0];
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (myTaskDateFilter === "today") return d === todayStr;
+    if (myTaskDateFilter === "custom") return d === myTaskDate;
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -260,14 +271,28 @@ export default function TrackingDashboardPage() {
         </div>
       )}
 
-      {/* Logistics Pending Tasks — senior-level: complete task lifecycle */}
+      {/* Logistics Pending Tasks — senior-level: complete task lifecycle, per-day filter */}
       <Card className="border-l-4 border-l-blue-500">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Navigation className="h-4 w-4 text-blue-600" />
-            Logistics — My Pending Tasks ({logisticsTasks.length})
+            Logistics — My Pending Tasks ({(() => {
+              const todayStr = new Date().toISOString().split("T")[0];
+              const filtered = logisticsTasks.filter((t) => {
+                const d = t.checkIn ? new Date(t.checkIn).toISOString().split("T")[0] : new Date(t.createdAt).toISOString().split("T")[0];
+                if (myTaskDateFilter === "today") return d === todayStr;
+                if (myTaskDateFilter === "custom") return d === myTaskDate;
+                return true;
+              });
+              return filtered.length;
+            })()} {myTaskDateFilter === "today" ? "today" : myTaskDateFilter === "custom" ? myTaskDate : "all"})
           </CardTitle>
-          <p className="text-xs text-muted-foreground">All pending pickup/delivery tasks assigned to you — start to enable live tracking.</p>
+          <p className="text-xs text-muted-foreground">Per-day Active Tasks — pick-up/drop-off to accomplish within that day. Live tracking (employee→customer) only after you tap Start.</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select value={myTaskDateFilter} onChange={(e) => setMyTaskDateFilter(e.target.value as "today"|"all"|"custom")} className="h-8 rounded-lg border bg-background px-3 text-xs"><option value="today">Today only</option><option value="all">All dates (previous & future)</option><option value="custom">Pick date…</option></select>
+            {myTaskDateFilter === "custom" && <input type="date" value={myTaskDate} onChange={(e) => setMyTaskDate(e.target.value)} className="h-8 rounded-lg border bg-background px-3 text-xs" />}
+            <span className="text-[11px] text-muted-foreground">{myTaskDateFilter === "today" ? `Today • ${new Date().toISOString().split("T")[0]}` : myTaskDateFilter === "custom" ? myTaskDate : "All dates"}</span>
+          </div>
         </CardHeader>
         <CardContent>
           {tasksLoading ? (
@@ -279,15 +304,15 @@ export default function TrackingDashboardPage() {
                 </div>
               ))}
             </div>
-          ) : logisticsTasks.length === 0 ? (
+          ) : filteredMyTasks.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               <PackageOpen className="mx-auto mb-2 h-8 w-8 opacity-50" />
-              <p>No pending logistic tasks. You’re all caught up!</p>
-              <p className="text-xs">New assignments will appear here automatically.</p>
+              <p>No tasks for {myTaskDateFilter === "today" ? "today" : myTaskDateFilter === "custom" ? myTaskDate : "this filter"}.</p>
+              <p className="text-xs">Switch to All dates to see previous & future taskings.</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {logisticsTasks.map((task) => (
+              {filteredMyTasks.map((task) => (
                 <div key={task.id} className={`rounded-lg border p-4 ${task.taskType === "delivery" ? "border-l-4 border-l-orange-500" : "border-l-4 border-l-blue-500"} bg-card`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1 space-y-2">
