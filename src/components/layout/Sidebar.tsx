@@ -35,7 +35,6 @@ const ADMIN_ONLY_ITEMS = new Set([
 ]);
 
 const STAFF_AND_ABOVE_ITEMS = new Set([
-  "/dashboard/logistics",
   "/dashboard/customers",
   "/dashboard/incidents",
 ]);
