@@ -277,16 +277,16 @@ export async function sendIncidentEmail({  to,
   submittedAt?: Date | string | null;
 }) {
   const baseUrl = siteUrl || process.env.NEXTAUTH_URL || "http://localhost:3000";
-  const trackUrl = `${baseUrl}/track/${referenceNumber}`;
   const typeLabel = incidentType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const trackingNumber = `INC-${incidentId.slice(0, 8).toUpperCase()}`;
+  const trackUrl = `${baseUrl}/track`;
 
   const config = await getEmailConfig();
   if (!config.enabled) {
     if (process.env.NODE_ENV === "development") {
       console.warn("[EMAIL] Email notifications are disabled in settings");
     }
-    return;
+    return false;
   }
 
   let statusSection = "";
@@ -357,6 +357,7 @@ export async function sendIncidentEmail({  to,
     subject,
     html,
   });
+  return true;
 }
 
 export async function sendPaymentConfirmationEmail({

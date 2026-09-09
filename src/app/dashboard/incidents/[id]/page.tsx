@@ -109,7 +109,7 @@ export default function IncidentDetailPage() {
   const params = useParams();
   const [incident, setIncident] = useState<IncidentDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<"status" | "note" | "resolution" | null>(null);
 
   const [editStatus, setEditStatus] = useState("");
   const [editPriority, setEditPriority] = useState("");
@@ -163,20 +163,19 @@ export default function IncidentDetailPage() {
     }
   }
 
-  async function handleSave() {
+  async function handleSave(section: "status" | "note" | "resolution") {
     if (!incident) return;
-    setSaving(true);
+    setSaving(section);
     try {
+      const payload = section === "note"
+        ? { action: "save_note", internalNotes: editNotes }
+        : section === "resolution"
+          ? { action: "save_resolution", resolution: editResolution }
+          : { action: "save_status", status: editStatus, priority: editPriority, escalatedTo: editEscalatedTo || null };
       const res = await fetch(`/api/incidents/${incident.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: editStatus,
-          priority: editPriority,
-          internalNotes: editNotes,
-          resolution: editResolution,
-          escalatedTo: editEscalatedTo || null,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
@@ -185,17 +184,19 @@ export default function IncidentDetailPage() {
       const updated = await res.json();
       setIncident(updated);
       setEditEscalatedTo(updated.escalatedTo || "");
-      // Senior: clear text boxes after save so previous input doesn't linger; history is in timeline
-      setEditNotes("");
-      setEditResolution("");
-      // Also update status/priority to reflect saved values for next edit
+      if (section === "note") setEditNotes("");
+      if (section === "resolution") setEditResolution("");
       setEditStatus(updated.status);
       setEditPriority(updated.priority);
-      toast.success("Incident updated — notes/resolution saved to history and emailed if customer-visible");
+      if (section === "resolution" && updated.emailSent === false) {
+        toast.warning("Resolution saved, but the customer email could not be sent");
+      } else {
+        toast.success(section === "note" ? "Internal note saved" : section === "resolution" ? "Resolution saved and customer notified" : "Status and priority saved");
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to save changes");
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   }
 
@@ -506,6 +507,9 @@ export default function IncidentDetailPage() {
                 </select>
                 <p className="text-[10px] text-muted-foreground">Escalate this incident to higher management</p>
               </div>
+              <Button onClick={() => handleSave("status")} disabled={saving !== null} variant="outline" className="w-full">
+                <Save className="mr-2 h-4 w-4" /> {saving === "status" ? "Saving..." : "Save Status & Priority"}
+              </Button>
               <div className="space-y-1.5">
                 <Label className="text-xs">Internal Notes (admin only)</Label>
                 <textarea
@@ -514,6 +518,9 @@ export default function IncidentDetailPage() {
                   onChange={(e) => setEditNotes(e.target.value)}
                   placeholder="Notes visible only to admin/staff..."
                 />
+                <Button onClick={() => handleSave("note")} disabled={saving !== null || !editNotes.trim()} variant="outline" className="w-full">
+                  <Save className="mr-2 h-4 w-4" /> {saving === "note" ? "Saving..." : "Save Internal Note"}
+                </Button>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Resolution (visible to customer)</Label>
@@ -524,10 +531,10 @@ export default function IncidentDetailPage() {
                   placeholder="Explain how this was resolved..."
                 />
                 <p className="text-[10px] text-muted-foreground">Customers will see this resolution on their tracking page</p>
+                <Button onClick={() => handleSave("resolution")} disabled={saving !== null || !editResolution.trim()} className="w-full">
+                  <Save className="mr-2 h-4 w-4" /> {saving === "resolution" ? "Saving..." : "Save & Email Resolution"}
+                </Button>
               </div>
-              <Button onClick={handleSave} disabled={saving} className="w-full">
-                <Save className="mr-2 h-4 w-4" /> {saving ? "Saving..." : "Save Changes"}
-              </Button>
             </CardContent>
           </Card>
 

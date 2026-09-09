@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { manilaDayStart } from "@/lib/manila-time";
+import { fleetCapacity, movementsOverlappingSlot } from "@/lib/fleet-capacity";
 
 const DEFAULTS = {
   max_concurrent_pickups: "1",
@@ -10,6 +11,7 @@ const DEFAULTS = {
   operating_start: "00:00",
   operating_end: "23:59",
   store_operating_days: "0,1,2,3,4,5,6",
+  fleet_data: "",
 };
 
 function parseMinutes(value: string): number {
@@ -73,7 +75,7 @@ export async function GET(req: NextRequest) {
   }
 
   const isPickup = type === "pickup";
-  const maxConcurrent = Math.max(1, parseInt(isPickup ? settings.max_concurrent_pickups : settings.max_concurrent_deliveries) || 1);
+  const maxConcurrent = fleetCapacity(settings);
   const slotDuration = Math.max(15, parseInt(isPickup ? settings.pickup_slot_duration : settings.delivery_slot_duration) || 60);
   // Senior: respect admin operating hours but default to 24h (00:00-23:59) for flight-flexible service
   const operatingStart = settings.operating_start || "00:00";
@@ -106,41 +108,38 @@ export async function GET(req: NextRequest) {
   const existingBookings = await prisma.booking.findMany({
     where: {
       status: { notIn: ["CANCELLED", "DELIVERED"] },
-      ...(isPickup
-        ? { checkIn: { gte: selectedDate, lt: nextDate } }
-        : { checkOut: { gte: selectedDate, lt: nextDate } }
-      ),
+      OR: [
+        { checkIn: { gte: selectedDate, lt: nextDate } },
+        { checkOut: { gte: selectedDate, lt: nextDate } },
+      ],
     },
-    select: isPickup ? { checkIn: true } : { checkOut: true },
+    select: { checkIn: true, checkOut: true },
   });
 
-  const slotCounts: Record<string, number> = {};
-  for (const slot of slots) {
-    slotCounts[slot.start] = 0;
-  }
-
-  for (const b of existingBookings) {
-    const dt = isPickup ? (b as { checkIn: Date }).checkIn : (b as { checkOut: Date | null }).checkOut;
-    if (!dt) continue;
-    const timeStr = new Intl.DateTimeFormat("en-GB", {
+  const toMinutes = (date: Date) => {
+    const time = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Manila",
       hour: "2-digit",
       minute: "2-digit",
       hourCycle: "h23",
-    }).format(dt);
-
-    for (const slot of slots) {
-      if (timeStr >= slot.start && timeStr < slot.end) {
-        slotCounts[slot.start] = (slotCounts[slot.start] || 0) + 1;
-        break;
-      }
-    }
-  }
+    }).format(date);
+    return parseMinutes(time);
+  };
+  const pickupDuration = Math.max(15, parseInt(settings.pickup_slot_duration) || 60);
+  const deliveryDuration = Math.max(15, parseInt(settings.delivery_slot_duration) || 60);
+  const movements = existingBookings.flatMap((booking) => [
+    ...(booking.checkIn >= selectedDate && booking.checkIn < nextDate
+      ? [{ startMinutes: toMinutes(booking.checkIn), durationMinutes: pickupDuration }]
+      : []),
+    ...(booking.checkOut && booking.checkOut >= selectedDate && booking.checkOut < nextDate
+      ? [{ startMinutes: toMinutes(booking.checkOut), durationMinutes: deliveryDuration }]
+      : []),
+  ]);
 
   const manilaNow = manilaNowParts();
   const result = slots.map((slot) => {
-    const booked = slotCounts[slot.start] || 0;
     const slotMinutes = Number(slot.start.slice(0, 2)) * 60 + Number(slot.start.slice(3, 5));
+    const booked = movementsOverlappingSlot(slotMinutes, slotDuration, movements);
     const isPast = dateStr < manilaNow.date || (dateStr === manilaNow.date && slotMinutes <= manilaNow.minutes);
     const isFull = booked >= maxConcurrent;
 

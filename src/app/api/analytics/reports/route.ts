@@ -13,7 +13,11 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
-  const type = searchParams.get("type") || "descriptive";
+  const requestedType = searchParams.get("type") || "descriptive";
+  if (!(["descriptive", "predictive", "financial"] as const).includes(requestedType as "descriptive" | "predictive" | "financial")) {
+    return NextResponse.json({ error: "Invalid report type" }, { status: 400 });
+  }
+  const type = requestedType as "descriptive" | "predictive" | "financial";
   const period = searchParams.get("period") || "month";
   const days = period === "week" ? 7 : period === "year" ? 365 : 30;
   const since = searchParams.get("from")
@@ -102,7 +106,7 @@ export async function GET(req: Request) {
       reportPeriod: { from: since.toISOString(), to: until.toISOString() },
     };
 
-    const result = await generateReport(type as "descriptive" | "predictive" | "financial", analyticsData as Record<string, unknown>);
+    const result = await generateReport(type, analyticsData as Record<string, unknown>);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Report generation failed";

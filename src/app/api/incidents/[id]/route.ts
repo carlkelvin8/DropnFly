@@ -207,12 +207,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const updateData: Record<string, unknown> = {};
-    if (status) updateData.status = status;
-    if (priority) updateData.priority = priority;
-    if (internalNotes !== undefined) updateData.internalNotes = internalNotes;
-    if (resolution !== undefined) updateData.resolution = resolution;
-    if (escalatedTo !== undefined) updateData.escalatedTo = escalatedTo;
-    if (status === "RESOLVED" || status === "CLOSED") updateData.resolvedAt = new Date();
+    if (action === "save_note") {
+      if (!String(internalNotes || "").trim()) return NextResponse.json({ error: "Internal note is required" }, { status: 400 });
+      updateData.internalNotes = String(internalNotes).trim();
+    } else if (action === "save_resolution") {
+      if (!String(resolution || "").trim()) return NextResponse.json({ error: "Resolution message is required" }, { status: 400 });
+      updateData.resolution = String(resolution).trim();
+    } else if (action === "save_status") {
+      if (status) updateData.status = status;
+      if (priority) updateData.priority = priority;
+      if (escalatedTo !== undefined) updateData.escalatedTo = escalatedTo;
+      if (status === "RESOLVED" || status === "CLOSED") updateData.resolvedAt = new Date();
+      else if (status) updateData.resolvedAt = null;
+    } else {
+      // Backward compatibility for older clients. Only explicitly supplied fields change.
+      if (status) updateData.status = status;
+      if (priority) updateData.priority = priority;
+      if (internalNotes !== undefined) updateData.internalNotes = internalNotes;
+      if (resolution !== undefined) updateData.resolution = resolution;
+      if (escalatedTo !== undefined) updateData.escalatedTo = escalatedTo;
+      if (status === "RESOLVED" || status === "CLOSED") updateData.resolvedAt = new Date();
+    }
 
     await prisma.incidentReport.update({
       where: { id },
@@ -227,7 +242,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (priority) {
       timelineCreates.push({ action: "status_change", description: `Priority set to ${priority}` });
     }
-    if (internalNotes !== undefined && internalNotes !== existing.internalNotes) {
+    if ("internalNotes" in updateData && updateData.internalNotes !== existing.internalNotes) {
       const trimmed = String(internalNotes).trim();
       if (trimmed) {
         timelineCreates.push({ action: "internal_note", description: `Internal note (admin only): ${trimmed.slice(0, 800)}` });
@@ -235,7 +250,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         timelineCreates.push({ action: "internal_note", description: "Internal note cleared" });
       }
     }
-    if (resolution !== undefined && resolution !== existing.resolution) {
+    if ("resolution" in updateData && updateData.resolution !== existing.resolution) {
       const trimmed = String(resolution).trim();
       if (trimmed) {
         timelineCreates.push({ action: "resolved", description: `Resolution submitted (visible to customer): ${trimmed.slice(0, 800)}` });
@@ -243,7 +258,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         timelineCreates.push({ action: "resolved", description: "Resolution cleared" });
       }
     }
-    if (escalatedTo !== undefined && escalatedTo) {
+    if ("escalatedTo" in updateData && escalatedTo) {
       timelineCreates.push({ action: "note_added", description: `Escalated to ${escalatedTo}` });
     }
     if (timelineCreates.length === 0) {
@@ -294,8 +309,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     // Only email the customer when customer-visible fields actually changed
     const customerVisibleChange =
-      (status && status !== existing.status) ||
-      (resolution !== undefined && resolution !== existing.resolution);
+      ("status" in updateData && status && status !== existing.status) ||
+      ("resolution" in updateData && updateData.resolution !== existing.resolution);
+    let emailSent: boolean | null = null;
     if (customerVisibleChange && updated) {
       const emailPayload = {
         to: updated.customer.email,
@@ -308,26 +324,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         description: updated.description,
         submittedAt: updated.submittedAt,
       } as const;
-      // Senior: ensure resolution email is delivered (Brevo) with retry and proper logging — not dev-only
-      sendIncidentEmail(emailPayload)
-        .then(() => console.log(`[EMAIL] Incident resolution email sent for ${id}`))
-        .catch((firstErr) => {
-          console.error("[EMAIL] Incident resolution email first attempt failed:", firstErr);
-          void (async () => {
-            for (let attempt = 1; attempt < 3; attempt += 1) {
-              try {
-                await sendIncidentEmail(emailPayload);
-                console.log(`[EMAIL] Incident resolution email retry ${attempt + 1} succeeded for ${id}`);
-                return;
-              } catch (retryErr) {
-                console.error(`[EMAIL] Incident resolution retry ${attempt + 1} failed for ${id}:`, retryErr);
-              }
-            }
-          })();
-        });
+      try {
+        emailSent = await sendIncidentEmail(emailPayload);
+      } catch (emailError) {
+        emailSent = false;
+        console.error(`[EMAIL] Incident update email failed for ${id}:`, emailError);
+      }
     }
 
-    return NextResponse.json(updated);
+    return NextResponse.json({ ...updated, emailSent });
   } catch {
     return NextResponse.json({ error: "Failed to update incident" }, { status: 500 });
   }

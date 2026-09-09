@@ -198,7 +198,7 @@ export function createReportPdf(report: PdfReport): Uint8Array {
     // Top orange header bar each page
     const headerY = 770;
     cmds.push(`q 0.94 0.33 0.08 rg 0 ${headerY - 14} 612 20 re f Q`);
-    cmds.push(`BT /F2 8 Tf 1 1 1 rg 20 ${headerY - 9} Td (${pdfText("DropnFly  •  Financial Oversight  •  Admin Analytics")}) Tj ET`);
+    cmds.push(`BT /F2 8 Tf 1 1 1 rg 20 ${headerY - 9} Td (${pdfText(`DropnFly  •  ${reportTypeStr} Analytics  •  Admin Report`)}) Tj ET`);
     cmds.push(`BT /F1 7 Tf 1 1 1 rg 470 ${headerY - 9} Td (${pdfText(`Page ${pageNum} of ${totalPages}  •  ${reportTypeStr}`)}) Tj ET`);
     cmds.push(`0 0 0 rg`);
 

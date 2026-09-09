@@ -267,8 +267,8 @@ export default function SettingsPage() {
     setSettings((prev) => ({
       ...prev,
       fleet_data: JSON.stringify(fleet),
-      max_concurrent_pickups: String(Math.max(1, totalVehicles)),
-      max_concurrent_deliveries: String(Math.max(1, totalVehicles)),
+      max_concurrent_pickups: String(totalVehicles),
+      max_concurrent_deliveries: String(totalVehicles),
     }));
     setDirtyKeys((prev) => {
       const next = new Set(prev);

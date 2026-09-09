@@ -13,6 +13,21 @@ export async function POST(req: Request) {
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   if (!reference || !email) return NextResponse.json({ error: "Reference and email are required" }, { status: 400 });
 
+  if (reference.startsWith("INC-")) {
+    const idPrefix = reference.slice(4).toLowerCase();
+    if (!/^[a-z0-9]{8}$/.test(idPrefix)) {
+      return NextResponse.json({ error: "Incident details do not match" }, { status: 404 });
+    }
+    const incidents = await prisma.incidentReport.findMany({
+      where: { id: { startsWith: idPrefix }, customer: { email: { equals: email, mode: "insensitive" } } },
+      select: { id: true, booking: { select: { id: true, customerId: true } } },
+      take: 2,
+    });
+    if (incidents.length !== 1) return NextResponse.json({ error: "Incident details do not match" }, { status: 404 });
+    await grantBookingAccess(incidents[0].booking.id, incidents[0].booking.customerId);
+    return NextResponse.json({ success: true, kind: "incident", trackingNumber: reference });
+  }
+
   const booking = await prisma.booking.findFirst({
     where: { referenceNumber: reference, customer: { email: { equals: email, mode: "insensitive" } } },
     select: { id: true, customerId: true },
@@ -20,5 +35,5 @@ export async function POST(req: Request) {
   // Do not reveal whether the reference or email was the mismatched field.
   if (!booking) return NextResponse.json({ error: "Booking details do not match" }, { status: 404 });
   await grantBookingAccess(booking.id, booking.customerId);
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, kind: "booking", reference });
 }

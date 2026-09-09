@@ -8,6 +8,7 @@ import { normalizeReference } from "@/lib/utils";
 import { getSystemSettings, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
 import { manilaDateStr, manilaDayRange, manilaMinutesOfDay } from "@/lib/manila-time";
+import { fleetCapacity, movementsOverlappingSlot } from "@/lib/fleet-capacity";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -328,7 +329,7 @@ export async function POST(req: Request) {
         store_operating_days: "0,1,2,3,4,5,6",
       };
       const isPickup = type === "pickup";
-      const maxConcurrent = Math.max(1, parseInt(setting(settings, isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries", defaults[isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries"])) || 1);
+      const maxConcurrent = fleetCapacity(settings);
       const durationMin = Math.max(15, parseInt(setting(settings, isPickup ? "pickup_slot_duration" : "delivery_slot_duration", defaults[isPickup ? "pickup_slot_duration" : "delivery_slot_duration"])) || 60);
       const { manilaWeekday } = await import("@/lib/manila-time");
       const weekday = String(manilaWeekday(date));
@@ -342,7 +343,7 @@ export async function POST(req: Request) {
         const [h, m] = v.split(":").map(Number);
         return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
       };
-      let startMin = parseHM(operatingStart);
+      const startMin = parseHM(operatingStart);
       let endMin = parseHM(operatingEnd);
       if (endMin === 1439) endMin = 1440;
       if (endMin === 0 && (operatingEnd === "24:00" || operatingEnd === "00:00")) endMin = 1440;
@@ -351,29 +352,37 @@ export async function POST(req: Request) {
         throw new Error(`Selected ${type} time is outside operating hours (${operatingStart}–${operatingEnd}). Please choose another time.`);
       }
       const { start: dayStart, end: dayEnd } = manilaDayRange(date);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const existing: any[] = await (db as typeof prisma).booking.findMany({
+      const existing = await (db as typeof prisma).booking.findMany({
         where: {
           status: { notIn: ["CANCELLED", "DELIVERED"] },
-          ...(isPickup ? { checkIn: { gte: dayStart, lt: dayEnd } } : { checkOut: { gte: dayStart, lt: dayEnd } }),
+          OR: [
+            { checkIn: { gte: dayStart, lt: dayEnd } },
+            { checkOut: { gte: dayStart, lt: dayEnd } },
+          ],
         },
-        select: isPickup ? { checkIn: true } : { checkOut: true },
+        select: { checkIn: true, checkOut: true },
       });
-      let count = 0;
-      for (const b of existing) {
-        const dt = isPickup ? (b as { checkIn: Date }).checkIn : (b as { checkOut: Date | null }).checkOut;
-        if (!dt) continue;
-        const t = manilaMinutesOfDay(dt);
-        if (t >= slotStartMinutes && t < slotStartMinutes + durationMin) count++;
-      }
+      const pickupDuration = Math.max(15, parseInt(setting(settings, "pickup_slot_duration", "60")) || 60);
+      const deliveryDuration = Math.max(15, parseInt(setting(settings, "delivery_slot_duration", "60")) || 60);
+      const movements = existing.flatMap((booking) => [
+        ...(booking.checkIn >= dayStart && booking.checkIn < dayEnd
+          ? [{ startMinutes: manilaMinutesOfDay(booking.checkIn), durationMinutes: pickupDuration }]
+          : []),
+        ...(booking.checkOut && booking.checkOut >= dayStart && booking.checkOut < dayEnd
+          ? [{ startMinutes: manilaMinutesOfDay(booking.checkOut), durationMinutes: deliveryDuration }]
+          : []),
+      ]);
+      const count = movementsOverlappingSlot(slotStartMinutes, durationMin, movements);
       if (count >= maxConcurrent) {
-        throw new Error(`The selected ${type} time slot is fully booked. Please choose another time.`);
+        throw new Error(`All fleet vehicles are occupied during the selected ${type} time. Please choose another slot.`);
       }
     };
 
     const booking = await prisma.$transaction(async (tx) => {
       // Advisory locks for slot + promo + capacity to serialize concurrent staff bookings
-      const lockKeys = [checkInDate, checkOutDate].filter((d): d is Date => Boolean(d)).map((d) => `slot:${manilaDateStr(d)}:${d === checkInDate ? "pickup" : "delivery"}`);
+      const lockKeys = [...new Set([checkInDate, checkOutDate]
+        .filter((d): d is Date => Boolean(d))
+        .map((d) => `fleet-slot:${manilaDateStr(d)}`))].sort();
       for (const key of lockKeys) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
       }
@@ -448,7 +457,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: e.message }, { status: 409 });
     }
     const msg = e instanceof Error ? e.message : "";
-    if (msg.includes("fully booked") || msg.includes("outside operating hours") || msg.includes("closed on the selected")) {
+    if (msg.includes("fleet vehicles are occupied") || msg.includes("fully booked") || msg.includes("outside operating hours") || msg.includes("closed on the selected")) {
       return NextResponse.json({ error: msg }, { status: 409 });
     }
     if (msg.includes("Promo code")) {

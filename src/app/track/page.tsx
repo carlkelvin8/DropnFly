@@ -49,7 +49,9 @@ export default function TrackPage() {
       setLoading(false);
       return;
     }
-    router.push(`/track/${reference.trim().toUpperCase()}`);
+    const result = await response.json().catch(() => null);
+    const normalized = reference.trim().toUpperCase();
+    router.push(result?.kind === "incident" ? `/track/incident/${normalized}` : `/track/${normalized}`);
   }
 
   function handleScan(raw: string) {
@@ -73,7 +75,7 @@ export default function TrackPage() {
             Track My Luggage
           </h1>
           <p className="mt-2 text-muted-foreground">
-            Verify your booking reference and email to check your luggage status
+            Enter a booking reference or incident number with your email
           </p>
         </div>
 
@@ -81,17 +83,17 @@ export default function TrackPage() {
           <CardHeader>
             <CardTitle>Search by Reference</CardTitle>
             <CardDescription>
-              Your reference number was sent via email after booking
+              Use your booking reference or incident tracking number from email
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="reference">Booking Reference</Label>
+                <Label htmlFor="reference">Booking Reference or Incident Number</Label>
                 <div>
                   <Input
                     id="reference"
-                    placeholder="e.g. DROPFLY-ABC123"
+                    placeholder="e.g. DROPFLY-ABC123 or INC-AB12CD34"
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
                     className="font-mono uppercase"

@@ -968,7 +968,7 @@ function ReportsTab({ period, dateFrom, dateTo }: { period: string; dateFrom: st
 
 function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFrom: string; dateTo: string }) {
   const [reportType, setReportType] = useState<"descriptive" | "predictive" | "financial">("descriptive");
-  const [report, setReport] = useState<{ title: string; summary: string; sections: { heading: string; content: string }[]; generatedAt: string } | null>(null);
+  const [report, setReport] = useState<{ title: string; summary: string; sections: { heading: string; content: string }[]; generatedAt: string; source?: "gemini" | "deterministic" } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -1071,11 +1071,11 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      // Professional filename as per spec: Financial-Oversight-Report-YYYY-MM-DD-to-YYYY-MM-DD.pdf
+      // Keep the downloaded filename aligned with the selected report focus.
       const fromStr = period === "custom" ? (dateFrom || new Date().toISOString().slice(0,10)) : new Date(Date.now() - (period==="week"?7:period==="year"?365:30)*86400000).toISOString().slice(0,10);
       const toStr = period === "custom" ? (dateTo || new Date().toISOString().slice(0,10)) : new Date().toISOString().slice(0,10);
       const formattedType = reportType.charAt(0).toUpperCase() + reportType.slice(1);
-      link.download = `Financial-Oversight-Report-${formattedType}-${fromStr}-to-${toStr}.pdf`;
+      link.download = `${formattedType}-Analytics-Report-${fromStr}-to-${toStr}.pdf`;
       link.click();
       URL.revokeObjectURL(url);
       toast.success("PDF report downloaded");
@@ -1098,11 +1098,11 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">AI-Generated Reports</h2>
-          <p className="text-sm text-muted-foreground">Data-backed reports generated on demand by Gemini AI for the selected period.</p>
+          <p className="text-sm text-muted-foreground">Focus-specific reports generated from live data, using Gemini AI when configured.</p>
         </div>
         <Badge variant="secondary" className="gap-1.5 px-2.5 py-1">
           <Brain className="h-3.5 w-3.5" />
-          Gemini AI
+          {report?.source === "deterministic" ? "Data Analysis" : "Gemini AI"}
         </Badge>
       </div>
 
@@ -1269,7 +1269,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
                         <span className="hidden sm:inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">{i + 1}</span>
                       </div>
                       <div className="prose prose-sm max-w-none text-sm leading-relaxed text-muted-foreground">
-                        {section.content.split(/(?<=[.!?])\s+/).map((para, idx) => (
+                        {section.content.split(/\n\s*\n/).map((para, idx) => (
                           <p key={idx} className={idx > 0 ? "mt-2" : ""}>{para}</p>
                         ))}
                       </div>

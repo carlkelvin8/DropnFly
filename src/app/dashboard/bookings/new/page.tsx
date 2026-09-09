@@ -53,7 +53,7 @@ export default function NewBookingPage() {
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
 
-  // Customer - walk-in creates a new customer (same fields as online booking)
+  // Customer - walk-in creates a customer or reuses a returnee's email
   const [custName, setCustName] = useState("");
   const [custEmail, setCustEmail] = useState("");
   const [custPhone, setCustPhone] = useState("");
@@ -284,6 +284,7 @@ export default function NewBookingPage() {
           phone: custPhone.trim(),
           countryOfOrigin: custCountry,
           cityOfOrigin: custCity,
+          reuseExisting: true,
         }),
       });
       if (!custRes.ok) {

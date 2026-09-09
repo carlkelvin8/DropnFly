@@ -29,10 +29,10 @@ export async function POST(req: Request) {
 
   const pdf = createReportPdf(enriched);
 
-  // Professional filename: Financial-Oversight-Report-YYYY-MM-DD-to-YYYY-MM-DD.pdf
+  // Keep the export name aligned with the selected report focus.
   const safeRange = (dateRange || new Date().toISOString().slice(0, 10)).replace(/\s+/g, "-").replace(/[^0-9A-Za-z\-to]/g, "");
   const formattedType = String(reportType).charAt(0).toUpperCase() + String(reportType).slice(1);
-  const filename = `Financial-Oversight-Report-${formattedType}-${safeRange}.pdf`.replace(/\s+/g, "-");
+  const filename = `${formattedType}-Analytics-Report-${safeRange}.pdf`.replace(/\s+/g, "-");
 
   return new NextResponse(pdf as unknown as BodyInit, {
     headers: {

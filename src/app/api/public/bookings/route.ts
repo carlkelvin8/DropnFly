@@ -10,6 +10,7 @@ import { grantBookingAccess } from "@/lib/booking-access";
 import { manilaDateStr, manilaMinutesOfDay, manilaDayRange } from "@/lib/manila-time";
 import type { Prisma, Booking } from "@/generated/prisma/client";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
+import { fleetCapacity, movementsOverlappingSlot } from "@/lib/fleet-capacity";
 
 class StorageCapacityError extends Error {}
 
@@ -163,7 +164,7 @@ export async function POST(req: Request) {
         store_operating_days: "0,1,2,3,4,5,6",
       };
       const isPickup = type === "pickup";
-      const maxConcurrent = Math.max(1, parseInt(setting(settings, isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries", defaults[isPickup ? "max_concurrent_pickups" : "max_concurrent_deliveries"])) || 1);
+      const maxConcurrent = fleetCapacity(settings);
       const durationMin = Math.max(15, parseInt(setting(settings, isPickup ? "pickup_slot_duration" : "delivery_slot_duration", defaults[isPickup ? "pickup_slot_duration" : "delivery_slot_duration"])) || 60);
       // Respect admin operating days
       const { manilaWeekday } = await import("@/lib/manila-time");
@@ -179,7 +180,7 @@ export async function POST(req: Request) {
         const [h, m] = v.split(":").map(Number);
         return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
       };
-      let startMin = parseHM(operatingStart);
+      const startMin = parseHM(operatingStart);
       let endMin = parseHM(operatingEnd);
       if (endMin === 1439) endMin = 1440;
       if (endMin === 0 && (operatingEnd === "24:00" || operatingEnd === "00:00")) endMin = 1440;
@@ -191,22 +192,26 @@ export async function POST(req: Request) {
       const existing = await db.booking.findMany({
         where: {
           status: { notIn: ["CANCELLED", "DELIVERED"] },
-          ...(isPickup
-            ? { checkIn: { gte: dayStart, lt: dayEnd } }
-            : { checkOut: { gte: dayStart, lt: dayEnd } }
-          ),
+          OR: [
+            { checkIn: { gte: dayStart, lt: dayEnd } },
+            { checkOut: { gte: dayStart, lt: dayEnd } },
+          ],
         },
-        select: isPickup ? { checkIn: true } : { checkOut: true },
+        select: { checkIn: true, checkOut: true },
       });
-      let count = 0;
-      for (const b of existing) {
-        const dt = isPickup ? (b as { checkIn: Date }).checkIn : (b as { checkOut: Date | null }).checkOut;
-        if (!dt) continue;
-        const t = manilaMinutesOfDay(dt);
-        if (t >= slotStartMinutes && t < slotStartMinutes + durationMin) count++;
-      }
+      const pickupDuration = Math.max(15, parseInt(setting(settings, "pickup_slot_duration", "60")) || 60);
+      const deliveryDuration = Math.max(15, parseInt(setting(settings, "delivery_slot_duration", "60")) || 60);
+      const movements = existing.flatMap((booking) => [
+        ...(booking.checkIn >= dayStart && booking.checkIn < dayEnd
+          ? [{ startMinutes: manilaMinutesOfDay(booking.checkIn), durationMinutes: pickupDuration }]
+          : []),
+        ...(booking.checkOut && booking.checkOut >= dayStart && booking.checkOut < dayEnd
+          ? [{ startMinutes: manilaMinutesOfDay(booking.checkOut), durationMinutes: deliveryDuration }]
+          : []),
+      ]);
+      const count = movementsOverlappingSlot(slotStartMinutes, durationMin, movements);
       if (count >= maxConcurrent) {
-        throw new Error(`The selected ${type} time slot is fully booked. Please choose another time.`);
+        throw new Error(`All fleet vehicles are occupied during the selected ${type} time. Please choose another slot.`);
       }
     };
 
@@ -256,7 +261,9 @@ export async function POST(req: Request) {
         booking = await prisma.$transaction(async (tx) => {
           // Serialize reservations for these slots using Manila date (not UTC) so
           // 00:30 Manila doesn't lock a different advisory key than the query.
-          const lockKeys = [checkInDate, checkOutDate].filter((d): d is Date => Boolean(d)).map((d) => `slot:${manilaDateStr(d)}:${d === checkInDate ? "pickup" : "delivery"}`);
+          const lockKeys = [...new Set([checkInDate, checkOutDate]
+            .filter((d): d is Date => Boolean(d))
+            .map((d) => `fleet-slot:${manilaDateStr(d)}`))].sort();
           for (const key of lockKeys) {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
           }
@@ -420,6 +427,10 @@ export async function POST(req: Request) {
   } catch (error) {
     if (error instanceof StorageCapacityError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("fleet vehicles are occupied") || message.includes("outside operating hours") || message.includes("closed on the selected")) {
+      return NextResponse.json({ error: message }, { status: 409 });
     }
     console.error("Booking creation error:", error);
     return NextResponse.json({ error: "Failed to create booking" }, { status: 500 });

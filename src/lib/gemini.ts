@@ -30,6 +30,84 @@ interface PredictionResponse {
   generatedAt: string;
 }
 
+export interface AnalyticsReport {
+  title: string;
+  summary: string;
+  sections: { heading: string; content: string }[];
+  generatedAt: string;
+  source: "gemini" | "deterministic";
+}
+
+function money(value: number): string {
+  return `PHP ${value.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function reportWithoutGemini(type: "descriptive" | "predictive" | "financial", data: Record<string, unknown>): AnalyticsReport {
+  const bookings = Number(data.totalBookings || 0);
+  const paid = Number(data.totalRevenue || 0);
+  const booked = Number(data.bookedValue || 0);
+  const outstanding = Number(data.outstandingValue || Math.max(0, booked - paid));
+  const collectionRate = Number(data.collectionRate || 0);
+  const average = Number(data.avgBookingValue || 0);
+  const averagePaid = Number(data.avgPaidRevenuePerBooking || 0);
+  const daily = Number(data.averageDailyBookings || 0);
+  const utilization = Number(data.storageUtilization || 0);
+  const capacity = Number(data.storageCapacity || 0);
+  const employees = Number(data.activeEmployees || 0);
+  const customers = Number(data.totalCustomers || 0);
+  const repeats = Number(data.repeatCustomers || 0);
+  const luggage = Number(data.totalLuggageItems || 0);
+  const statuses = (data.bookingsByStatus as { status: string; count: number }[] | undefined) || [];
+  const methods = (data.paymentsByMethod as { method: string; count: number; amount: number }[] | undefined) || [];
+  const trends = (data.dailyTrend as { date: string; bookings: number; bookedValue: number }[] | undefined) || [];
+  const statusText = statuses.length ? statuses.map((row) => `${row.status}: ${row.count}`).join(", ") : "No status activity recorded";
+  const busiest = trends.reduce<(typeof trends)[number] | null>((best, row) => !best || row.bookings > best.bookings ? row : best, null);
+  const repeatRate = customers ? repeats / customers * 100 : 0;
+  const forecast = (days: number) => Math.max(0, Math.round(daily * days));
+  const projection = (days: number) => forecast(days) * average;
+
+  const reports: Record<typeof type, Omit<AnalyticsReport, "generatedAt" | "source">> = {
+    descriptive: {
+      title: "Descriptive Analytics — Period Performance",
+      summary: `${bookings} bookings were recorded in the selected period. They produced ${money(booked)} in booked value and ${money(paid)} in confirmed collections.`,
+      sections: [
+        { heading: "Booking Volume and Status Mix", content: `Recorded statuses: ${statusText}. Average demand was ${daily.toFixed(2)} bookings per day.${busiest ? ` The busiest recorded day was ${busiest.date}, with ${busiest.bookings} bookings.` : " There is not enough activity to identify a busiest day."}\n\nUse this mix to identify workflow stages where bookings accumulate.` },
+        { heading: "Observed Revenue Performance", content: `Booked value was ${money(booked)}, while paid revenue was ${money(paid)}. Average booked value was ${money(average)}, with ${money(outstanding)} outstanding and a ${collectionRate.toFixed(1)}% collection rate.\n\nThese figures describe recorded performance; revenue is not profit.` },
+        { heading: "Operational Snapshot", content: `${luggage} luggage items were associated with period bookings. Storage utilization is ${utilization.toFixed(1)}% of configured capacity (${capacity}), supported by ${employees} active employees.\n\nReview staffing and storage together during concentrated demand.` },
+        { heading: "Customer Activity", content: `${customers} customers booked during the period, including ${repeats} repeat customers (${repeatRate.toFixed(1)}%).\n\nThis is a period return rate, not lifetime retention.` },
+        { heading: "Data Limitations", content: "This report summarizes recorded events only. Missing payments, incomplete statuses, or activity outside the selected period can change the interpretation." },
+        { heading: "Recommended Operational Actions", content: "1. Review the largest active status queue.\n\n2. Reconcile outstanding bookings.\n\n3. Compare busy days with employee schedules.\n\n4. Track the same measures next period." },
+      ],
+    },
+    predictive: {
+      title: "Predictive Analytics — Demand Forecast",
+      summary: `At ${daily.toFixed(2)} bookings per day, the baseline forecast is ${forecast(30)} bookings over 30 days, ${forecast(60)} over 60 days, and ${forecast(90)} over 90 days. These are run-rate projections, not guaranteed outcomes.`,
+      sections: [
+        { heading: "30 / 60 / 90-Day Booking Forecast", content: `Baseline volumes are ${forecast(30)}, ${forecast(60)}, and ${forecast(90)} bookings over 30, 60, and 90 days respectively.\n\nConfidence is limited when the selected history is short, sparse, or seasonal.` },
+        { heading: "Projected Booked Value", content: `At the current ${money(average)} average, projected booked value is ${money(projection(30))}, ${money(projection(60))}, and ${money(projection(90))} over 30, 60, and 90 days.\n\nThis excludes future cancellations, collection delays, and costs.` },
+        { heading: "Capacity Outlook", content: `Current utilization is ${utilization.toFixed(1)}% of capacity (${capacity}). Check occupancy weekly and trigger a capacity review at 80%; a monthly run rate cannot model overlapping storage stays.` },
+        { heading: "Staffing Outlook", content: `${employees} active employees would support approximately ${employees ? (forecast(30) / employees).toFixed(1) : "0.0"} forecast bookings per employee over 30 days. Use time-slot demand before changing schedules.` },
+        { heading: "Forecast Risks and Assumptions", content: "The forecast assumes current demand, prices, operating hours, and capacity remain stable. It does not model holidays, disruptions, campaigns, or external events." },
+        { heading: "Recommended Forecast Decisions", content: "1. Compare forecast with actuals weekly.\n\n2. Reforecast after pricing or capacity changes.\n\n3. Prepare coverage for observed peak days.\n\n4. Review capacity at the defined threshold." },
+      ],
+    },
+    financial: {
+      title: "Financial Analytics — Collections and Revenue",
+      summary: `The period recorded ${money(booked)} in booked value and ${money(paid)} in confirmed paid revenue. Outstanding value is ${money(outstanding)}, for a ${collectionRate.toFixed(1)}% collection rate.`,
+      sections: [
+        { heading: "Revenue and Collection Position", content: `Booked value was ${money(booked)} and verified paid collections were ${money(paid)}. The ${money(outstanding)} difference remains outstanding.\n\nBooked value is not cash received; use paid revenue for collection reporting.` },
+        { heading: "Revenue per Booking", content: `Average booked value was ${money(average)}, while average paid revenue per booking was ${money(averagePaid)}. Review outliers before using averages for pricing decisions.` },
+        { heading: "Payment Method Mix", content: methods.length ? `Payment activity: ${methods.map((row) => `${row.method}: ${row.count} payment(s), ${money(Number(row.amount))}`).join("; ")}.\n\nReconcile these totals with provider and cash settlements.` : "No paid payment-method data was recorded, so payment mix analysis is unavailable." },
+        { heading: "Receivables Risk", content: `${money(outstanding)} is uncollected relative to booked value. Prioritize reconciliation by booking age and amount, separating valid receivables from cancelled or disputed transactions.` },
+        { heading: "Profitability Limitation", content: "Net profit and margin cannot be calculated because operating costs, payroll, payment fees, and period-matched expenses are unavailable. Revenue must not be presented as profit." },
+        { heading: "Recommended Financial Actions", content: "1. Reconcile every outstanding balance.\n\n2. Match payment totals to settlements.\n\n3. Add period-matched expenses before reporting profit.\n\n4. Monitor collection rate each cycle." },
+      ],
+    },
+  };
+
+  return { ...reports[type], generatedAt: new Date().toISOString(), source: "deterministic" };
+}
+
 async function queryGemini(prompt: string): Promise<string> {
   if (!GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY not configured");
@@ -141,30 +219,9 @@ Keep predictions realistic based on the data. Values must be numbers.`;
 export async function generateReport(
   type: "descriptive" | "predictive" | "financial",
   analyticsData: Record<string, unknown>
-): Promise<{ title: string; summary: string; sections: { heading: string; content: string }[]; generatedAt: string }> {
+): Promise<AnalyticsReport> {
   if (!GEMINI_API_KEY) {
-    const bookings = Number(analyticsData.totalBookings || 0);
-    const revenue = Number(analyticsData.totalRevenue || 0);
-    const average = Number(analyticsData.avgBookingValue || (bookings ? revenue / bookings : 0));
-    const utilization = Number(analyticsData.storageUtilization || 0);
-    const paidRevenue = Number(analyticsData.totalRevenue || 0);
-    const bookedValue = Number(analyticsData.bookedValue || revenue);
-    const outstanding = Number(analyticsData.outstandingValue || Math.max(0, bookedValue - paidRevenue));
-    const collectionRate = Number(analyticsData.collectionRate || 0);
-    const activeEmployees = Number(analyticsData.activeEmployees || 0);
-    const capacity = Number(analyticsData.storageCapacity || 0);
-    const repeatCustomers = Number(analyticsData.repeatCustomers || 0);
-    const title = `${type.charAt(0).toUpperCase() + type.slice(1)} Analytics Report`;
-    const common = [
-      { heading: "Scope and Data Basis", content: `This report covers ${bookings} bookings within the selected reporting period. It uses recorded bookings, payments, luggage items, storage capacity, customers, and employee records; results should be interpreted in the context of the available live data.` },
-      { heading: "Booking Performance", content: `${bookings} bookings produced an average booked value of ₱${average.toFixed(2)}. Review the status distribution and daily trend to identify completion bottlenecks, cancellations, and periods of concentrated demand.` },
-      { heading: "Revenue and Collections", content: `Gross booked value is ₱${bookedValue.toFixed(2)}, while confirmed paid collections are ₱${paidRevenue.toFixed(2)}. Outstanding value is ₱${outstanding.toFixed(2)}, resulting in a ${collectionRate.toFixed(1)}% collection rate for the selected period.` },
-      { heading: "Operational Capacity", content: `Configured capacity is ${capacity} slots and current utilization is ${utilization.toFixed(1)}%. The operation has ${activeEmployees} active employees. Capacity and staffing should be reviewed together during peak booking windows.` },
-      { heading: "Customer Behavior", content: `${Number(analyticsData.totalCustomers || 0)} customers and ${repeatCustomers} repeat customers are represented. Repeat behavior is a useful retention signal, but conclusions become stronger as more completed booking cycles are recorded.` },
-      { heading: "Risks and Limitations", content: "Forecasts are decision-support estimates, not guarantees. Missing payments, incomplete statuses, sparse history, seasonal changes, and unrecorded operating costs can materially change the conclusions." },
-      { heading: "Recommended Actions", content: "Reconcile pending collections, investigate aging active bookings, schedule employees around observed peak hours, monitor utilization thresholds weekly, and compare forecast outcomes with actual results every reporting cycle." },
-    ];
-    return { title, summary: `A detailed deterministic report generated from ${bookings} bookings. It remains available without an external AI key and clearly separates booked value from confirmed paid revenue.`, sections: common, generatedAt: new Date().toISOString() };
+    return reportWithoutGemini(type, analyticsData);
   }
   const reportInstructions = `Use the selected report period exactly. Ground every conclusion in the supplied data and quote relevant numeric values. Clearly distinguish gross booked value, paid revenue, outstanding value, and collection rate. Include limitations when the dataset is sparse or a required cost metric is unavailable. Do not invent costs, profit, customer demographics, or causal explanations. Each section should be a substantial analytical paragraph with findings, interpretation, and a specific operational implication.`;
   const prompts: Record<string, string> = {
@@ -237,7 +294,7 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 
   try {
     const cacheKey = `report:${type}:${crypto.createHash("sha256").update(JSON.stringify(analyticsData)).digest("hex")}`;
-    const cached = getCached<{ title: string; summary: string; sections: { heading: string; content: string }[]; generatedAt: string }>(cacheKey);
+    const cached = getCached<AnalyticsReport>(cacheKey);
     if (cached) return cached;
 
     const prompt = prompts[type] || prompts.descriptive;
@@ -249,6 +306,7 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
       summary: parsed.summary || "",
       sections: parsed.sections || [],
       generatedAt: new Date().toISOString(),
+      source: "gemini" as const,
     };
     setCache(cacheKey, result);
     return result;

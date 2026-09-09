@@ -36,6 +36,27 @@ export async function POST(req: Request) {
     }
 
     const normalizedEmail = String(body.email).trim().toLowerCase();
+
+    // A walk-in booking may belong to a returning customer. Resolve that
+    // customer atomically by email so concurrent requests cannot create a
+    // duplicate, while preserving the existing customer's profile/account.
+    if (body.reuseExisting === true) {
+      const customer = await prisma.customer.upsert({
+        where: { email: normalizedEmail },
+        update: {},
+        create: {
+          name: String(body.name).trim(),
+          email: normalizedEmail,
+          phone: String(body.phone).trim(),
+          countryOfOrigin: body.countryOfOrigin || null,
+          cityOfOrigin: body.cityOfOrigin || null,
+        },
+        omit: { password: true },
+      });
+
+      return NextResponse.json(customer);
+    }
+
     const existing = await prisma.customer.findUnique({
       where: { email: normalizedEmail },
     });
