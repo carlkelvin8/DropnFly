@@ -114,7 +114,7 @@ export default function BookingsPage() {
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
     const qs = params.toString();
-    fetch(`/api/bookings${qs ? `?${qs}` : ""}`)
+    fetch(`/api/bookings${qs ? `?${qs}` : ""}`, { cache: "no-store" })
       .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
       .then(setBookings)
       .catch(() => toast.error("Failed to load bookings"))
