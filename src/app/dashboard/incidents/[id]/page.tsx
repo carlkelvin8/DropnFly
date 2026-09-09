@@ -431,16 +431,14 @@ export default function IncidentDetailPage() {
         </div>
 
         <div className="space-y-6">
-          {/* Admin Actions */}
-          <Card className="border-t-2 border-t-blue-500 shadow-md">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <User className="h-4 w-4 text-blue-500" /> Admin Actions
-              </CardTitle>
-              <CardDescription className="text-xs">Changes are emailed to the customer automatically</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {(incident.type === "no_show" || incident.type === "cancellation") && (
+          {/* Admin Actions — split into 3 isolated cards so each save touches exactly one concern */}
+          {(incident.type === "no_show" || incident.type === "cancellation") && (
+            <Card className="border-t-2 border-t-amber-500 shadow-md">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-sm"><Flag className="h-4 w-4 text-amber-600" /> Decision</CardTitle>
+                <CardDescription className="text-xs">Accept / Dismiss for no-show & cancellation reports</CardDescription>
+              </CardHeader>
+              <CardContent>
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <p className="text-xs font-semibold text-amber-800">
                     {incident.status === "PENDING"
@@ -474,7 +472,16 @@ export default function IncidentDetailPage() {
                     </div>
                   )}
                 </div>
-              )}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="border-t-2 border-t-blue-500 shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm"><Clock className="h-4 w-4 text-blue-600" /> 1 — Status & Priority</CardTitle>
+              <CardDescription className="text-xs">Only this card updates status/priority. Does not touch notes or resolution.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Status</Label>
                 <Select
@@ -505,36 +512,53 @@ export default function IncidentDetailPage() {
                   <option value="director">Director</option>
                   <option value="executive">Executive</option>
                 </select>
-                <p className="text-[10px] text-muted-foreground">Escalate this incident to higher management</p>
+                <p className="text-[10px] text-muted-foreground">Escalate to higher management</p>
               </div>
               <Button onClick={() => handleSave("status")} disabled={saving !== null} variant="outline" className="w-full">
                 <Save className="mr-2 h-4 w-4" /> {saving === "status" ? "Saving..." : "Save Status & Priority"}
               </Button>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Internal Notes (admin only)</Label>
-                <textarea
-                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm"
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  placeholder="Notes visible only to admin/staff..."
-                />
-                <Button onClick={() => handleSave("note")} disabled={saving !== null || !editNotes.trim()} variant="outline" className="w-full">
-                  <Save className="mr-2 h-4 w-4" /> {saving === "note" ? "Saving..." : "Save Internal Note"}
-                </Button>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Resolution (visible to customer)</Label>
-                <textarea
-                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm"
-                  value={editResolution}
-                  onChange={(e) => setEditResolution(e.target.value)}
-                  placeholder="Explain how this was resolved..."
-                />
-                <p className="text-[10px] text-muted-foreground">Customers will see this resolution on their tracking page</p>
-                <Button onClick={() => handleSave("resolution")} disabled={saving !== null || !editResolution.trim()} className="w-full">
-                  <Save className="mr-2 h-4 w-4" /> {saving === "resolution" ? "Saving..." : "Save & Email Resolution"}
-                </Button>
-              </div>
+              <p className="text-[10px] text-muted-foreground">Emails customer if status changes.</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-t-2 border-t-slate-500 shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm"><Flag className="h-4 w-4 text-slate-600" /> 2 — Internal Notes</CardTitle>
+              <CardDescription className="text-xs">Admin only — never emailed, never visible to customer. Isolated save.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Label className="text-xs">Internal Notes (admin only)</Label>
+              <textarea
+                className="flex min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Private notes — does not update resolution or status..."
+              />
+              <Button onClick={() => handleSave("note")} disabled={saving !== null || !editNotes.trim()} variant="outline" className="w-full">
+                <Save className="mr-2 h-4 w-4" /> {saving === "note" ? "Saving..." : "Save Internal Note"}
+              </Button>
+              <p className="text-[10px] text-muted-foreground">Only this note is saved. Resolution stays unchanged.</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-t-2 border-t-emerald-500 shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm"><CheckCircle className="h-4 w-4 text-emerald-600" /> 3 — Customer Resolution</CardTitle>
+              <CardDescription className="text-xs">Visible to customer and emailed on save. Isolated save.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Label className="text-xs">Resolution (visible to customer)</Label>
+              <textarea
+                className="flex min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm"
+                value={editResolution}
+                onChange={(e) => setEditResolution(e.target.value)}
+                placeholder="Resolution message — will be emailed to customer..."
+              />
+              <p className="text-[10px] text-muted-foreground">This message is emailed to {incident.customer.email} and shown on /track/incident/INC-...</p>
+              <Button onClick={() => handleSave("resolution")} disabled={saving !== null || !editResolution.trim()} className="w-full bg-emerald-600 text-white hover:bg-emerald-700">
+                <Save className="mr-2 h-4 w-4" /> {saving === "resolution" ? "Saving..." : "Save & Email Resolution"}
+              </Button>
+              <p className="text-[10px] text-muted-foreground">Only this resolution is saved & emailed. Internal notes stay unchanged.</p>
             </CardContent>
           </Card>
 
