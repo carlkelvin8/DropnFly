@@ -270,6 +270,27 @@ export default function TrackingDashboardPage() {
           {locationStatus === "active" ? "Live geolocation is active — customer map is updating." : locationStatus === "requesting" ? "Requesting location access…" : "Enable Location permission for live tracking."}
         </div>
       )}
+      {filteredMyTasks.filter((t) => !!t.pickupStartedAt).length > 0 && (
+        <Card className="border-t-2 border-t-emerald-500 shadow-md">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm"><Navigation className="h-4 w-4 text-emerald-600" /> Live Tracking — You to Customer</CardTitle>
+            <p className="text-xs text-muted-foreground">Customer NAIA terminal pinned for your guidance. Your live location is visible to customer with your profile (photo, name, vehicle).</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {filteredMyTasks.filter((t) => !!t.pickupStartedAt).map((task) => {
+              const terminal = task.pickupLocation.split(" - ")[0].trim();
+              return (
+                <div key={task.id} className="rounded-lg border bg-muted/20 p-3">
+                  <div className="flex items-center justify-between"><code className="rounded bg-white px-2 py-0.5 text-xs font-mono font-bold">{task.referenceNumber}</code><Badge variant="outline" className="text-[10px]">Tracking Active</Badge></div>
+                  <div className="mt-2 flex items-center gap-2 text-sm"><MapPin className="h-4 w-4 text-emerald-600" /><span>Customer at <strong>{terminal}</strong> — {task.pickupLocation}</span></div>
+                  <p className="mt-1 text-xs text-muted-foreground">NAIA pin shown on your map. Customer sees your live dot + profile.</p>
+                  <div className="mt-3 flex gap-2"><Button size="sm" asChild><Link href={`/track/map/${task.referenceNumber}`}><Navigation className="mr-1 h-3 w-3" /> Open Live Map</Link></Button><Button size="sm" variant="outline" asChild><Link href={`/track/${task.referenceNumber}`}><PackageOpen className="mr-1 h-3 w-3" /> Customer View</Link></Button></div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Logistics Pending Tasks — senior-level: complete task lifecycle, per-day filter */}
       <Card className="border-l-4 border-l-blue-500">
