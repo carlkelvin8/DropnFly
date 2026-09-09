@@ -66,6 +66,11 @@ interface Employee {
   isActive: boolean;
   isApproved: boolean;
   role: string;
+  vehicleType?: string | null;
+  plateNumber?: string | null;
+  profilePic?: string | null;
+  currentLat?: number | null;
+  currentLng?: number | null;
 }
 
 interface Extension {
@@ -1094,9 +1099,9 @@ export default function BookingDetailPage() {
                   <form key={phase} onSubmit={handleAssign} className="space-y-2 rounded-lg border bg-muted/20 p-3">
                     <input type="hidden" name="phase" value={phase} />
                     <div>
-                      <Label htmlFor={`employee-${phase}`}>{phaseLabel} Employee</Label>
+                      <Label htmlFor={`employee-${phase}`}>{phaseLabel} Employee + Vehicle</Label>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {currentAssignment ? `Currently: ${currentAssignment.user.name}` : "No employee assigned"}
+                        {currentAssignment ? `Currently: ${currentAssignment.user.name}` : "No employee assigned — choose rider and vehicle below"}
                       </p>
                     </div>
                     <select
@@ -1106,14 +1111,23 @@ export default function BookingDetailPage() {
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                       required
                     >
-                      <option value="">Select active employee...</option>
-                      {employees.filter((employee) => employee.isActive && employee.isApproved && employee.role === "EMPLOYEE").map((employee) => (
-                        <option key={employee.id} value={employee.id}>{employee.name}</option>
-                      ))}
+                      <option value="">Select employee + vehicle...</option>
+                      {employees.filter((employee) => employee.isActive && employee.isApproved && employee.role === "EMPLOYEE").map((employee) => {
+                        const vehicle = employee.vehicleType ? `${employee.vehicleType}${employee.plateNumber ? ` • ${employee.plateNumber}` : ""}` : "No vehicle set — update profile";
+                        return (
+                          <option key={employee.id} value={employee.id}>{employee.name} — {vehicle}</option>
+                        );
+                      })}
                     </select>
+                    {(() => {
+                      const preview = employees.find((e) => e.id === (typeof document !== "undefined" ? (document.getElementById(`employee-${phase}`) as HTMLSelectElement)?.value : "")) || null;
+                      // Show selected vehicle preview without extra state — simple hint
+                      return null;
+                    })()}
                     <Button type="submit" className="w-full" variant={currentAssignment ? "outline" : "default"} disabled={saving || bookingLocked}>
-                      {currentAssignment ? `Re-assign ${phaseLabel}` : `Assign ${phaseLabel}`}
+                      {currentAssignment ? `Re-assign ${phaseLabel} + Vehicle` : `Assign ${phaseLabel} + Vehicle`}
                     </Button>
+                    <p className="text-[10px] text-muted-foreground">Vehicle from employee profile (plate, color, model). Update in Employees → Profile if missing.</p>
                   </form>
                 );
               })}

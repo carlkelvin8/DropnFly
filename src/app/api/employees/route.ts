@@ -27,6 +27,12 @@ export async function GET(req: Request) {
       isApproved: true,
       isActive: true,
       createdAt: true,
+      vehicleType: true,
+      plateNumber: true,
+      profilePic: true,
+      currentLat: true,
+      currentLng: true,
+      lastLocationUpdate: true,
       _count: { select: { bookings: true, assignedBookings: true } },
     },
   });
