@@ -191,7 +191,10 @@ export default function BookPage() {
   const fetchSlots = useCallback(async (date: string, type: "pickup" | "delivery"): Promise<TimeSlot[]> => {
     if (!date) return [];
     try {
-      const res = await fetch(`/api/public/time-slots?date=${date}&type=${type}`);
+      const res = await fetch(`/api/public/time-slots?date=${date}&type=${type}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+      });
       if (!res.ok) return [];
       const data = await res.json();
       return data.slots || [];

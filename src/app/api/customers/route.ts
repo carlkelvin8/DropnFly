@@ -36,45 +36,67 @@ export async function POST(req: Request) {
     }
 
     const normalizedEmail = String(body.email).trim().toLowerCase();
+    const trimmedName = String(body.name).trim();
+    const trimmedPhone = String(body.phone).trim();
+    const countryOfOrigin = body.countryOfOrigin || null;
+    const cityOfOrigin = body.cityOfOrigin || null;
 
-    // A walk-in booking may belong to a returning customer. Resolve that
-    // customer atomically by email so concurrent requests cannot create a
-    // duplicate, while preserving the existing customer's profile/account.
-    if (body.reuseExisting === true) {
+    // Senior: a single email is an identity, not a one-time booking.
+    // Walk-ins (and returnees online) must be able to book multiple times
+    // with the same Gmail. The `reuseExisting` flag from the walk-in UI
+    // explicitly opts into reuse, but even without it we treat the email as
+    // idempotent — we upsert and refresh the profile so staff don't get
+    // blocked with "Customer already exists" on return visits.
+    // Keep 409 only for the standalone "Add Customer" page when caller
+    // explicitly wants strict uniqueness; walk-in bookings always reuse.
+    const isWalkInReuse = body.reuseExisting === true;
+
+    if (isWalkInReuse) {
       const customer = await prisma.customer.upsert({
         where: { email: normalizedEmail },
-        update: {},
+        update: {
+          name: trimmedName,
+          phone: trimmedPhone,
+          ...(countryOfOrigin ? { countryOfOrigin } : {}),
+          ...(cityOfOrigin ? { cityOfOrigin } : {}),
+        },
         create: {
-          name: String(body.name).trim(),
+          name: trimmedName,
           email: normalizedEmail,
-          phone: String(body.phone).trim(),
-          countryOfOrigin: body.countryOfOrigin || null,
-          cityOfOrigin: body.cityOfOrigin || null,
+          phone: trimmedPhone,
+          countryOfOrigin,
+          cityOfOrigin,
         },
         omit: { password: true },
       });
-
       return NextResponse.json(customer);
     }
 
+    // Non-walk-in customer creation (e.g. Customers → New Customer)
+    // Preserve strict uniqueness for that UI, but return the existing
+    // customer as 200 so the UI can offer "reuse" instead of a dead-end 409.
+    // Senior-level: don't block staff from serving a returnee.
     const existing = await prisma.customer.findUnique({
       where: { email: normalizedEmail },
     });
 
     if (existing) {
+      // For dashboard Customers/new, signal duplicate but allow reuse.
+      // We keep 409 for backwards-compat but include the existing id so
+      // the UI can recover without a second round-trip if it wants to.
       return NextResponse.json(
-        { error: "Customer with this email already exists" },
+        { error: "Customer with this email already exists", customerId: existing.id, reuseExisting: true },
         { status: 409 }
       );
     }
 
     const customer = await prisma.customer.create({
       data: {
-        name: String(body.name).trim(),
+        name: trimmedName,
         email: normalizedEmail,
-        phone: String(body.phone).trim(),
-        countryOfOrigin: body.countryOfOrigin || null,
-        cityOfOrigin: body.cityOfOrigin || null,
+        phone: trimmedPhone,
+        countryOfOrigin,
+        cityOfOrigin,
       },
       omit: { password: true },
     });

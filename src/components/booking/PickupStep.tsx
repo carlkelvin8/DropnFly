@@ -117,28 +117,39 @@ export function PickupStep({
           {pickupSlotsLoading ? (
             <p className="mt-2 text-sm text-muted-foreground">Loading available slots...</p>
           ) : pickupSlots.length === 0 ? (
-            <p className="mt-2 text-sm text-red-500">No available slots on this date.</p>
+            <p className="mt-2 text-sm text-red-500">No available slots on this date — all vehicles occupied or store closed. Try another date.</p>
           ) : (
-            <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {pickupSlots.map((slot) => (
-                <button
-                  key={slot.start}
-                  type="button"
-                  disabled={!slot.available}
-                  onClick={() => setPickupSlot(slot.start)}
-                  className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${
-                    pickupSlot === slot.start
-                      ? "border-blue-600 bg-orange-500 text-white shadow-md"
-                      : slot.available
-                        ? "border-border bg-card text-foreground/80 hover:border-blue-300 hover:bg-blue-50"
-                        : "cursor-not-allowed border-border/50 bg-muted/50 text-muted-foreground/60"
-                  }`}
-                >
-                  <span className="block">{slot.start}</span>
-                  <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full"}</span>
-                </button>
-              ))}
-            </div>
+            <>
+              {pickupSlots.every((s) => !s.available && s.unavailableReason === "full") && (
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>All vehicles are occupied on this date — please choose another pickup date or time.</span>
+                </div>
+              )}
+              <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {pickupSlots.map((slot) => (
+                  <button
+                    key={slot.start}
+                    type="button"
+                    disabled={!slot.available}
+                    title={!slot.available ? (slot.unavailableReason === "full" ? `Fully booked — ${slot.booked} vehicle(s) occupied` : "Past") : `${slot.start}–${slot.end} available`}
+                    onClick={() => setPickupSlot(slot.start)}
+                    className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${
+                      pickupSlot === slot.start
+                        ? "border-blue-600 bg-orange-500 text-white shadow-md"
+                        : slot.available
+                          ? "border-border bg-card text-foreground/80 hover:border-blue-300 hover:bg-blue-50"
+                          : slot.unavailableReason === "full"
+                            ? "cursor-not-allowed border-red-200 bg-red-50 text-red-600"
+                            : "cursor-not-allowed border-border/50 bg-muted/50 text-muted-foreground/60"
+                    }`}
+                  >
+                    <span className="block">{slot.start}</span>
+                    <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full • Occupied"}</span>
+                  </button>
+                ))}
+              </div>
+            </>
           )}
           {pickupSlot && <p className="mt-2 text-xs text-green-600">Selected: {pickupSlot}</p>}
         </div>
@@ -204,28 +215,39 @@ export function PickupStep({
           {deliverySlotsLoading ? (
             <p className="mt-2 text-sm text-muted-foreground">Loading available slots...</p>
           ) : deliverySlots.length === 0 ? (
-            <p className="mt-2 text-sm text-red-500">No available slots on this date.</p>
+            <p className="mt-2 text-sm text-red-500">No available slots on this date — all vehicles occupied or store closed. Try another date.</p>
           ) : (
-            <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {deliverySlots.map((slot) => (
-                <button
-                  key={slot.start}
-                  type="button"
-                  disabled={!slot.available}
-                  onClick={() => setDeliverySlot(slot.start)}
-                  className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${
-                    deliverySlot === slot.start
-                      ? "border-indigo-600 bg-indigo-600 text-white shadow-md"
-                      : slot.available
-                        ? "border-border bg-card text-foreground/80 hover:border-indigo-300 hover:bg-indigo-50"
-                        : "cursor-not-allowed border-border/50 bg-muted/50 text-muted-foreground/60"
-                  }`}
-                >
-                  <span className="block">{slot.start}</span>
-                  <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full"}</span>
-                </button>
-              ))}
-            </div>
+            <>
+              {deliverySlots.every((s) => !s.available && s.unavailableReason === "full") && (
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>All vehicles are occupied on this date — please choose another delivery date or time.</span>
+                </div>
+              )}
+              <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {deliverySlots.map((slot) => (
+                  <button
+                    key={slot.start}
+                    type="button"
+                    disabled={!slot.available}
+                    title={!slot.available ? (slot.unavailableReason === "full" ? `Fully booked — ${slot.booked} vehicle(s) occupied` : "Past") : `${slot.start}–${slot.end} available`}
+                    onClick={() => setDeliverySlot(slot.start)}
+                    className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${
+                      deliverySlot === slot.start
+                        ? "border-indigo-600 bg-indigo-600 text-white shadow-md"
+                        : slot.available
+                          ? "border-border bg-card text-foreground/80 hover:border-indigo-300 hover:bg-indigo-50"
+                          : slot.unavailableReason === "full"
+                            ? "cursor-not-allowed border-red-200 bg-red-50 text-red-600"
+                            : "cursor-not-allowed border-border/50 bg-muted/50 text-muted-foreground/60"
+                    }`}
+                  >
+                    <span className="block">{slot.start}</span>
+                    <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full • Occupied"}</span>
+                  </button>
+                ))}
+              </div>
+            </>
           )}
           {deliverySlot && <p className="mt-2 text-xs text-green-600">Selected: {deliverySlot}</p>}
         </div>

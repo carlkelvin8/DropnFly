@@ -5,7 +5,10 @@ import { fleetCapacity, movementsOverlappingSlot } from "./fleet-capacity";
 
 test("fleet inventory is the shared logistics capacity", () => {
   assert.equal(fleetCapacity({ fleet_data: JSON.stringify([{ count: 1 }]), max_concurrent_pickups: "5", max_concurrent_deliveries: "5" }), 1);
-  assert.equal(fleetCapacity({ fleet_data: "[]" }), 0);
+  // Empty fleet_data falls back to legacy concurrency so stale "[]" doesn't block all bookings
+  assert.equal(fleetCapacity({ fleet_data: "[]", max_concurrent_pickups: "5", max_concurrent_deliveries: "3" }), 3);
+  assert.equal(fleetCapacity({ fleet_data: "[]", max_concurrent_pickups: "2", max_concurrent_deliveries: "2" }), 2);
+  assert.equal(fleetCapacity({ fleet_data: "[]"}), 1);
 });
 
 test("pickup and delivery movements compete for the same overlapping slot", () => {

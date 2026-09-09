@@ -39,7 +39,10 @@ export default async function middleware(req: NextRequest) {
   const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);
 
   const passThrough = () => {
-    const res = NextResponse.next();
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.set("x-pathname", path);
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    // also expose on response for debugging / client usage
     res.headers.set("x-pathname", path);
     return res;
   };

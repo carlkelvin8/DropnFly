@@ -152,13 +152,16 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return NextResponse.json({
-    date: dateStr,
-    type,
-    maxConcurrent,
-    slotDuration,
-    operatingStart,
-    operatingEnd,
-    slots: result,
-  });
+  return NextResponse.json(
+    {
+      date: dateStr,
+      type,
+      maxConcurrent,
+      slotDuration,
+      operatingStart,
+      operatingEnd,
+      slots: result,
+    },
+    { headers: { "Cache-Control": "no-store, must-revalidate", Pragma: "no-cache" } }
+  );
 }

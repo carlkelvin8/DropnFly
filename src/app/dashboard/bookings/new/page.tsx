@@ -287,16 +287,56 @@ export default function NewBookingPage() {
           reuseExisting: true,
         }),
       });
-      if (!custRes.ok) {
-        const err = await custRes.json();
-        toast.error(err.error || "Failed to create customer");
-        setError(err.error || "Failed to create customer");
+      let customerId: string | null = null;
+      if (custRes.ok) {
+        const newCust = await custRes.json();
+        customerId = newCust.id;
+        // Senior: reuseExisting upserts, so returnee shows subtle feedback
+        if (newCust.updatedAt && newCust.createdAt && newCust.createdAt !== newCust.updatedAt) {
+          toast.success(`Returning customer — reused ${newCust.email}`);
+        }
+      } else {
+        const err = await custRes.json().catch(() => ({}));
+        // Fallback: if backend returned 409 with existing customerId (e.g. cached old JS without flag)
+        // recover by reusing that customer instead of blocking the walk-in.
+        if (custRes.status === 409 && err.customerId) {
+          customerId = err.customerId;
+          toast.success("Returning customer — reused existing profile");
+        } else if (custRes.status === 409 && err.error?.includes("already exists")) {
+          // Last resort: fetch by email list and reuse (handles any stale 409 shape)
+          try {
+            const listRes = await fetch("/api/customers");
+            if (listRes.ok) {
+              const customers: { id: string; email: string }[] = await listRes.json();
+              const found = customers.find((c) => c.email.toLowerCase() === custEmail.trim().toLowerCase());
+              if (found) {
+                customerId = found.id;
+                toast.success("Returning customer — reused existing profile");
+              }
+            }
+          } catch {}
+          if (!customerId) {
+            toast.error(err.error || "Failed to create customer");
+            setError(err.error || "Failed to create customer");
+            setLoading(false);
+            submittingRef.current = false;
+            return;
+          }
+        } else {
+          toast.error(err.error || "Failed to create customer");
+          setError(err.error || "Failed to create customer");
+          setLoading(false);
+          submittingRef.current = false;
+          return;
+        }
+      }
+      if (!customerId) {
+        toast.error("Failed to resolve customer");
+        setError("Failed to resolve customer");
         setLoading(false);
         submittingRef.current = false;
         return;
       }
-      const newCust = await custRes.json();
-      const customerId = newCust.id;
 
       const luggageItems = JSON.parse(buildLuggageDetails(luggageQty, luggagePrices));
       const selectedSvcList = [
@@ -399,7 +439,7 @@ export default function NewBookingPage() {
                   <User className="h-5 w-5 text-blue-600" />
                   <h3 className="text-lg font-semibold">Contact Information</h3>
                 </div>
-                <p className="text-xs text-muted-foreground rounded-lg border bg-blue-50/50 px-3 py-2">Walk-in — a new customer record will be created. Same complete fields as online booking.</p>
+                <p className="text-xs text-muted-foreground rounded-lg border bg-blue-50/50 px-3 py-2">Walk-in — same email can be reused for returnees. Existing Gmail will be linked to the new booking and profile refreshed.</p>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="custName">

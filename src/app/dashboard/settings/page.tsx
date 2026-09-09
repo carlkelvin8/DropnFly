@@ -475,20 +475,45 @@ export default function SettingsPage() {
                   value={settings.max_bags_per_booking || "10"}
                   onChange={(e) => handleChange("max_bags_per_booking", e.target.value)} />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="max_concurrent_pickups">Max Simultaneous Pickups</Label>
-                <Input id="max_concurrent_pickups" type="number" min="1" className="w-28 font-mono"
-                  value={settings.max_concurrent_pickups || "3"}
-                  onChange={(e) => handleChange("max_concurrent_pickups", e.target.value)} />
-                <p className="text-[10px] text-muted-foreground">Vehicles available for pickup at same time</p>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="max_concurrent_deliveries">Max Simultaneous Deliveries</Label>
-                <Input id="max_concurrent_deliveries" type="number" min="1" className="w-28 font-mono"
-                  value={settings.max_concurrent_deliveries || "3"}
-                  onChange={(e) => handleChange("max_concurrent_deliveries", e.target.value)} />
-                <p className="text-[10px] text-muted-foreground">Vehicles available for delivery at same time</p>
-              </div>
+              {(() => {
+                const fleet = (() => { try { return JSON.parse(settings.fleet_data || "[]"); } catch { return []; } })() as { count?: unknown }[];
+                const fleetTotal = fleet.reduce((s: number, v: { count?: unknown }) => s + (Number.isFinite(Number(v?.count)) && Number(v.count) > 0 ? Math.floor(Number(v.count)) : 0), 0);
+                const hasFleet = fleetTotal > 0;
+                return (
+                  <>
+                    <div className="space-y-1.5 rounded-lg border bg-muted/30 p-3 sm:col-span-2">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Fleet Capacity (shared for pickup &amp; delivery)</Label>
+                      <div className="mt-1 flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-2xl font-bold font-mono">{hasFleet ? fleetTotal : (settings.max_concurrent_pickups || "1")} <span className="text-sm font-normal text-muted-foreground">vehicle{Number(hasFleet ? fleetTotal : settings.max_concurrent_pickups) !== 1 ? "s" : ""} available</span></p>
+                          <p className="mt-1 text-[10px] text-muted-foreground">
+                            {hasFleet ? "Derived from Fleet inventory — pickup and delivery share the same vehicles. Manage in Fleet tab." : "No fleet inventory yet — using legacy fallback (pickups/deliveries). Add vehicles in Fleet tab for accurate capacity."}
+                          </p>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setActiveTab("fleet")}>
+                          <Truck className="mr-1.5 h-3.5 w-3.5" /> Manage Fleet
+                        </Button>
+                      </div>
+                      {!hasFleet && (
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="max_concurrent_pickups_legacy" className="text-xs">Max Simultaneous Pickups (fallback)</Label>
+                            <Input id="max_concurrent_pickups_legacy" type="number" min="1" className="w-28 font-mono"
+                              value={settings.max_concurrent_pickups || "3"}
+                              onChange={(e) => handleChange("max_concurrent_pickups", e.target.value)} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="max_concurrent_deliveries_legacy" className="text-xs">Max Simultaneous Deliveries (fallback)</Label>
+                            <Input id="max_concurrent_deliveries_legacy" type="number" min="1" className="w-28 font-mono"
+                              value={settings.max_concurrent_deliveries || "3"}
+                              onChange={(e) => handleChange("max_concurrent_deliveries", e.target.value)} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
               <div className="space-y-1.5">
                 <Label htmlFor="pickup_slot_duration">Pickup Slot Duration (min)</Label>
                 <Input id="pickup_slot_duration" type="number" min="15" step="15" className="w-28 font-mono"
