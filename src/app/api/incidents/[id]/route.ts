@@ -206,6 +206,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
+    // Senior: strictly isolate actions — each save button touches exactly one
+    // concern so Internal Notes, Resolution, and Status never clobber each other.
     const updateData: Record<string, unknown> = {};
     if (action === "save_note") {
       if (!String(internalNotes || "").trim()) return NextResponse.json({ error: "Internal note is required" }, { status: 400 });
@@ -214,19 +216,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (!String(resolution || "").trim()) return NextResponse.json({ error: "Resolution message is required" }, { status: 400 });
       updateData.resolution = String(resolution).trim();
     } else if (action === "save_status") {
+      if (!status && !priority && escalatedTo === undefined) return NextResponse.json({ error: "No status fields to update" }, { status: 400 });
       if (status) updateData.status = status;
       if (priority) updateData.priority = priority;
       if (escalatedTo !== undefined) updateData.escalatedTo = escalatedTo;
       if (status === "RESOLVED" || status === "CLOSED") updateData.resolvedAt = new Date();
       else if (status) updateData.resolvedAt = null;
     } else {
-      // Backward compatibility for older clients. Only explicitly supplied fields change.
-      if (status) updateData.status = status;
-      if (priority) updateData.priority = priority;
-      if (internalNotes !== undefined) updateData.internalNotes = internalNotes;
-      if (resolution !== undefined) updateData.resolution = resolution;
-      if (escalatedTo !== undefined) updateData.escalatedTo = escalatedTo;
-      if (status === "RESOLVED" || status === "CLOSED") updateData.resolvedAt = new Date();
+      return NextResponse.json({ error: "Invalid action — use save_note, save_resolution, or save_status" }, { status: 400 });
     }
 
     await prisma.incidentReport.update({

@@ -32,7 +32,7 @@ export default function IncidentTrackingPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/public/incidents/${encodeURIComponent(params.trackingNumber)}`, { signal: controller.signal, cache: "no-store" })
+    fetch(`/api/public/incidents/${encodeURIComponent(params.trackingNumber)}`, { signal: controller.signal, cache: "no-store", credentials: "include" })
       .then(async (response) => {
         const body = await response.json().catch(() => null);
         if (!response.ok) throw new Error(body?.error || "Unable to load incident report");

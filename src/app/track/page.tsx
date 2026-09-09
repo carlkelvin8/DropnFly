@@ -41,6 +41,7 @@ export default function TrackPage() {
     const response = await fetch("/api/public/bookings/access", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ reference, email }),
     }).catch(() => null);
     if (!response?.ok) {
