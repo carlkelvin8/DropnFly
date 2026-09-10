@@ -2,7 +2,6 @@ import type mapboxgl from "mapbox-gl";
 
 export const OPEN_STREET_MAP_STYLE: mapboxgl.StyleSpecification = {
   version: 8,
-  glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
   sources: {
     openStreetMap: {
       type: "raster",
