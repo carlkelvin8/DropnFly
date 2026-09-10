@@ -62,27 +62,20 @@ export async function POST(req: Request) {
       // identity; for truly distinct persons, staff should use distinct emails.
       const existing = await prisma.customer.findUnique({ where: { email: normalizedEmail } });
       if (existing) {
-        // Only update if something actually changed to avoid unnecessary writes
-        const needsUpdate =
-          trimmedName !== existing.name ||
-          trimmedPhone !== existing.phone ||
-          (countryOfOrigin || null) !== (existing.countryOfOrigin || null) ||
-          (cityOfOrigin || null) !== (existing.cityOfOrigin || null);
-        if (needsUpdate) {
-          const updated = await prisma.customer.update({
-            where: { email: normalizedEmail },
-            data: {
-              name: trimmedName,
-              phone: trimmedPhone,
-              countryOfOrigin,
-              cityOfOrigin,
-            },
-            omit: { password: true },
-          });
-          return NextResponse.json(updated);
-        }
-        const { password, ...safe } = existing as unknown as Record<string, unknown>;
-        void password;
+        // Walk-in staff input is authoritative — always refresh so the
+        // new booking (and email/dashboard) shows exactly what was typed.
+        // Use id as where to avoid unique-email quirks and return without password.
+        const updated = await prisma.customer.update({
+          where: { id: existing.id },
+          data: {
+            name: trimmedName,
+            phone: trimmedPhone,
+            countryOfOrigin,
+            cityOfOrigin,
+          },
+        });
+        const { password: _pw, ...safe } = updated as unknown as Record<string, unknown>;
+        void _pw;
         return NextResponse.json(safe);
       }
       const customer = await prisma.customer.create({
