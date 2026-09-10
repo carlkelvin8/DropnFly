@@ -26,7 +26,7 @@ const nextConfig: NextConfig = {
       "font-src 'self' data:",
       "connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://api.paymongo.com https://restcountries.com https://countriesnow.space wss:",
       "worker-src 'self' blob:",
-      "frame-src 'self' https://checkout.paymongo.com",
+      "frame-src 'self' https://checkout.paymongo.com https://www.openstreetmap.org https://*.openstreetmap.org",
       "upgrade-insecure-requests",
     ].join("; ");
     return [

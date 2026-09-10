@@ -139,22 +139,29 @@ export default function LiveMapInner({
       setTimeout(() => map.current?.resize(), 600);
     };
     const onError = (e: unknown) => {
-      const err = e as { error?: { status?: number; message?: string }; sourceId?: string };
-      console.error("[LiveMap] map error:", e);
-      // Any Mapbox error -> fallback to OSM immediately, don't show blanket unless OSM also fails
+      const err = e as { error?: { status?: number; message?: string }; sourceId?: string; tile?: unknown };
+      // Ignore transient tile 404s for OSM - they don't mean map failed
+      if (!MAPBOX_TOKEN && err?.sourceId === "openStreetMap") {
+        console.warn("[LiveMap] OSM tile error ignored:", err?.error?.message);
+        return;
+      }
+      console.error("[LiveMap] map error:", e, err?.error?.message);
+      // Any Mapbox error -> fallback to OSM immediately
       if (MAPBOX_TOKEN && !fallbackDone) {
         switchToOSM();
         return;
       }
       if (fallbackDone) {
-        // OSM also failed
+        // OSM also failed after fallback
         setMapError("Map failed to load — check connection or try reloading.");
         setLoading(false);
         return;
       }
-      // No token case but still error (CSP/tile)
-      setMapError("Map failed to load — check connection or try reloading.");
-      setLoading(false);
+      // No token case but style error (not tile)
+      if (!err?.sourceId) {
+        setMapError("Map failed to load — check connection or try reloading.");
+        setLoading(false);
+      }
     };
     map.current.on("load", markReady);
     map.current.on("error", onError);
@@ -286,6 +293,11 @@ export default function LiveMapInner({
     else { const h = Math.floor(etaMinutes / 60); const m = etaMinutes % 60; eta = m ? `${h}h ${m}m` : `${h}h`; }
   }
 
+  // Fallback OSM iframe bbox
+  const fbLat = employeeLat ?? pickupLat ?? dropoffLat ?? 14.5995;
+  const fbLng = employeeLng ?? pickupLng ?? dropoffLng ?? 120.9842;
+  const osmEmbed = `https://www.openstreetmap.org/export/embed.html?bbox=${fbLng - 0.03}%2C${fbLat - 0.03}%2C${fbLng + 0.03}%2C${fbLat + 0.03}&layer=mapnik&marker=${fbLat}%2C${fbLng}`;
+
   return (
     <div className="relative">
       {loading && !mapError && (
@@ -294,8 +306,24 @@ export default function LiveMapInner({
         </div>
       )}
       {mapError && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-amber-50/90 p-4 text-center">
-          <p className="text-sm text-amber-800">{mapError}</p>
+        <div className="absolute inset-0 z-10 flex flex-col rounded-lg border bg-amber-50/95 overflow-hidden">
+          <div className="flex-1 relative">
+            <iframe
+              title="OSM Fallback"
+              src={osmEmbed}
+              className="absolute inset-0 h-full w-full border-0"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+            {/* Pins overlay for fallback */}
+            {pickupLat != null && pickupLng != null && (
+              <div className="absolute top-2 left-2 rounded bg-white/90 px-2 py-1 text-[10px] shadow">📍 {pickupAddress || "Pickup"}</div>
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-2 bg-white px-3 py-2 text-xs">
+            <p className="text-amber-800">{mapError}</p>
+            <button onClick={() => { setMapError(null); setLoading(true); mapReadyRef.current = false; try { map.current?.setStyle(OPEN_STREET_MAP_STYLE as unknown as string); } catch {} }} className="rounded bg-amber-600 px-2 py-1 text-white hover:bg-amber-700">Retry</button>
+          </div>
         </div>
       )}
       <div className="absolute bottom-3 left-3 z-10 flex flex-wrap gap-2">
