@@ -141,20 +141,18 @@ export default function LiveMapInner({
     const onError = (e: unknown) => {
       const err = e as { error?: { status?: number; message?: string }; sourceId?: string };
       console.error("[LiveMap] map error:", e);
-      // 401/403 = invalid Mapbox token, fallback to OSM instead of showing error blanket
-      const status = err?.error?.status;
-      if (MAPBOX_TOKEN && (status === 401 || status === 403) && !fallbackDone) {
+      // Any Mapbox error -> fallback to OSM immediately, don't show blanket unless OSM also fails
+      if (MAPBOX_TOKEN && !fallbackDone) {
         switchToOSM();
         return;
       }
-      // tile 404/429 for Mapbox style but OSM not tried yet
-      if (MAPBOX_TOKEN && err?.sourceId?.includes("mapbox") && !fallbackDone) {
-        // give it 2s then fallback if still not ready
-        setTimeout(() => {
-          if (!mapReadyRef.current) switchToOSM();
-        }, 2000);
+      if (fallbackDone) {
+        // OSM also failed
+        setMapError("Map failed to load — check connection or try reloading.");
+        setLoading(false);
         return;
       }
+      // No token case but still error (CSP/tile)
       setMapError("Map failed to load — check connection or try reloading.");
       setLoading(false);
     };
