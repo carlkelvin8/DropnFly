@@ -108,11 +108,7 @@ model Booking {
   customerId      String
   locationId      String?
   pickupLocation  String
-  pickupLat       Float?
-  pickupLng       Float?
   dropOffLocation String
-  dropOffLat      Float?
-  dropOffLng      Float?
   customerNameSnapshot  String?
   customerEmailSnapshot String?
   customerPhoneSnapshot String?

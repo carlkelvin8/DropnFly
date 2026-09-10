@@ -22,22 +22,43 @@ export async function GET() {
     };
   }
 
-  const bookings = await prisma.booking.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    include: {
-      customer: { select: { name: true, email: true, phone: true } },
-      assignments: {
-        include: { user: { select: { id: true, name: true, profilePic: true, vehicleType: true, plateNumber: true } } },
-        orderBy: { createdAt: "desc" },
+  let bookings: any[] = [];
+  try {
+    bookings = await prisma.booking.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: {
+        customer: { select: { name: true, email: true, phone: true } },
+        assignments: {
+          include: { user: { select: { id: true, name: true, profilePic: true, vehicleType: true, plateNumber: true } } },
+          orderBy: { createdAt: "desc" },
+        },
       },
-    },
-  });
+    });
+  } catch (e) {
+    console.warn("[logistics/tasks] fallback due to missing columns:", (e as Error).message);
+    bookings = await prisma.$queryRaw<any[]>`SELECT b.* FROM "Booking" b WHERE b.status IN ('CONFIRMED','RECEIVED','IN_STORAGE','OUT_FOR_DELIVERY') ORDER BY b."createdAt" DESC`;
+    // hydrate customer/assignments manually minimal for fallback (avoid extra query complexity, return basic)
+    // fallback simple: fetch customers/assignments separately if needed but return minimal mapped
+    if (bookings.length) {
+      const ids = bookings.map((b: any) => b.id);
+      const customers = await prisma.customer.findMany({ where: { id: { in: bookings.map((b: any) => b.customerId) } }, select: { id: true, name: true, email: true, phone: true } });
+      const cmap = new Map(customers.map((c) => [c.id, c]));
+      const assigns = await prisma.bookingAssignment.findMany({ where: { bookingId: { in: ids } }, include: { user: { select: { id: true, name: true, profilePic: true, vehicleType: true, plateNumber: true } } } });
+      const amap = new Map<string, typeof assigns>();
+      for (const a of assigns) { const arr = amap.get(a.bookingId) || []; arr.push(a); amap.set(a.bookingId, arr); }
+      bookings = bookings.map((b: any) => ({ ...b, customer: cmap.get(b.customerId) || { name: "", email: "", phone: "" }, assignments: amap.get(b.id) || [] }));
+      // filter employee manually if needed
+      if (!isAdmin && !isStaff) {
+        bookings = bookings.filter((b: any) => (b.assignments as any[]).some((a) => a.userId === session.user.id));
+      }
+    }
+  }
 
-  const mapped = bookings.map((b) => {
+  const mapped = bookings.map((b: any) => {
     const taskType = logisticsTaskType(b.status);
     const activePhase = taskType === "delivery" ? "DROPOFF" : "PICKUP";
-    const rider = b.assignments.find((assignment) => assignment.phase === activePhase)?.user || null;
+    const rider = (b.assignments as any[]).find((assignment: any) => assignment.phase === activePhase)?.user || null;
 
     return {
       id: b.id,
