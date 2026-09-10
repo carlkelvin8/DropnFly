@@ -293,10 +293,42 @@ export default function LiveMapInner({
     else { const h = Math.floor(etaMinutes / 60); const m = etaMinutes % 60; eta = m ? `${h}h ${m}m` : `${h}h`; }
   }
 
-  // Fallback OSM iframe bbox
+  // If no Mapbox token, skip mapbox-gl entirely and use OSM iframe (guaranteed, no CSP worker issues)
   const fbLat = employeeLat ?? pickupLat ?? dropoffLat ?? 14.5995;
   const fbLng = employeeLng ?? pickupLng ?? dropoffLng ?? 120.9842;
   const osmEmbed = `https://www.openstreetmap.org/export/embed.html?bbox=${fbLng - 0.03}%2C${fbLat - 0.03}%2C${fbLng + 0.03}%2C${fbLat + 0.03}&layer=mapnik&marker=${fbLat}%2C${fbLng}`;
+
+  if (!MAPBOX_TOKEN) {
+    const destLat = destinationPhase === "pickup" ? pickupLat : dropoffLat;
+    const destLng = destinationPhase === "pickup" ? pickupLng : dropoffLng;
+    let distance: number | null = null;
+    let eta: string | null = null;
+    if (destLat != null && destLng != null && employeeLat != null && employeeLng != null) {
+      const base = haversine(employeeLat, employeeLng, destLat, destLng);
+      const tf = trafficFactorManila();
+      const d = base * 1.35;
+      distance = d;
+      const etaMinutes = Math.round((d / (30 * tf)) * 60);
+      if (etaMinutes <= 1) eta = "1 min";
+      else if (etaMinutes < 60) eta = `${etaMinutes} mins`;
+      else { const h = Math.floor(etaMinutes / 60); const m = etaMinutes % 60; eta = m ? `${h}h ${m}m` : `${h}h`; }
+    }
+    return (
+      <div className="relative">
+        <iframe title="OSM Map" src={osmEmbed} className="h-96 w-full rounded-lg border" loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+        <div className="absolute bottom-3 left-3 z-10 flex flex-wrap gap-2">
+          {distance !== null && <div className="rounded-lg bg-white/90 px-2.5 py-1 text-xs font-medium shadow">📏 {distance.toFixed(1)} km</div>}
+          {eta !== null && <div className="rounded-lg bg-white/90 px-2.5 py-1 text-xs font-medium shadow">⏱ ETA: {eta}</div>}
+        </div>
+        {pickupAddress && dropoffAddress && (
+          <div className="absolute bottom-3 right-3 z-10 max-w-[200px] rounded-lg bg-white/90 px-2.5 py-1.5 text-[10px] shadow">
+            <p className="font-medium">📍 {pickupAddress}</p>
+            <p className="text-muted-foreground">➡ {dropoffAddress}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="relative">
@@ -315,10 +347,6 @@ export default function LiveMapInner({
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
             />
-            {/* Pins overlay for fallback */}
-            {pickupLat != null && pickupLng != null && (
-              <div className="absolute top-2 left-2 rounded bg-white/90 px-2 py-1 text-[10px] shadow">📍 {pickupAddress || "Pickup"}</div>
-            )}
           </div>
           <div className="flex items-center justify-between gap-2 bg-white px-3 py-2 text-xs">
             <p className="text-amber-800">{mapError}</p>
