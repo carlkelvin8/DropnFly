@@ -58,7 +58,15 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(decimalsToNumbers(booking));
+  return NextResponse.json(decimalsToNumbers({
+    ...booking,
+    customer: {
+      ...booking.customer,
+      name: booking.customerNameSnapshot || booking.customer.name,
+      email: booking.customerEmailSnapshot || booking.customer.email,
+      phone: booking.customerPhoneSnapshot || booking.customer.phone,
+    },
+  }));
 }
 
 export async function PUT(

@@ -56,7 +56,14 @@ export async function GET(
   ]);
 
   return NextResponse.json({
-    booking: decimalsToNumbers(booking),
+    booking: decimalsToNumbers({
+      ...booking,
+      customer: {
+        ...booking.customer,
+        name: booking.customerNameSnapshot || booking.customer.name,
+        email: booking.customerEmailSnapshot || booking.customer.email,
+      },
+    }),
     rider: assignment?.user ?? null,
     scans,
   });

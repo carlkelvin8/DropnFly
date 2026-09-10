@@ -23,5 +23,12 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return NextResponse.json(decimalsToNumbers(booking));
+  return NextResponse.json(decimalsToNumbers({
+    ...booking,
+    customer: {
+      ...booking.customer,
+      name: booking.customerNameSnapshot || booking.customer.name,
+      email: booking.customerEmailSnapshot || booking.customer.email,
+    },
+  }));
 }

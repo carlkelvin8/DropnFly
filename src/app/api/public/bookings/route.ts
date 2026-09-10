@@ -312,6 +312,13 @@ export async function POST(req: Request) {
             referenceNumber,
             qrCode: qrBase64,
             customerId: customer.id,
+            // The email identifies the reusable customer account, but these
+            // contact details belong to this specific booking. Without a
+            // snapshot, reusing an email under another passenger's name makes
+            // the confirmation page fall back to the older account profile.
+            customerNameSnapshot: String(name).trim(),
+            customerEmailSnapshot: normalizedEmail,
+            customerPhoneSnapshot: String(phone).trim(),
             pickupLocation,
             dropOffLocation,
             luggageDetails: luggageDetails || null,
