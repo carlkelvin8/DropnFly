@@ -18,6 +18,7 @@ import { LocationUpdater } from "@/components/tracking/LocationUpdater";
 import { AdminLiveMonitor } from "@/components/tracking/AdminLiveMonitor";
 import { Pagination } from "@/components/ui/pagination";
 import { imageFileToDataUrl } from "@/lib/client-image";
+import { LOGISTICS_ACTION_META, type LogisticsAction } from "@/lib/logistics-workflow";
 
 interface Employee {
   id: string;
@@ -43,6 +44,7 @@ interface Task {
   checkIn: string;
   checkOut: string | null;
   pickupStartedAt: string | null;
+  availableActions: LogisticsAction[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -50,19 +52,6 @@ const STATUS_LABELS: Record<string, string> = {
   RECEIVED: "Picked Up",
   IN_STORAGE: "In Storage",
   OUT_FOR_DELIVERY: "Out for Delivery",
-};
-
-const ACTION_BUTTONS: Record<string, { label: string; action: string; icon: string }[]> = {
-  pickup: [
-    { label: "Start Pickup", action: "start-pickup", icon: "play" },
-    { label: "Arrived at Location", action: "arrive-pickup", icon: "map" },
-    { label: "Complete Pickup", action: "complete-pickup", icon: "check" },
-  ],
-  delivery: [
-    { label: "Start Delivery", action: "start-delivery", icon: "play" },
-    { label: "Arrived at Location", action: "arrive-delivery", icon: "map" },
-    { label: "Complete Delivery", action: "complete-delivery", icon: "check" },
-  ],
 };
 
 export default function LogisticsPage() {
@@ -155,7 +144,13 @@ export default function LogisticsPage() {
         throw new Error(error.error || "Action failed");
       }
       const data = await res.json();
-      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: data.status, pickupStartedAt: data.pickupStartedAt ?? t.pickupStartedAt } : t));
+      setTasks((prev) => prev.map((t) => t.id === taskId ? {
+        ...t,
+        status: data.status,
+        pickupStartedAt: data.pickupStartedAt,
+        taskType: data.taskType,
+        availableActions: data.availableActions,
+      } : t));
       toast.success(`Action completed — ${action}`);
       setActiveTask(null);
       setActiveAction(null);
@@ -398,15 +393,15 @@ export default function LogisticsPage() {
                         {activeTask === task.id ? (
                           <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
                             <div className="flex gap-2">
-                              {ACTION_BUTTONS[task.taskType]?.map((btn) => (
+                              {task.availableActions.map((action) => (
                                 <Button
-                                  key={btn.action}
+                                  key={action}
                                   size="sm"
-                                  variant={activeAction === btn.action ? "default" : "outline"}
-                                  onClick={() => setActiveAction(btn.action)}
+                                  variant={activeAction === action ? "default" : "outline"}
+                                  onClick={() => setActiveAction(action)}
                                   className="flex-1 text-xs"
                                 >
-                                  {btn.label}
+                                  {LOGISTICS_ACTION_META[action].label}
                                 </Button>
                               ))}
                             </div>
@@ -434,7 +429,7 @@ export default function LogisticsPage() {
                             </div>
 
                             <div className="flex gap-2">
-                              <Button size="sm" onClick={() => handleAction(task.id, activeAction || ACTION_BUTTONS[task.taskType][0].action)}
+                              <Button size="sm" onClick={() => activeAction && handleAction(task.id, activeAction)}
                                 disabled={processingAction || !activeAction}>
                                 {processingAction ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle className="h-3 w-3 mr-1" />}
                                 Confirm

@@ -114,7 +114,7 @@ export function createReportPdf(report: PdfReport): Uint8Array {
     }
   }
 
-  // Sections — clean paragraphs (split only on blank lines, preserve sentences)
+  // Sections — preserve sub-details and numbered actions as readable lines.
   for (const section of report.sections) {
     rows.push({ kind: "sectionHeading", text: section.heading });
     const paragraphs = section.content.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
@@ -122,9 +122,11 @@ export function createReportPdf(report: PdfReport): Uint8Array {
     const blocks = paragraphs.length ? paragraphs : [section.content.trim()];
     for (const para of blocks) {
       if (!para) continue;
-      // Remove any residual markdown bullets/numbers for clean PDF
-      const cleanPara = para.replace(/^\s*[-•]\s*/gm, "").replace(/^\s*\d+\.\s*/gm, "").trim();
-      for (const line of wrap(cleanPara, 86)) rows.push({ kind: "body", text: line });
+      const logicalLines = para.split("\n").map((line) => line.trim()).filter(Boolean);
+      for (const logicalLine of logicalLines) {
+        const cleanLine = logicalLine.replace(/^\s*[•-]\s*/, "- ").trim();
+        for (const line of wrap(cleanLine, 86)) rows.push({ kind: "body", text: line });
+      }
       rows.push({ kind: "spacer", h: 5 });
     }
   }

@@ -66,7 +66,7 @@ function reportWithoutGemini(type: "descriptive" | "predictive" | "financial", d
   const repeats = Number(data.repeatCustomers || 0);
   const luggage = Number(data.totalLuggageItems || 0);
   const statuses = (data.bookingsByStatus as { status: string; count: number }[] | undefined) || [];
-  const methods = (data.paymentsByMethod as { method: string; count: number; amount: number }[] | undefined) || [];
+  const paymentStatuses = (data.paymentsByStatus as { status: string; count: number; amount: number }[] | undefined) || [];
   const trends = (data.dailyTrend as { date: string; bookings: number; bookedValue: number }[] | undefined) || [];
   const statusText = statuses.length ? statuses.map((row) => `${row.status}: ${row.count}`).join(", ") : "No status activity recorded";
   const busiest = trends.reduce<(typeof trends)[number] | null>((best, row) => !best || row.bookings > best.bookings ? row : best, null);
@@ -83,7 +83,7 @@ function reportWithoutGemini(type: "descriptive" | "predictive" | "financial", d
   const cancelled = statuses.find((s) => s.status === "CANCELLED")?.count || 0;
   const pending = statuses.find((s) => s.status === "PENDING")?.count || 0;
   const inStorage = statuses.find((s) => s.status === "IN_STORAGE")?.count || 0;
-  const totalPaidTx = methods.reduce((s, m) => s + m.count, 0);
+  const totalPaidTx = paymentStatuses.find((row) => row.status === "PAID")?.count || 0;
   const refunds = Number((data as Record<string, unknown>).refundsAmount as number || 0);
   const refundCount = Number((data as Record<string, unknown>).refundsIssued as number || 0);
 
@@ -113,7 +113,7 @@ function reportWithoutGemini(type: "descriptive" | "predictive" | "financial", d
       title: "Financial Analytics — What Happened to the Money?",
       summary: `Financial health for ${periodLabel}: ${money(booked)} booked, ${money(paid)} collected, ${money(outstanding)} outstanding (${collectionRate.toFixed(1)}% collection rate). Average ${money(average)} per booking.`,
       sections: [
-        { heading: "Report Information", content: `This is a FINANCIAL report (What happened to the money?) for ${periodLabel}. Scope: booked value, revenue, collections, receivables, refunds, and profitability limits. Payment Method Analysis is intentionally excluded per spec. Source: live bookings and payments (PAID requires paidAt) in Manila time. Generated ${new Date().toLocaleString("en-PH")}.` },
+        { heading: "Report Information", content: `This financial report explains what happened to booked value, collections, receivables, refunds, and measurable profitability for ${periodLabel}. It uses live DropnFly booking and payment records in Manila time and was generated on ${new Date().toLocaleString("en-PH")}. A payment is counted as collected only when its status is PAID and it has a paidAt timestamp.` },
         { heading: "Financial Executive Summary", content: `Booked ${money(booked)} vs collected ${money(paid)} vs outstanding ${money(outstanding)} at ${collectionRate.toFixed(1)}% collection. Average booked ${money(average)}, average paid ${money(averagePaid)}. Revenue is not profit — costs unavailable.` },
         { heading: "Revenue Analysis", content: `Revenue Analysis aggregates Gross Booked Value, Collected Revenue, Revenue Trend, and Average Booking Value for ${periodLabel} in one main section.\n\n• Gross Booked Value: ${money(booked)} from ${bookings - cancelled} valid bookings (excl. CANCELLED/NO_SHOW) — this is quoted value, not cash collected.\n• Collected Revenue: ${money(paid)} from ${totalPaidTx} paid transactions (PAID with paidAt). Use paidAt-verified figures for collection reporting.\n• Revenue Trend: ${trends.length} daily points; ${busiest ? `peak revenue day ${busiest.date} ${money(busiest.bookedValue)}` : "no clear revenue trend — sparse data"}. Average ${money(average)} per booking; compare with operational peaks.\n• Average Booking Value: booked ${money(average)} vs paid ${money(averagePaid)}. Outliers can skew averages — review large bookings before repricing.` },
         { heading: "Collection Analysis", content: `Collection Analysis aggregates Total Collected, Total Outstanding, Collection Rate, and payment status mix for ${periodLabel}.\n\n• Total Collected: ${money(paid)} (verified via paidAt timestamp).\n• Total Outstanding: ${money(outstanding)} (booked ${money(booked)} − collected ${money(paid)}) — the collectible pool before cancellations/disputes.\n• Collection Rate: ${collectionRate.toFixed(1)}% (${money(paid)} / ${money(booked)}). Monitor per cycle; low rate indicates follow-up needed.\n• Fully Paid / Partially Paid / Unpaid Bookings: fully paid = paid sum ≥ booked value; partially paid = paid >0 but < booked (contributes to ${money(outstanding)}); unpaid = no PAID payment yet. Exact counts require per-booking reconciliation — aggregate collected ${money(paid)} indicates overall fully-paid share. Prioritize by age and amount.` },
@@ -123,7 +123,7 @@ function reportWithoutGemini(type: "descriptive" | "predictive" | "financial", d
         { heading: "Profitability Analysis", content: `Profitability Analysis covers Total Expenses, Operating Expenses, Net Income, Profit Margin, and the expense-data caveat for ${periodLabel} in one section.\n\n• Total Expenses / Operating Expenses: not recorded in schema (no expense table) — cannot compute. Add an expense ledger with period-matched capture to enable.\n• Net Income / Profit Margin: cannot calculate from ${money(booked)} booked vs costs — revenue must not be presented as profit. Collection rate ${collectionRate.toFixed(1)}% is not margin.\n• Only if expense data exists: profitability metrics are omitted because expense data does not exist in the current dataset for ${periodLabel}.` },
         { heading: "Financial Findings", content: `Findings: ${money(booked)} booked, ${money(paid)} collected, ${money(outstanding)} outstanding at ${collectionRate.toFixed(1)}% collection. Refunds ${refundCount}, cancelled ${cancelled}. Collections are the verified cash signal.` },
         { heading: "Financial Recommendations", content: `1. Reconcile every outstanding balance by booking and customer.\n2. Age receivables and prioritize >30d.\n3. Match payments to settlements; investigate refunds.\n4. Add expense tracking before reporting profit.` },
-        { heading: "Financial Limitations and Methodology", content: `Method: Manila-time period, PAID requires paidAt, booked excludes CANCELLED/NO_SHOW, outstanding = booked − paid. Payment Method Analysis is excluded per spec. Profitability requires costs. Source: live DropnFly DB.` },
+        { heading: "Financial Limitations and Methodology", content: `Method: the selected period follows Manila time; collected revenue includes only PAID records with paidAt; gross booked value excludes CANCELLED and NO_SHOW bookings; outstanding balance equals gross booked value less collected revenue. Profitability is not calculated without recorded expenses. Source: live DropnFly booking and payment records.` },
       ],
       generatedAt: new Date().toISOString(),
       source: "deterministic",
@@ -274,8 +274,7 @@ function cleanGeminiContent(text: string): string {
 }
 
 function normalizeSections(
-  sections: { heading?: unknown; content?: unknown }[] | undefined,
-  type: "descriptive" | "predictive" | "financial"
+  sections: { heading?: unknown; content?: unknown }[] | undefined
 ): { heading: string; content: string }[] {
   if (!Array.isArray(sections)) return [];
   return sections
@@ -341,11 +340,11 @@ function isDistinctReport(
 ): boolean {
   if (!parsed || typeof parsed !== "object") return false;
   const sections = parsed.sections as { heading?: unknown }[] | undefined;
-  if (!Array.isArray(sections) || sections.length < 8) return false;
+  if (!Array.isArray(sections)) return false;
   const headings = sections.map((s) => String(s.heading || "").toLowerCase().trim());
   const required = REQUIRED_HEADINGS[type] || [];
-  const hits = required.filter((req) => headings.some((h) => h === req.toLowerCase()));
-  if (hits.length < required.length * 0.7) return false;
+  if (headings.length !== required.length) return false;
+  if (required.some((heading, index) => headings[index] !== heading.toLowerCase())) return false;
   const forbidden: Record<string, string[]> = {
     descriptive: ["gross booked value", "expected booked value", "7-day forecast"],
     financial: ["booking performance", "7-day forecast", "luggage type distribution"],
@@ -370,7 +369,7 @@ export async function generateReport(
   const typeInstructions: Record<string, string> = {
     descriptive: `REPORT FOCUS: DESCRIPTIVE (What happened? — Bookings, customers, luggage, storage, operations, historical patterns). Use ONLY headings: ${requiredList}. Title must contain "Descriptive — What Happened?" and summary must describe past period results, not future. Keep Booking Performance, Luggage and Storage Patterns, Customer Activity, and Operational Activity as grouped sections with sub-details inside, not as separate sections.`,
     predictive: `REPORT FOCUS: PREDICTIVE (What is likely to happen? — Future bookings, revenue, capacity, staffing, peak demand, future luggage). Use ONLY headings: ${requiredList}. Title must contain "Predictive — What Is Likely to Happen?" and summary must be future outlook with 7/30/60/90 days. Keep Demand Forecast, Capacity Forecast, Staffing Forecast, and Peak Demand Prediction as grouped sections with sub-details inside.`,
-    financial: `REPORT FOCUS: FINANCIAL (What happened to the money? — Booked value, revenue, collections, receivables, refunds, profitability). Use ONLY headings: ${requiredList}. Title must contain "Financial — What Happened to the Money?" and summary must center on collection rate/outstanding. CRITICAL: "Revenue by Service" is ONE section that must internally cover Revenue by Luggage Type, Revenue by Storage Duration, Revenue by Service Type, and Revenue by Booking Source as inline bullets — do NOT make those four separate sections. Similarly, Revenue Analysis, Collection Analysis, Accounts Receivable, Refund impact, and Profitability each group their sub-details inside. Payment Method Analysis is completely removed — do not include it.`,
+    financial: `REPORT FOCUS: FINANCIAL (What happened to the money? — Booked value, revenue, collections, receivables, refunds, profitability). Use ONLY headings: ${requiredList}. Title must contain "Financial — What Happened to the Money?" and summary must center on collection rate/outstanding. CRITICAL: "Revenue by Service" is ONE section that must internally cover Revenue by Luggage Type, Revenue by Storage Duration, Revenue by Service Type, and Revenue by Booking Source as inline bullets — do NOT make those four separate sections. Similarly, Revenue Analysis, Collection Analysis, Accounts Receivable, Refund impact, and Profitability each group their sub-details inside. Do not analyze or group collections by payment channel or method.`,
   };
   const prompts: Record<string, string> = {
     descriptive: `You are a business analyst for Dropnfly. Generate a DESCRIPTIVE report.
@@ -433,7 +432,7 @@ Respond with ONLY valid JSON (no markdown, no code fences):
     const jsonSlice = jsonStart >= 0 && jsonEnd >= 0 ? cleaned.slice(jsonStart, jsonEnd + 1) : cleaned;
     const parsed = JSON.parse(jsonSlice);
 
-    const sections = normalizeSections(parsed.sections, type);
+    const sections = normalizeSections(parsed.sections);
     const title = cleanGeminiContent(String(parsed.title || "")).slice(0, 120) || `${type.charAt(0).toUpperCase() + type.slice(1)} Report`;
     const summary = cleanGeminiContent(String(parsed.summary || "")).replace(/\s+/g, " ").trim().slice(0, 600);
 

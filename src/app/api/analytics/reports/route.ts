@@ -42,7 +42,6 @@ export async function GET(req: Request) {
       payments,
       luggageCount,
       paymentsByStatus,
-      paymentsByMethod,
       repeatCustomers,
     ] = await Promise.all([
       prisma.booking.count({ where: bookingWhere }),
@@ -58,7 +57,6 @@ export async function GET(req: Request) {
       prisma.payment.aggregate({ where: paymentWhere, _sum: { amount: true } }),
       prisma.luggageItem.count({ where: { booking: validBookingWhere } }),
       prisma.payment.groupBy({ by: ["status"], where: { createdAt: { gte: since, lte: until } }, _count: true, _sum: { amount: true } }),
-      prisma.payment.groupBy({ by: ["method"], where: paymentWhere, _count: true, _sum: { amount: true } }),
       prisma.booking.groupBy({ by: ["customerId"], where: validBookingWhere, having: { customerId: { _count: { gt: 1 } } }, _count: true }),
     ]);
 
@@ -91,7 +89,6 @@ export async function GET(req: Request) {
       collectionRate: bookedValue > 0 ? Number(((paidRevenue / bookedValue) * 100).toFixed(1)) : 0,
       bookingsByStatus: bookingsByStatus.map((row) => ({ status: row.status, count: row._count })),
       paymentsByStatus: paymentsByStatus.map((row) => ({ status: row.status, count: row._count, amount: Number(row._sum.amount || 0) })),
-      paymentsByMethod: paymentsByMethod.map((row) => ({ method: row.method, count: row._count, amount: Number(row._sum.amount || 0) })),
       dailyTrend: Array.from(dailyTrend, ([date, values]) => ({ date, ...values })),
       averageDailyBookings: totalBookings / periodDays,
       activeEmployees: employeeCount,

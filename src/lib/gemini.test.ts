@@ -19,7 +19,7 @@ const analytics = {
   repeatCustomers: 2,
   totalLuggageItems: 18,
   bookingsByStatus: [{ status: "DELIVERED", count: 8 }],
-  paymentsByMethod: [{ method: "CASH", count: 5, amount: 5000 }],
+  paymentsByStatus: [{ status: "PAID", count: 5, amount: 5000 }],
   dailyTrend: [{ date: "2026-09-01", bookings: 4, bookedValue: 4000 }],
 };
 
@@ -41,13 +41,16 @@ test("fallback analytics reports have focus-specific content", async () => {
   const fHeadings = financial.sections.map((s) => s.heading);
   assert.ok(dHeadings.includes("Booking Performance"));
   assert.ok(dHeadings.includes("Luggage and Storage Patterns"));
-  assert.ok(pHeadings.includes("7-Day Forecast"));
+  const demandForecast = predictive.sections.find((section) => section.heading === "Demand Forecast")?.content || "";
+  assert.match(demandForecast, /7-Day Forecast/);
+  assert.match(demandForecast, /30-Day Forecast/);
+  assert.match(demandForecast, /60-Day Forecast/);
+  assert.match(demandForecast, /90-Day Forecast/);
   assert.ok(pHeadings.includes("Capacity Forecast"));
-  assert.ok(fHeadings.includes("Gross Booked Value"));
+  assert.ok(fHeadings.includes("Revenue Analysis"));
   assert.ok(fHeadings.includes("Revenue by Service"));
-  // Financial must NOT contain standalone Payment Method Analysis per spec — only the "completely removed" placeholder
   assert.ok(!fHeadings.includes("Payment Method Analysis"));
-  assert.ok(fHeadings.includes("Payment Method Analysis is completely removed."));
+  assert.doesNotMatch(financial.sections.map((section) => section.content).join(" "), /payment method analysis/i);
   assert.notDeepEqual(descriptive.sections, predictive.sections);
   assert.notDeepEqual(predictive.sections, financial.sections);
   assert.match(predictive.summary, /60 days/);

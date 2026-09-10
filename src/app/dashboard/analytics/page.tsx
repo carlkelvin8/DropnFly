@@ -983,6 +983,66 @@ function ReportsTab({ period, dateFrom, dateTo }: { period: string; dateFrom: st
   );
 }
 
+function ReportSectionContent({ content }: { content: string }) {
+  const lines = content.split("\n").map((line) => line.trim()).filter(Boolean);
+  const elements: React.ReactNode[] = [];
+  let bullets: { label?: string; text: string }[] = [];
+  let numbered: string[] = [];
+
+  const flushBullets = () => {
+    if (!bullets.length) return;
+    elements.push(
+      <dl key={`bullets-${elements.length}`} className="grid gap-2 sm:grid-cols-2">
+        {bullets.map((item, index) => (
+          <div key={index} className="rounded-lg border bg-muted/20 px-3 py-2.5">
+            {item.label && <dt className="text-xs font-semibold text-foreground">{item.label}</dt>}
+            <dd className={`text-sm leading-relaxed text-muted-foreground ${item.label ? "mt-1" : ""}`}>{item.text}</dd>
+          </div>
+        ))}
+      </dl>
+    );
+    bullets = [];
+  };
+  const flushNumbered = () => {
+    if (!numbered.length) return;
+    elements.push(
+      <ol key={`numbered-${elements.length}`} className="space-y-2">
+        {numbered.map((item, index) => (
+          <li key={index} className="flex gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm leading-relaxed text-muted-foreground">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">{index + 1}</span>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ol>
+    );
+    numbered = [];
+  };
+
+  for (const line of lines) {
+    const bullet = line.match(/^[•-]\s*([^:]+):\s*(.+)$/);
+    const plainBullet = line.match(/^[•-]\s*(.+)$/);
+    const ordered = line.match(/^\d+\.\s*(.+)$/);
+    if (bullet) {
+      flushNumbered();
+      bullets.push({ label: bullet[1].trim(), text: bullet[2].trim() });
+    } else if (plainBullet) {
+      flushNumbered();
+      bullets.push({ text: plainBullet[1].trim() });
+    } else if (ordered) {
+      flushBullets();
+      numbered.push(ordered[1].trim());
+    } else {
+      flushBullets();
+      flushNumbered();
+      elements.push(<p key={`paragraph-${elements.length}`} className="text-sm leading-relaxed text-muted-foreground">{line}</p>);
+    }
+  }
+  flushBullets();
+  flushNumbered();
+
+  return <div className="space-y-3">{elements}</div>;
+}
+
 function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFrom: string; dateTo: string }) {
   const [reportType, setReportType] = useState<"descriptive" | "predictive" | "financial">("descriptive");
   const [report, setReport] = useState<{ title: string; summary: string; sections: { heading: string; content: string }[]; generatedAt: string; source?: "gemini" | "deterministic" } | null>(null);
@@ -1105,8 +1165,8 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
 
   const reportTypes = [
     { id: "descriptive" as const, label: "Descriptive", desc: "Past performance analysis", icon: FileText, color: "border-blue-500", ring: "ring-blue-500", iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400", bar: "bg-blue-500" },
-    { id: "predictive" as const, label: "Predictive", desc: "Future trend forecasts", icon: TrendingUp, color: "border-violet-500", ring: "ring-violet-500", iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400", bar: "bg-violet-500" },
     { id: "financial" as const, label: "Financial", desc: "Revenue & profitability", icon: DollarSign, color: "border-emerald-500", ring: "ring-emerald-500", iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400", bar: "bg-emerald-500" },
+    { id: "predictive" as const, label: "Predictive", desc: "Future trend forecasts", icon: TrendingUp, color: "border-violet-500", ring: "ring-violet-500", iconBg: "bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400", bar: "bg-violet-500" },
   ];
   const selected = reportTypes.find((rt) => rt.id === reportType)!;
 
@@ -1238,7 +1298,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
                   <div className="rounded-md bg-primary/10 p-1.5">
                     <FileText className="h-4 w-4 text-primary" />
                   </div>
-                  <h4 className="text-sm font-bold">Executive Summary</h4>
+                  <h4 className="text-sm font-bold">Report at a Glance</h4>
                   <Badge variant="secondary" className="ml-auto text-[10px]">Decision-ready</Badge>
                 </div>
                 <p className="text-sm leading-relaxed text-foreground/90">{report.summary}</p>
@@ -1285,11 +1345,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
                         </div>
                         <span className="hidden sm:inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">{i + 1}</span>
                       </div>
-                      <div className="prose prose-sm max-w-none text-sm leading-relaxed text-muted-foreground">
-                        {section.content.split(/\n\s*\n/).map((para, idx) => (
-                          <p key={idx} className={idx > 0 ? "mt-2" : ""}>{para}</p>
-                        ))}
-                      </div>
+                      <ReportSectionContent content={section.content} />
                       {isRecommendation && (
                         <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
                           <TrendingUp className="mt-0.5 h-3.5 w-3.5 shrink-0" />

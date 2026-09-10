@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import type { BookingStatus } from "@/generated/prisma/client";
 import { isBookingLocked } from "@/lib/booking-access";
+import { availableLogisticsActions, logisticsTaskType, type LogisticsAction } from "@/lib/logistics-workflow";
 
 // actions: start-pickup, arrive-pickup, complete-pickup, start-delivery, arrive-delivery, complete-delivery
 const ACTION_MAP: Record<string, string> = {
@@ -40,6 +41,7 @@ export async function POST(
         customerId: true,
         totalPrice: true,
         status: true,
+        pickupStartedAt: true,
         assignments: { select: { userId: true, phase: true } },
       },
     });
@@ -49,6 +51,14 @@ export async function POST(
     }
     if (isBookingLocked(booking.status)) {
       return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
+    }
+
+    const availableActions = availableLogisticsActions(booking.status, Boolean(booking.pickupStartedAt));
+    if (!availableActions.includes(action as LogisticsAction)) {
+      return NextResponse.json(
+        { error: `Action '${action}' is not valid while the booking is ${booking.status.replaceAll("_", " ").toLowerCase()}` },
+        { status: 409 }
+      );
     }
 
     if (session.user.role === "EMPLOYEE") {
@@ -118,8 +128,15 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ success: true, status: newStatus, pickupStartedAt: updated.pickupStartedAt });
-  } catch {
+    return NextResponse.json({
+      success: true,
+      status: newStatus,
+      pickupStartedAt: updated.pickupStartedAt,
+      taskType: logisticsTaskType(newStatus),
+      availableActions: availableLogisticsActions(newStatus, Boolean(updated.pickupStartedAt)),
+    });
+  } catch (error) {
+    console.error("[Logistics] action failed:", error);
     return NextResponse.json({ error: "Failed to process action" }, { status: 500 });
   }
 }

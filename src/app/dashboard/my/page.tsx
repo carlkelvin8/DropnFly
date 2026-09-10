@@ -25,6 +25,7 @@ import Image from "next/image";
 import { formatDate } from "@/lib/utils";
 import { LocationUpdater } from "@/components/tracking/LocationUpdater";
 import { imageFileToDataUrl } from "@/lib/client-image";
+import { LOGISTICS_ACTION_META, type LogisticsAction } from "@/lib/logistics-workflow";
 
 interface AssignedBooking {
   id: string;
@@ -65,6 +66,7 @@ interface LogisticsTask {
   checkIn: string;
   checkOut: string | null;
   pickupStartedAt: string | null;
+  availableActions: LogisticsAction[];
 }
 
 export default function TrackingDashboardPage() {
@@ -157,7 +159,13 @@ export default function TrackingDashboardPage() {
         throw new Error(err.error || "Action failed");
       }
       const data = await res.json();
-      setLogisticsTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: data.status, pickupStartedAt: data.pickupStartedAt ?? t.pickupStartedAt } : t));
+      setLogisticsTasks((prev) => prev.map((t) => t.id === taskId ? {
+        ...t,
+        status: data.status,
+        pickupStartedAt: data.pickupStartedAt,
+        taskType: data.taskType,
+        availableActions: data.availableActions,
+      } : t));
       toast.success(`Action completed — ${action}`);
       setActiveTask(null); setActiveAction(null); setPhotoProof(null); setActionNote("");
       // Refresh assignments as well
@@ -236,18 +244,6 @@ export default function TrackingDashboardPage() {
     RECEIVED: "Picked Up",
     IN_STORAGE: "In Storage",
     OUT_FOR_DELIVERY: "Out for Delivery",
-  };
-  const ACTION_BUTTONS: Record<string, { label: string; action: string }[]> = {
-    pickup: [
-      { label: "Start Pickup", action: "start-pickup" },
-      { label: "Arrived", action: "arrive-pickup" },
-      { label: "Complete Pickup", action: "complete-pickup" },
-    ],
-    delivery: [
-      { label: "Start Delivery", action: "start-delivery" },
-      { label: "Arrived", action: "arrive-delivery" },
-      { label: "Complete Delivery", action: "complete-delivery" },
-    ],
   };
   const filteredMyTasks = logisticsTasks.filter((t) => {
     const d = t.checkIn ? new Date(t.checkIn).toISOString().split("T")[0] : new Date(t.createdAt).toISOString().split("T")[0];
@@ -358,9 +354,9 @@ export default function TrackingDashboardPage() {
                         {activeTask === task.id ? (
                           <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
                             <div className="flex gap-2">
-                              {(ACTION_BUTTONS[task.taskType] || []).map((btn) => (
-                                <Button key={btn.action} size="sm" variant={activeAction === btn.action ? "default" : "outline"} onClick={() => setActiveAction(btn.action)} className="flex-1 text-xs">
-                                  {btn.label}
+                              {task.availableActions.map((action) => (
+                                <Button key={action} size="sm" variant={activeAction === action ? "default" : "outline"} onClick={() => setActiveAction(action)} className="flex-1 text-xs">
+                                  {LOGISTICS_ACTION_META[action].label}
                                 </Button>
                               ))}
                             </div>
@@ -377,7 +373,7 @@ export default function TrackingDashboardPage() {
                               <input value={actionNote} onChange={(e)=> setActionNote(e.target.value)} placeholder="Note (optional)" className="flex h-8 flex-1 rounded-md border bg-background px-2 text-xs" />
                             </div>
                             <div className="flex gap-2">
-                              <Button size="sm" onClick={() => handleLogisticsAction(task.id, activeAction || ACTION_BUTTONS[task.taskType][0].action)} disabled={processingAction || !activeAction}>
+                              <Button size="sm" onClick={() => activeAction && handleLogisticsAction(task.id, activeAction)} disabled={processingAction || !activeAction}>
                                 {processingAction ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle className="h-3 w-3 mr-1" />} Confirm
                               </Button>
                               <Button size="sm" variant="ghost" onClick={() => { setActiveTask(null); setActiveAction(null); setPhotoProof(null); setActionNote(""); }}>Cancel</Button>
