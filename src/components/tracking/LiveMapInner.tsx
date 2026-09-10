@@ -49,9 +49,10 @@ export default function LiveMapInner({
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const routeSourceId = useRef("route");
   const [loading, setLoading] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
 
   function drawPoints() {
-    if (!map.current) return;
+    if (!map.current || !map.current.isStyleLoaded()) return;
     const mk = map.current;
 
     if (pickupLat && pickupLng) {
@@ -85,10 +86,19 @@ export default function LiveMapInner({
 
     map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
 
-    map.current.on("load", () => {
+    const onLoad = () => {
       if (!map.current) return;
       setLoading(false);
+      setMapReady(true);
       drawPoints();
+    };
+    map.current.on("load", onLoad);
+    // Fallback: raster style may fire 'idle' instead of 'load' — ensure ready
+    map.current.on("idle", () => {
+      if (map.current?.isStyleLoaded() && !mapReady) {
+        setMapReady(true);
+        setLoading(false);
+      }
     });
 
     return () => {
@@ -98,7 +108,16 @@ export default function LiveMapInner({
   }, []);
 
   useEffect(() => {
-    if (!map.current || !employeeLat || !employeeLng) return;
+    if (!map.current || !employeeLat || !employeeLng || !mapReady) return;
+    // Style must be fully loaded before adding sources/layers — otherwise Mapbox throws "Style is not done loading"
+    if (!map.current.isStyleLoaded()) {
+      const onStyleLoad = () => {
+        if (map.current?.isStyleLoaded()) setMapReady(true);
+      };
+      map.current.once("load", onStyleLoad);
+      map.current.once("styledata", onStyleLoad);
+      return;
+    }
 
     markerRef.current?.remove();
 
@@ -107,56 +126,54 @@ export default function LiveMapInner({
       "flex h-8 w-8 items-center justify-center rounded-full bg-orange-500 text-white text-xs font-bold shadow-lg border-2 border-white animate-bounce";
     el.innerHTML = riderView ? "Y" : "E";
 
-    markerRef.current = new mapboxgl.Marker({ element: el })
-      .setLngLat([employeeLng, employeeLat])
-      .setPopup(new mapboxgl.Popup().setText(employeeName || (riderView ? "You" : "Rider")))
-      .addTo(map.current);
+    try {
+      markerRef.current = new mapboxgl.Marker({ element: el })
+        .setLngLat([employeeLng, employeeLat])
+        .setPopup(new mapboxgl.Popup().setText(employeeName || (riderView ? "You" : "Rider")))
+        .addTo(map.current);
 
-    map.current.flyTo({ center: [employeeLng, employeeLat], zoom: 14 });
+      map.current.flyTo({ center: [employeeLng, employeeLat], zoom: 14 });
 
-    if (map.current.getSource(routeSourceId.current)) {
-      (map.current.getSource(routeSourceId.current) as mapboxgl.GeoJSONSource).setData({
+      const coords: [number, number][] = [[employeeLng, employeeLat]];
+      if (dropoffLat && dropoffLng) coords.push([dropoffLng, dropoffLat]);
+      else if (pickupLat && pickupLng) coords.push([pickupLng, pickupLat]);
+
+      const geojson: GeoJSON.FeatureCollection = {
         type: "FeatureCollection",
-        features: [],
-      });
-    }
-
-    const coords: [number, number][] = [[employeeLng, employeeLat]];
-    if (dropoffLat && dropoffLng) coords.push([dropoffLng, dropoffLat]);
-    else if (pickupLat && pickupLng) coords.push([pickupLng, pickupLat]);
-
-    const geojson: GeoJSON.FeatureCollection = {
-      type: "FeatureCollection",
-      features: [
-        {
-          type: "Feature",
-          properties: {},
-          geometry: {
-            type: "LineString",
-            coordinates: coords,
+        features: [
+          {
+            type: "Feature",
+            properties: {},
+            geometry: {
+              type: "LineString",
+              coordinates: coords,
+            },
           },
-        },
-      ],
-    };
+        ],
+      };
 
-    if (map.current.getSource(routeSourceId.current)) {
-      (map.current.getSource(routeSourceId.current) as mapboxgl.GeoJSONSource).setData(geojson);
-    } else {
-      map.current.addSource(routeSourceId.current, { type: "geojson", data: geojson });
-      map.current.addLayer({
-        id: "route-layer",
-        type: "line",
-        source: routeSourceId.current,
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: {
-          "line-color": "#3b7ac7",
-          "line-width": 3,
-          "line-opacity": 0.8,
-          "line-dasharray": [1, 1],
-        },
-      });
+      if (map.current.getSource(routeSourceId.current)) {
+        (map.current.getSource(routeSourceId.current) as mapboxgl.GeoJSONSource).setData(geojson);
+      } else {
+        map.current.addSource(routeSourceId.current, { type: "geojson", data: geojson });
+        map.current.addLayer({
+          id: "route-layer",
+          type: "line",
+          source: routeSourceId.current,
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: {
+            "line-color": "#3b7ac7",
+            "line-width": 3,
+            "line-opacity": 0.8,
+            "line-dasharray": [1, 1],
+          },
+        });
+      }
+    } catch (e) {
+      // Mapbox can throw if style unloaded mid-update — defer to next tick
+      console.warn("[LiveMap] style not ready, deferring:", e);
     }
-  }, [employeeLat, employeeLng]);
+  }, [employeeLat, employeeLng, mapReady, pickupLat, pickupLng, dropoffLat, dropoffLng, employeeName, riderView]);
 
   const destLat = dropoffLat || pickupLat;
   const destLng = dropoffLng || pickupLng;

@@ -124,6 +124,12 @@ export default function LocationPlaybackInner({ userId, userName }: LocationPlay
 
   useEffect(() => {
     if (!map.current || !mapReady || points.length === 0) return;
+    if (!map.current.isStyleLoaded()) {
+      const retry = () => setMapReady(true);
+      map.current.once("load", retry);
+      map.current.once("styledata", retry);
+      return;
+    }
 
     const coords = points.map((p) => [p.longitude, p.latitude] as [number, number]);
 
