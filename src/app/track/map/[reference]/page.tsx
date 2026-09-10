@@ -94,7 +94,7 @@ export default function LiveTrackingPage() {
   useEffect(() => {
     let cancelled = false;
     setLoadError(null);
-    fetch(`/api/public/bookings/${params.reference}`)
+    fetch(`/api/public/bookings/${encodeURIComponent(String(params.reference))}`, { cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(r.status === 404 ? "Booking not found" : "Failed to load booking");
         return r.json();
@@ -103,19 +103,23 @@ export default function LiveTrackingPage() {
         // Use public rider endpoint for anonymous tracking (private assignments needs auth and would 401)
         let assignments: { user: { id: string; name: string; currentLat: number | null; currentLng: number | null; lastLocationUpdate: string | null; profilePic: string | null; vehicleType: string | null; plateNumber: string | null } }[] = [];
         try {
-          const pubRiderRes = await fetch(`/api/public/bookings/${encodeURIComponent(String(params.reference))}/rider`);
+          const pubRiderRes = await fetch(`/api/public/bookings/${encodeURIComponent(String(params.reference))}/rider`, { cache: "no-store" });
           if (pubRiderRes.ok) {
             const j = await pubRiderRes.json();
             if (j.rider) assignments = [{ user: j.rider }];
             else {
-              // fallback to private assignments if user is logged in
-              const assignmentsRes = await fetch(`/api/bookings/${booking.id}/assignments`);
-              if (assignmentsRes.ok) assignments = await assignmentsRes.json();
+              // no rider assigned yet — keep empty, map still shows NAIA pins
+              assignments = [];
             }
-          } else {
-            const assignmentsRes = await fetch(`/api/bookings/${booking.id}/assignments`);
-            if (assignmentsRes.ok) assignments = await assignmentsRes.json();
           }
+          // try private assignments as supplement if logged in (never throw)
+          try {
+            const assignmentsRes = await fetch(`/api/bookings/${booking.id}/assignments`, { cache: "no-store" });
+            if (assignmentsRes.ok) {
+              const priv = await assignmentsRes.json();
+              if (Array.isArray(priv) && priv.length > assignments.length) assignments = priv;
+            }
+          } catch {}
         } catch {}
         if (cancelled) return;
         setData({ booking, assignments });
