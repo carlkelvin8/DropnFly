@@ -109,8 +109,6 @@ export default function NewBookingPage() {
     }).catch(() => router.replace("/dashboard"));
   }, [router]);
 
-  if (!roleChecked) return <div className="flex h-64 items-center justify-center text-muted-foreground">Checking permissions...</div>;
-
   const totalBags = calcTotalBags(luggageQty);
   const storageDays = calcStorageDays(pickupDate, pickupSlot, deliveryDate, deliverySlot);
   const billableDays = Math.max(1, storageDays || 1);
@@ -398,6 +396,8 @@ export default function NewBookingPage() {
     setLoading(false);
     submittingRef.current = false;
   }
+
+  if (!roleChecked) return <div className="flex h-64 items-center justify-center text-muted-foreground">Checking permissions...</div>;
 
   const progress = ((step - 1) / 3) * 100;
 
