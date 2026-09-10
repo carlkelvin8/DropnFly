@@ -219,8 +219,28 @@ export async function POST(req: Request) {
       if (!location) return NextResponse.json({ error: "Location not found" }, { status: 404 });
     }
 
-    const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+    let customer = await prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+    // Walk-in safeguard: staff typed name (e.g. Carl Manahan) must be what
+    // the booking/email/dashboard shows, even when same email is reused for
+    // many transactions (e.g. Katrina Divivar). If the caller supplies a
+    // fresher snapshot, refresh the Customer so the include shows it.
+    // bookings/new sends customerName/customerPhone/country/city alongside customerId.
+    const snapName = typeof body.customerName === "string" ? body.customerName.trim() : "";
+    const snapPhone = typeof body.customerPhone === "string" ? body.customerPhone.trim() : "";
+    const snapCountry = body.customerCountryOfOrigin || body.countryOfOrigin || null;
+    const snapCity = body.customerCityOfOrigin || body.cityOfOrigin || null;
+    if (snapName && (snapName !== customer.name || snapPhone !== customer.phone || (snapCountry || null) !== (customer.countryOfOrigin || null) || (snapCity || null) !== (customer.cityOfOrigin || null))) {
+      customer = await prisma.customer.update({
+        where: { id: customerId },
+        data: {
+          ...(snapName ? { name: snapName } : {}),
+          ...(snapPhone ? { phone: snapPhone } : {}),
+          ...(snapCountry !== undefined ? { countryOfOrigin: snapCountry } : {}),
+          ...(snapCity !== undefined ? { cityOfOrigin: snapCity } : {}),
+        },
+      });
+    }
 
     const checkInDate = new Date(checkIn);
     if (isNaN(checkInDate.getTime())) {

@@ -368,6 +368,11 @@ export default function NewBookingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerId,
+          // snapshot so /api/bookings can refresh Customer even if /api/customers was cached/stale
+          customerName: custName.trim(),
+          customerPhone: custPhone.trim(),
+          customerCountryOfOrigin: custCountry,
+          customerCityOfOrigin: custCity,
           locationId: locationId || undefined,
           pickupLocation,
           dropOffLocation,
