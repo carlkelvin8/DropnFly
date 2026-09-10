@@ -19,6 +19,7 @@ import { AdminLiveMonitor } from "@/components/tracking/AdminLiveMonitor";
 import { Pagination } from "@/components/ui/pagination";
 import { imageFileToDataUrl } from "@/lib/client-image";
 import { LOGISTICS_ACTION_META, type LogisticsAction } from "@/lib/logistics-workflow";
+import { manilaDateStr } from "@/lib/manila-time";
 
 interface Employee {
   id: string;
@@ -44,6 +45,7 @@ interface Task {
   checkIn: string;
   checkOut: string | null;
   pickupStartedAt: string | null;
+  deliveryArrivedAt: string | null;
   availableActions: LogisticsAction[];
 }
 
@@ -71,7 +73,7 @@ export default function LogisticsPage() {
   const [taskSearch, setTaskSearch] = useState("");
   const [taskTypeFilter, setTaskTypeFilter] = useState("all");
   const [taskDateFilter, setTaskDateFilter] = useState<"today" | "all" | "custom">("today");
-  const [taskDate, setTaskDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [taskDate, setTaskDate] = useState(() => manilaDateStr(new Date()));
   const [taskPage, setTaskPage] = useState(1);
   const [locationStatus, setLocationStatus] = useState<"requesting" | "active" | "denied" | "error" | "idle">("idle");
   const handleLocationStatus = useCallback((status: "requesting" | "active" | "denied" | "error") => setLocationStatus(status), []);
@@ -148,6 +150,7 @@ export default function LogisticsPage() {
         ...t,
         status: data.status,
         pickupStartedAt: data.pickupStartedAt,
+        deliveryArrivedAt: data.deliveryArrivedAt,
         taskType: data.taskType,
         availableActions: data.availableActions,
       } : t));
@@ -168,8 +171,8 @@ export default function LogisticsPage() {
     const matchesSearch = !query || `${task.referenceNumber} ${task.customer.name} ${task.rider?.name || ""}`.toLowerCase().includes(query);
     const matchesType = taskTypeFilter === "all" || task.taskType === taskTypeFilter;
     // Active Task is per-day (today) by default — Manila date of checkIn
-    const taskDay = task.checkIn ? new Date(task.checkIn).toISOString().split("T")[0] : new Date(task.createdAt).toISOString().split("T")[0];
-    const todayStr = new Date().toISOString().split("T")[0];
+    const taskDay = manilaDateStr(task.checkIn || task.createdAt);
+    const todayStr = manilaDateStr(new Date());
     const matchesDate = taskDateFilter === "all" ? true : taskDateFilter === "today" ? taskDay === todayStr : taskDay === taskDate;
     return matchesSearch && matchesType && matchesDate;
   });
@@ -177,10 +180,11 @@ export default function LogisticsPage() {
   const taskTotalPages = Math.max(1, Math.ceil(filteredTasks.length / taskPageSize));
   const currentTaskPage = Math.min(taskPage, taskTotalPages);
   const paginatedTasks = filteredTasks.slice((currentTaskPage - 1) * taskPageSize, currentTaskPage * taskPageSize);
+  const trackedTask = roleTasks.find((task) => task.isAssignedToMe && Boolean(task.pickupStartedAt));
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      {roleTasks.some((task) => task.isAssignedToMe && !!task.pickupStartedAt) && <LocationUpdater enabled onStatusChange={handleLocationStatus} />}
+      {trackedTask && <LocationUpdater enabled bookingId={trackedTask.id} onStatusChange={handleLocationStatus} />}
       {locationStatus !== "idle" && (
         <div className={`rounded-lg border px-3 py-2 text-sm ${locationStatus === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : locationStatus === "requesting" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
           {locationStatus === "active" ? "Live geolocation is active and updating the customer map." : locationStatus === "requesting" ? "Requesting location access…" : "Live map needs browser location permission. Enable Location for this site and refresh."}
@@ -308,9 +312,10 @@ export default function LogisticsPage() {
             return (
               <div className="space-y-4">
                 <AdminLiveMonitor
+                  key={selectedEmpId}
                   employeeId={selectedEmpId}
                   employeeName={emp?.name || "Employee"}
-                  tasks={empLiveTasks.map((t) => ({ referenceNumber: t.referenceNumber, pickupLocation: t.pickupLocation, dropOffLocation: t.dropOffLocation, pickupStartedAt: t.pickupStartedAt }))}
+                  tasks={empLiveTasks.map((t) => ({ referenceNumber: t.referenceNumber, pickupLocation: t.pickupLocation, dropOffLocation: t.dropOffLocation, pickupStartedAt: t.pickupStartedAt, status: t.status }))}
                   initialLat={emp?.currentLat ?? null}
                   initialLng={emp?.currentLng ?? null}
                   lastUpdate={emp?.lastLocationUpdate ?? null}
@@ -343,11 +348,11 @@ export default function LogisticsPage() {
         <div className="grid gap-2 sm:grid-cols-[1fr_140px_140px_150px]">
           <input value={taskSearch} onChange={(e) => { setTaskSearch(e.target.value); setTaskPage(1); }} placeholder="Filter by reference, customer, or rider" className="h-10 rounded-lg border bg-background px-3 text-sm" />
           <select value={taskTypeFilter} onChange={(e) => { setTaskTypeFilter(e.target.value); setTaskPage(1); }} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="all">All task types</option><option value="pickup">Pickup</option><option value="delivery">Delivery</option></select>
-          <select value={taskDateFilter} onChange={(e) => { const v = e.target.value as "today"|"all"|"custom"; setTaskDateFilter(v); setTaskPage(1); if (v === "today") setTaskDate(new Date().toISOString().split("T")[0]); }} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="today">Today only</option><option value="all">All dates</option><option value="custom">Pick date…</option></select>
+          <select value={taskDateFilter} onChange={(e) => { const v = e.target.value as "today"|"all"|"custom"; setTaskDateFilter(v); setTaskPage(1); if (v === "today") setTaskDate(manilaDateStr(new Date())); }} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="today">Today only</option><option value="all">All dates</option><option value="custom">Pick date…</option></select>
           {taskDateFilter === "custom" ? (
             <input type="date" value={taskDate} onChange={(e) => { setTaskDate(e.target.value); setTaskPage(1); }} className="h-10 rounded-lg border bg-background px-3 text-sm" />
           ) : (
-            <div className="flex h-10 items-center rounded-lg border bg-muted/30 px-3 text-xs text-muted-foreground">{taskDateFilter === "today" ? `Today • ${new Date().toISOString().split("T")[0]}` : "All dates — previous & future"}</div>
+            <div className="flex h-10 items-center rounded-lg border bg-muted/30 px-3 text-xs text-muted-foreground">{taskDateFilter === "today" ? `Today • ${manilaDateStr(new Date())}` : "All dates — previous & future"}</div>
           )}
         </div>
         <p className="text-[11px] text-muted-foreground">Active Tasks are filtered to {taskDateFilter === "today" ? "today" : taskDateFilter === "custom" ? taskDate : "all dates"} (by pickup date). Use All/Custom to see previous and future taskings.</p>
@@ -388,7 +393,7 @@ export default function LogisticsPage() {
                       <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{formatDate(task.createdAt)}</span>
                     </div>
 
-                    {task.isAssignedToMe && (
+                    {(task.isAssignedToMe || isAdmin) && (
                       <div className="pt-2">
                         {activeTask === task.id ? (
                           <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
@@ -442,7 +447,7 @@ export default function LogisticsPage() {
                         ) : (
                           <div className="flex gap-2">
                             <Button size="sm" onClick={() => setActiveTask(task.id)}>
-                              <Play className="mr-1 h-3 w-3" /> Start Task
+                              <Play className="mr-1 h-3 w-3" /> {task.isAssignedToMe ? "Start Task" : "Manage Task"}
                             </Button>
                             <Button size="sm" variant="outline" asChild>
                               <Link href={`/track/map/${task.referenceNumber}`}>
@@ -457,6 +462,9 @@ export default function LogisticsPage() {
                           </div>
                         )}
                       </div>
+                    )}
+                    {!task.rider && (
+                      <p className="pt-2 text-xs font-medium text-amber-700">No {task.taskType} employee assigned. Assign one from the booking details before field work begins.</p>
                     )}
                   </div>
 

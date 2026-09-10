@@ -14,7 +14,6 @@ export async function GET() {
 
   const where: Record<string, unknown> = {
     status: { in: ["CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] },
-    assignments: { some: {} },
   };
 
   if (!isAdmin && !isStaff) {
@@ -59,7 +58,8 @@ export async function GET() {
       checkIn: b.checkIn,
       checkOut: b.checkOut,
       pickupStartedAt: b.pickupStartedAt,
-      availableActions: availableLogisticsActions(b.status, Boolean(b.pickupStartedAt)),
+      deliveryArrivedAt: b.deliveryArrivedAt,
+      availableActions: availableLogisticsActions(b.status, Boolean(b.pickupStartedAt), Boolean(b.deliveryArrivedAt)),
     };
   });
 

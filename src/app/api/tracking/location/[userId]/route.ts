@@ -9,19 +9,22 @@ export async function GET(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   const { userId } = await params;
+  const reference = new URL(req.url).searchParams.get("reference");
   const session = await auth();
   let allowed = session?.user ? await canReadRiderLocation(session.user, userId) : false;
-  if (!allowed) {
-    const reference = new URL(req.url).searchParams.get("reference");
-    if (reference) {
-      const booking = await prisma.booking.findFirst({
-        where: { referenceNumber: reference.trim().toUpperCase(), assignments: { some: { userId } } },
-        select: { id: true, customerId: true },
-      });
-      allowed = Boolean(booking && await canAccessBooking(booking));
-    }
+  let bookingId: string | null = null;
+  if (reference) {
+    const booking = await prisma.booking.findFirst({
+      where: { referenceNumber: reference.trim().toUpperCase(), assignments: { some: { userId } } },
+      select: { id: true, customerId: true },
+    });
+    if (!booking) return NextResponse.json({ error: "Booking assignment not found" }, { status: 404 });
+    bookingId = booking.id;
+    if (!allowed) allowed = await canAccessBooking(booking);
   }
-  if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!allowed) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -36,6 +39,21 @@ export async function GET(
 
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  if (bookingId) {
+    const latest = await prisma.locationUpdate.findFirst({
+      where: { bookingId, userId },
+      orderBy: { createdAt: "desc" },
+      select: { latitude: true, longitude: true, createdAt: true },
+    });
+    return NextResponse.json({
+      id: user.id,
+      name: user.name,
+      currentLat: latest?.latitude ?? null,
+      currentLng: latest?.longitude ?? null,
+      lastLocationUpdate: latest?.createdAt ?? null,
+    });
   }
 
   return NextResponse.json(user);

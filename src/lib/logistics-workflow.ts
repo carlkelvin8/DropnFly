@@ -15,7 +15,7 @@ export function logisticsTaskType(status: string): LogisticsTaskType {
 }
 
 /** Valid next actions for the booking's current persisted workflow state. */
-export function availableLogisticsActions(status: string, trackingStarted: boolean): LogisticsAction[] {
+export function availableLogisticsActions(status: string, trackingStarted: boolean, deliveryArrived = false): LogisticsAction[] {
   switch (status) {
     case "CONFIRMED":
       return trackingStarted ? ["arrive-pickup"] : ["start-pickup"];
@@ -25,7 +25,8 @@ export function availableLogisticsActions(status: string, trackingStarted: boole
       return ["start-delivery"];
     case "OUT_FOR_DELIVERY":
       // Support older records that reached this status without starting live tracking.
-      return trackingStarted ? ["arrive-delivery", "complete-delivery"] : ["start-delivery"];
+      if (!trackingStarted) return ["start-delivery"];
+      return deliveryArrived ? ["complete-delivery"] : ["arrive-delivery"];
     default:
       return [];
   }

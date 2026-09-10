@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Navigation, MapPin, Activity } from "lucide-react";
+import { Navigation, Activity } from "lucide-react";
 import { LiveMap } from "@/components/tracking/LiveMap";
 import { NAIA_TERMINAL_COORDS } from "@/components/booking/constants";
 
@@ -13,7 +13,7 @@ interface AdminLiveMonitorProps {
   employeeId: string;
   employeeName: string;
   // active tasks where this employee is the rider and pickupStartedAt is set
-  tasks: { referenceNumber: string; pickupLocation: string; dropOffLocation: string; pickupStartedAt: string | null }[];
+  tasks: { referenceNumber: string; pickupLocation: string; dropOffLocation: string; pickupStartedAt: string | null; status: string }[];
   // snapshot from /api/riders — may be stale, will be refreshed via polling
   initialLat: number | null;
   initialLng: number | null;
@@ -30,22 +30,19 @@ export function AdminLiveMonitor({ employeeId, employeeName, tasks, initialLat, 
   const [liveLng, setLiveLng] = useState<number | null>(initialLng);
   const [updatedAt, setUpdatedAt] = useState<string | null>(lastUpdate);
   const [recent, setRecent] = useState<boolean>(() => !!lastUpdate && Date.now() - new Date(lastUpdate).getTime() < 300000);
-
-  useEffect(() => {
-    setLiveLat(initialLat);
-    setLiveLng(initialLng);
-    setUpdatedAt(lastUpdate);
-  }, [initialLat, initialLng, lastUpdate]);
+  const activeTask = tasks.find((task) => Boolean(task.pickupStartedAt)) || tasks[0] || null;
+  const activeReference = activeTask?.referenceNumber;
 
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
       try {
-        const res = await fetch(`/api/tracking/location/${employeeId}`, { cache: "no-store" });
+        const query = activeReference ? `?reference=${encodeURIComponent(activeReference)}` : "";
+        const res = await fetch(`/api/tracking/location/${employeeId}${query}`, { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
         if (cancelled) return;
-        if (data.currentLat && data.currentLng) {
+        if (data.currentLat != null && data.currentLng != null) {
           setLiveLat(data.currentLat);
           setLiveLng(data.currentLng);
           setUpdatedAt(data.lastLocationUpdate);
@@ -56,7 +53,7 @@ export function AdminLiveMonitor({ employeeId, employeeName, tasks, initialLat, 
     void poll();
     const id = setInterval(poll, 5000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [employeeId]);
+  }, [employeeId, activeReference]);
 
   // Keep "recent" decaying every 30s
   useEffect(() => {
@@ -67,7 +64,6 @@ export function AdminLiveMonitor({ employeeId, employeeName, tasks, initialLat, 
   }, [updatedAt]);
 
   // Pick the first active task for destination pins (most recent)
-  const activeTask = tasks.find((t) => !!t.pickupStartedAt) || tasks[0] || null;
   const pickup = activeTask ? terminalCoords(activeTask.pickupLocation) : null;
   const dropoff = activeTask ? terminalCoords(activeTask.dropOffLocation) : null;
 
@@ -118,6 +114,7 @@ export function AdminLiveMonitor({ employeeId, employeeName, tasks, initialLat, 
         dropoffLng={dropoff?.lng}
         pickupAddress={activeTask.pickupLocation}
         dropoffAddress={activeTask.dropOffLocation}
+        destinationPhase={activeTask.status === "OUT_FOR_DELIVERY" ? "dropoff" : "pickup"}
       />
       <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> Pickup: {activeTask.pickupLocation}</span>

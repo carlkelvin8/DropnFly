@@ -122,6 +122,7 @@ model Booking {
   promoCodeId     String?
   status          BookingStatus @default(PENDING)
   pickupStartedAt DateTime?     // set when "Start Pickup" pressed — enables geolocation monitoring
+  deliveryArrivedAt DateTime?   // distinguishes arrival from active travel during delivery
   checkoutLockedUntil DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -139,6 +140,7 @@ model Booking {
   scanEvents       ScanEvent[]
   baggageTags      BaggageTag[]
   incidentReports  IncidentReport[]
+  locationUpdates  LocationUpdate[]
   feedbackInviteSentAt DateTime?
 
   @@index([status])
@@ -201,14 +203,17 @@ model ActivityLog {
 model LocationUpdate {
   id        String   @id @default(cuid())
   userId    String
+  bookingId String?
   latitude  Float
   longitude Float
   accuracy  Float?
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
+  @@index([bookingId, createdAt])
 }
 
 model SystemSetting {

@@ -26,6 +26,7 @@ import { formatDate } from "@/lib/utils";
 import { LocationUpdater } from "@/components/tracking/LocationUpdater";
 import { imageFileToDataUrl } from "@/lib/client-image";
 import { LOGISTICS_ACTION_META, type LogisticsAction } from "@/lib/logistics-workflow";
+import { manilaDateStr } from "@/lib/manila-time";
 
 interface AssignedBooking {
   id: string;
@@ -66,6 +67,7 @@ interface LogisticsTask {
   checkIn: string;
   checkOut: string | null;
   pickupStartedAt: string | null;
+  deliveryArrivedAt: string | null;
   availableActions: LogisticsAction[];
 }
 
@@ -85,7 +87,7 @@ export default function TrackingDashboardPage() {
   const [locationStatus, setLocationStatus] = useState<"requesting" | "active" | "denied" | "error" | "idle">("idle");
   const handleLocationStatus = useCallback((s: "requesting" | "active" | "denied" | "error") => setLocationStatus(s), []);
   const [myTaskDateFilter, setMyTaskDateFilter] = useState<"today" | "all" | "custom">("today");
-  const [myTaskDate, setMyTaskDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [myTaskDate, setMyTaskDate] = useState(() => manilaDateStr(new Date()));
 
   const fetchAssignments = useCallback(async (signal?: AbortSignal) => {
     if (!session?.user?.id) return;
@@ -163,6 +165,7 @@ export default function TrackingDashboardPage() {
         ...t,
         status: data.status,
         pickupStartedAt: data.pickupStartedAt,
+        deliveryArrivedAt: data.deliveryArrivedAt,
         taskType: data.taskType,
         availableActions: data.availableActions,
       } : t));
@@ -246,12 +249,13 @@ export default function TrackingDashboardPage() {
     OUT_FOR_DELIVERY: "Out for Delivery",
   };
   const filteredMyTasks = logisticsTasks.filter((t) => {
-    const d = t.checkIn ? new Date(t.checkIn).toISOString().split("T")[0] : new Date(t.createdAt).toISOString().split("T")[0];
-    const todayStr = new Date().toISOString().split("T")[0];
+    const d = manilaDateStr(t.checkIn || t.createdAt);
+    const todayStr = manilaDateStr(new Date());
     if (myTaskDateFilter === "today") return d === todayStr;
     if (myTaskDateFilter === "custom") return d === myTaskDate;
     return true;
   });
+  const trackedTask = logisticsTasks.find((task) => Boolean(task.pickupStartedAt));
 
   return (
     <div className="space-y-6">
@@ -260,7 +264,7 @@ export default function TrackingDashboardPage() {
         <Badge variant="outline" className="text-xs">{logisticsTasks.length} pending logistic task{logisticsTasks.length !== 1 ? "s" : ""}</Badge>
       </div>
 
-      {logisticsTasks.some((t) => !!t.pickupStartedAt) && <LocationUpdater enabled onStatusChange={handleLocationStatus} />}
+      {trackedTask && <LocationUpdater enabled bookingId={trackedTask.id} onStatusChange={handleLocationStatus} />}
       {locationStatus !== "idle" && (
         <div className={`rounded-lg border px-3 py-2 text-sm ${locationStatus === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : locationStatus === "requesting" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
           {locationStatus === "active" ? "Live geolocation is active — customer map is updating." : locationStatus === "requesting" ? "Requesting location access…" : "Enable Location permission for live tracking."}
@@ -295,9 +299,9 @@ export default function TrackingDashboardPage() {
           <CardTitle className="flex items-center gap-2 text-base">
             <Navigation className="h-4 w-4 text-blue-600" />
             Logistics — My Pending Tasks ({(() => {
-              const todayStr = new Date().toISOString().split("T")[0];
+              const todayStr = manilaDateStr(new Date());
               const filtered = logisticsTasks.filter((t) => {
-                const d = t.checkIn ? new Date(t.checkIn).toISOString().split("T")[0] : new Date(t.createdAt).toISOString().split("T")[0];
+                const d = manilaDateStr(t.checkIn || t.createdAt);
                 if (myTaskDateFilter === "today") return d === todayStr;
                 if (myTaskDateFilter === "custom") return d === myTaskDate;
                 return true;
@@ -309,7 +313,7 @@ export default function TrackingDashboardPage() {
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <select value={myTaskDateFilter} onChange={(e) => setMyTaskDateFilter(e.target.value as "today"|"all"|"custom")} className="h-8 rounded-lg border bg-background px-3 text-xs"><option value="today">Today only</option><option value="all">All dates (previous & future)</option><option value="custom">Pick date…</option></select>
             {myTaskDateFilter === "custom" && <input type="date" value={myTaskDate} onChange={(e) => setMyTaskDate(e.target.value)} className="h-8 rounded-lg border bg-background px-3 text-xs" />}
-            <span className="text-[11px] text-muted-foreground">{myTaskDateFilter === "today" ? `Today • ${new Date().toISOString().split("T")[0]}` : myTaskDateFilter === "custom" ? myTaskDate : "All dates"}</span>
+            <span className="text-[11px] text-muted-foreground">{myTaskDateFilter === "today" ? `Today • ${manilaDateStr(new Date())}` : myTaskDateFilter === "custom" ? myTaskDate : "All dates"}</span>
           </div>
         </CardHeader>
         <CardContent>

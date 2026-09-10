@@ -4,10 +4,11 @@ import { useEffect, useRef } from "react";
 
 interface LocationUpdaterProps {
   enabled: boolean;
+  bookingId: string;
   onStatusChange?: (status: "requesting" | "active" | "denied" | "error") => void;
 }
 
-export function LocationUpdater({ enabled, onStatusChange }: LocationUpdaterProps) {
+export function LocationUpdater({ enabled, bookingId, onStatusChange }: LocationUpdaterProps) {
   const watchIdRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export function LocationUpdater({ enabled, onStatusChange }: LocationUpdaterProp
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
             accuracy: position.coords.accuracy,
+            bookingId,
           }),
         });
         if (!response.ok) throw new Error("Location update failed");
@@ -47,7 +49,7 @@ export function LocationUpdater({ enabled, onStatusChange }: LocationUpdaterProp
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
     };
-  }, [enabled, onStatusChange]);
+  }, [enabled, bookingId, onStatusChange]);
 
   return null;
 }

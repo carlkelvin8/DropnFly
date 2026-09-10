@@ -106,7 +106,7 @@ export default function LiveTrackingPage() {
 
         if (assignments.length > 0) {
           const emp = assignments[0].user;
-          if (emp.currentLat && emp.currentLng) {
+          if (emp.currentLat != null && emp.currentLng != null) {
             setEmployeeLoc({ lat: emp.currentLat, lng: emp.currentLng });
           }
         }
@@ -123,7 +123,7 @@ export default function LiveTrackingPage() {
         const res = await fetch(`/api/tracking/location/${userId}?reference=${encodeURIComponent(String(params.reference))}`);
         if (!res.ok) return;
         const loc = await res.json();
-        if (loc.currentLat && loc.currentLng) {
+        if (loc.currentLat != null && loc.currentLng != null) {
           setEmployeeLoc({ lat: loc.currentLat, lng: loc.currentLng });
         }
       } catch {}
@@ -190,7 +190,8 @@ export default function LiveTrackingPage() {
   let eta: string | null = null;
   if (employeeLoc && data?.booking) {
     // Fix: use NAIA terminal coords as destination, not regex parsing of address string
-    const dest = dropoffCoordsForMap || pickupCoordsForMap;
+    const isDeliveryPhase = data.booking.status === "OUT_FOR_DELIVERY" || data.booking.status === "DELIVERED";
+    const dest = isDeliveryPhase ? dropoffCoordsForMap : pickupCoordsForMap;
     if (dest) {
       const d = haversine(employeeLoc.lat, employeeLoc.lng, dest.lat, dest.lng);
       distance = d;
@@ -247,10 +248,10 @@ export default function LiveTrackingPage() {
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="overflow-hidden rounded-xl border shadow-lg lg:col-span-2">
-            <LiveMap
+      <LiveMap
               referenceNumber={data.booking.referenceNumber}
-              employeeLat={employeeLoc?.lat || null}
-              employeeLng={employeeLoc?.lng || null}
+              employeeLat={employeeLoc?.lat ?? null}
+              employeeLng={employeeLoc?.lng ?? null}
               employeeName={employee?.name}
               pickupLat={pickupCoordsForMap?.lat}
               pickupLng={pickupCoordsForMap?.lng}
@@ -260,6 +261,7 @@ export default function LiveTrackingPage() {
               dropoffAddress={data.booking.dropOffLocation}
               customerName={data.booking.customer.name}
               riderView={isRiderView}
+              destinationPhase={data.booking.status === "OUT_FOR_DELIVERY" || data.booking.status === "DELIVERED" ? "dropoff" : "pickup"}
             />
           </div>
 

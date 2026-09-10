@@ -20,6 +20,7 @@ interface LiveMapProps {
   dropoffAddress?: string;
   customerName?: string;
   riderView?: boolean;
+  destinationPhase?: "pickup" | "dropoff";
 }
 
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -43,6 +44,7 @@ export default function LiveMapInner({
   pickupAddress,
   dropoffAddress,
   riderView = false,
+  destinationPhase = "dropoff",
 }: LiveMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -55,13 +57,13 @@ export default function LiveMapInner({
     if (!map.current || !map.current.isStyleLoaded()) return;
     const mk = map.current;
 
-    if (pickupLat && pickupLng) {
+    if (pickupLat != null && pickupLng != null) {
       new mapboxgl.Marker({ color: "#22c55e" })
         .setLngLat([pickupLng, pickupLat])
         .setPopup(new mapboxgl.Popup().setText(pickupAddress || "Pickup Location"))
         .addTo(mk);
     }
-    if (dropoffLat && dropoffLng) {
+    if (dropoffLat != null && dropoffLng != null) {
       new mapboxgl.Marker({ color: "#ef4444" })
         .setLngLat([dropoffLng, dropoffLat])
         .setPopup(new mapboxgl.Popup().setText(dropoffAddress || "Drop-off Location"))
@@ -108,7 +110,7 @@ export default function LiveMapInner({
   }, []);
 
   useEffect(() => {
-    if (!map.current || !employeeLat || !employeeLng || !mapReady) return;
+    if (!map.current || employeeLat == null || employeeLng == null || !mapReady) return;
     // Style must be fully loaded before adding sources/layers — otherwise Mapbox throws "Style is not done loading"
     if (!map.current.isStyleLoaded()) {
       const onStyleLoad = () => {
@@ -135,8 +137,8 @@ export default function LiveMapInner({
       map.current.flyTo({ center: [employeeLng, employeeLat], zoom: 14 });
 
       const coords: [number, number][] = [[employeeLng, employeeLat]];
-      if (dropoffLat && dropoffLng) coords.push([dropoffLng, dropoffLat]);
-      else if (pickupLat && pickupLng) coords.push([pickupLng, pickupLat]);
+      if (destinationPhase === "pickup" && pickupLat != null && pickupLng != null) coords.push([pickupLng, pickupLat]);
+      else if (destinationPhase === "dropoff" && dropoffLat != null && dropoffLng != null) coords.push([dropoffLng, dropoffLat]);
 
       const geojson: GeoJSON.FeatureCollection = {
         type: "FeatureCollection",
@@ -173,13 +175,13 @@ export default function LiveMapInner({
       // Mapbox can throw if style unloaded mid-update — defer to next tick
       console.warn("[LiveMap] style not ready, deferring:", e);
     }
-  }, [employeeLat, employeeLng, mapReady, pickupLat, pickupLng, dropoffLat, dropoffLng, employeeName, riderView]);
+  }, [employeeLat, employeeLng, mapReady, pickupLat, pickupLng, dropoffLat, dropoffLng, employeeName, riderView, destinationPhase]);
 
-  const destLat = dropoffLat || pickupLat;
-  const destLng = dropoffLng || pickupLng;
+  const destLat = destinationPhase === "pickup" ? pickupLat : dropoffLat;
+  const destLng = destinationPhase === "pickup" ? pickupLng : dropoffLng;
   let distance: number | null = null;
   let eta: string | null = null;
-  if (destLat && destLng && employeeLat && employeeLng) {
+  if (destLat != null && destLng != null && employeeLat != null && employeeLng != null) {
     const d = haversine(employeeLat, employeeLng, destLat, destLng);
     distance = d;
     const etaMinutes = Math.round((d / 30) * 60);
