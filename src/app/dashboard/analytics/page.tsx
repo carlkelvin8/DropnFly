@@ -44,6 +44,8 @@ import { toast } from "sonner";
 import RechartsLine from "@/components/dashboard/RechartsLine";
 import RechartsStatusBar from "@/components/dashboard/RechartsStatusBar";
 import RechartsHBar from "@/components/dashboard/RechartsHBar";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 interface Overview {
   totalBookings: number;
@@ -133,6 +135,10 @@ const tabs: { id: Tab; label: string; icon: typeof DollarSign }[] = [
 ];
 
 export default function AnalyticsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const role = session?.user?.role;
+  const isAdmin = role === "ADMIN";
   const [tab, setTab] = useState<Tab>("overview");
   const [data, setData] = useState<Analytics | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -142,6 +148,17 @@ export default function AnalyticsPage() {
   const [dateTo, setDateTo] = useState("");
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [analyticsError, setAnalyticsError] = useState("");
+
+  if (status !== "loading" && !isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <AlertCircle className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only administrators can view analytics.</p>
+        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
+      </div>
+    );
+  }
 
   useEffect(() => {
     const abort = new AbortController();

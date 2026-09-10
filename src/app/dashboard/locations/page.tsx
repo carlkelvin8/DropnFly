@@ -22,6 +22,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
+import { useSession } from "next-auth/react";
 
 interface Location {
   id: string;
@@ -34,6 +35,10 @@ interface Location {
 }
 
 export default function LocationsPage() {
+  const { data: session, status } = useSession();
+  const role = session?.user?.role;
+  const isAdmin = role === "ADMIN";
+  const allowed = role === "ADMIN" || role === "STAFF";
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<{id:string;name:string}|null>(null);
@@ -42,11 +47,22 @@ export default function LocationsPage() {
   const perPage = 10;
 
   useEffect(() => {
+    if (status === "loading" || !allowed) { if (!allowed && status !== "loading") setLoading(false); return; }
     fetch("/api/locations")
       .then((res) => res.json())
-      .then(setLocations)
+      .then((d) => { if (Array.isArray(d)) setLocations(d); })
       .finally(() => setLoading(false));
-  }, []);
+  }, [allowed, status]);
+
+  if (status !== "loading" && !allowed) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <MapPin className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only staff and administrators can view locations.</p>
+      </div>
+    );
+  }
 
   const filtered = locations.filter((l) => {
     const q = search.toLowerCase();
@@ -67,11 +83,13 @@ export default function LocationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Storage Locations</h1>
-        <Button asChild>
-          <Link href="/dashboard/locations/new">
-            <Plus className="mr-2 h-4 w-4" /> Add Location
-          </Link>
-        </Button>
+        {isAdmin && (
+          <Button asChild>
+            <Link href="/dashboard/locations/new">
+              <Plus className="mr-2 h-4 w-4" /> Add Location
+            </Link>
+          </Button>
+        )}
       </div>
 
       <div className="relative">
@@ -125,18 +143,23 @@ export default function LocationsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="icon" asChild>
-                        <Link href={`/dashboard/locations/${location.id}`}>
-                          <Pencil className="h-4 w-4" />
-                        </Link>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(location.id, location.name)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      {isAdmin && (
+                        <>
+                          <Button variant="ghost" size="icon" asChild>
+                            <Link href={`/dashboard/locations/${location.id}`}>
+                              <Pencil className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(location.id, location.name)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </>
+                      )}
+                      {!isAdmin && <span className="text-xs text-muted-foreground">View only</span>}
                     </div>
                   </TableCell>
                 </TableRow>

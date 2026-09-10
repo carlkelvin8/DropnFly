@@ -9,9 +9,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   Building2,
   Calendar,
+  ClipboardList,
   CreditCard,
   Luggage,
   MapPin,
@@ -101,12 +104,27 @@ function groupLogsByDate(logs: Log[]): Record<string, Log[]> {
 }
 
 export default function ActivityLogsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const role = session?.user?.role;
+  const isAdmin = role === "ADMIN";
   const [data, setData] = useState<LogsResponse | null>(null);
   const [entityFilter, setEntityFilter] = useState("");
   const [actionFilter, setActionFilter] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+
+  if (status !== "loading" && !isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <ClipboardList className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only administrators can view activity logs.</p>
+        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
+      </div>
+    );
+  }
 
   function fetchLogs() {
     const params = new URLSearchParams();
@@ -123,9 +141,10 @@ export default function ActivityLogsPage() {
   }
 
   useEffect(() => {
+    if (!isAdmin) return;
     fetchLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityFilter, actionFilter, page]);
+  }, [entityFilter, actionFilter, page, isAdmin]);
 
   function handleSearch() {
     setPage(1);

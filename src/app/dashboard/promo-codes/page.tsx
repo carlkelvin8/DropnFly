@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tag, Plus, Trash2 } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 interface PromoCode {
   id: string;
@@ -24,16 +26,40 @@ interface PromoCode {
 }
 
 export default function PromoCodesPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const role = session?.user?.role;
   const [promos, setPromos] = useState<PromoCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [forbidden, setForbidden] = useState(false);
 
-  useEffect(() => { loadPromos(); }, []);
+  useEffect(() => {
+    if (status === "loading") return;
+    if (role && role !== "ADMIN") {
+      setForbidden(true);
+      setLoading(false);
+      return;
+    }
+    if (role === "ADMIN") loadPromos();
+  }, [role, status]);
+
+  if (forbidden) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Tag className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only administrators can manage promo codes.</p>
+        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
+      </div>
+    );
+  }
 
   async function loadPromos() {
     try {
       const res = await fetch("/api/promo-codes");
+      if (res.status === 403) { setForbidden(true); return; }
       if (res.ok) setPromos(await res.json());
     } catch {} finally {
       setLoading(false);

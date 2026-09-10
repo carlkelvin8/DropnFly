@@ -50,6 +50,17 @@ export default function NewBookingPage() {
   const router = useRouter();
   const submittingRef = useRef(false);
   const [loading, setLoading] = useState(false);
+  const [roleChecked, setRoleChecked] = useState(false);
+  useEffect(() => {
+    fetch("/api/auth/session").then(async (r) => {
+      if (!r.ok) { router.replace("/dashboard"); return; }
+      const s = await r.json().catch(() => null);
+      const role = s?.user?.role;
+      if (role !== "ADMIN" && role !== "STAFF") { router.replace("/dashboard/bookings"); }
+      else setRoleChecked(true);
+    }).catch(() => router.replace("/dashboard"));
+  }, [router]);
+  if (!roleChecked) return <div className="flex h-64 items-center justify-center text-muted-foreground">Checking permissions...</div>;
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
 

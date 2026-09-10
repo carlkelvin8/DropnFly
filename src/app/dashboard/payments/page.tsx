@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DollarSign } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 
 interface Payment {
   id: string;
@@ -17,15 +20,31 @@ interface Payment {
 }
 
 export default function PaymentsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const role = session?.user?.role;
+  const allowed = role === "ADMIN" || role === "STAFF";
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (status === "loading" || !allowed) { if (!allowed && status !== "loading") setLoading(false); return; }
     fetch("/api/payments")
       .then((r) => r.ok ? r.json() : [])
       .then(setPayments)
       .finally(() => setLoading(false));
-  }, []);
+  }, [allowed, status]);
+
+  if (status !== "loading" && !allowed) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <DollarSign className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only staff and administrators can view payments.</p>
+        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
+      </div>
+    );
+  }
 
   const totalRevenue = payments
     .filter((p) => p.status === "PAID")

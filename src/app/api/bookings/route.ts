@@ -169,6 +169,9 @@ export async function POST(req: Request) {
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!["ADMIN", "STAFF"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Only staff and administrators can create walk-in bookings" }, { status: 403 });
+  }
   const settings = await getSystemSettings();
   if (setting(settings, "walk_in_mode_enabled", "false") !== "true") {
     return NextResponse.json({ error: "Walk-in booking mode is currently disabled in Settings" }, { status: 403 });

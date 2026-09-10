@@ -8,6 +8,8 @@ import { Search, User, Phone, Mail, Package, Loader2, Eye } from "lucide-react";
 import Link from "next/link";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 interface Customer {
   id: string;
@@ -33,6 +35,10 @@ interface Booking {
 }
 
 export default function CustomersPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const role = session?.user?.role;
+  const allowed = role === "ADMIN" || role === "STAFF";
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,6 +46,17 @@ export default function CustomersPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
+
+  if (status !== "loading" && !allowed) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <User className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only staff and administrators can view customer records.</p>
+        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
+      </div>
+    );
+  }
 
   async function handleSearch() {
     if (query.length < 2) return toast.error("Enter at least 2 characters");
@@ -49,13 +66,13 @@ export default function CustomersPage() {
     setBookings([]);
     try {
       const res = await fetch(`/api/customers/search?q=${encodeURIComponent(query)}`);
+      if (res.status === 403) { toast.error("Access denied — staff only"); return; }
       if (!res.ok) throw new Error();
       setCustomers(await res.json());
     } catch {
       toast.error("Search failed");
       setCustomers([]);
-    }
-    setLoading(false);
+    } finally { setLoading(false); }
   }
 
   async function handleSelectCustomer(c: Customer) {

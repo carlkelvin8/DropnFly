@@ -12,6 +12,8 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRelativeTime } from "@/lib/utils";
 import { Pagination } from "@/components/ui/pagination";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ChevronRight,
@@ -76,6 +78,10 @@ const typeIcons: Record<string, string> = {
 const INCIDENTS_PER_PAGE = 8;
 
 export default function IncidentsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const role = session?.user?.role;
+  const allowed = role === "ADMIN" || role === "STAFF";
   const [data, setData] = useState<IncidentsResponse | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
@@ -83,6 +89,7 @@ export default function IncidentsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (status === "loading" || !allowed) { if (!allowed && status !== "loading") setLoading(false); return; }
     const params = new URLSearchParams();
     if (statusFilter) params.set("status", statusFilter);
     if (priorityFilter) params.set("priority", priorityFilter);
@@ -93,11 +100,25 @@ export default function IncidentsPage() {
     fetch("/api/incidents/auto-flag", { method: "POST" }).catch(() => null);
 
     fetch(`/api/incidents?${params}`, { cache: "no-store" })
-      .then((r) => r.json())
+      .then((r) => {
+        if (r.status === 403) throw new Error("Forbidden");
+        return r.json();
+      })
       .then((d) => setData(d))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [statusFilter, priorityFilter, page]);
+  }, [statusFilter, priorityFilter, page, allowed, status]);
+
+  if (status !== "loading" && !allowed) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <AlertTriangle className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only staff and administrators can view incidents.</p>
+        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

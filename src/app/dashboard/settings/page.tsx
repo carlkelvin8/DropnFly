@@ -8,6 +8,8 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -35,6 +37,7 @@ import {
   Bike,
   Car,
   FileText,
+  Settings as SettingsIcon,
 } from "lucide-react";
 
 const SETTING_DEFAULTS: Record<string, string> = {
@@ -146,6 +149,10 @@ const SECTION_KEYS: Record<string, string[]> = {
 };
 
 export default function SettingsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const role = session?.user?.role;
+  const isAdmin = role === "ADMIN";
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
   const [savingSection, setSavingSection] = useState<string | null>(null);
@@ -154,6 +161,8 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("rates");
 
   useEffect(() => {
+    if (status === "loading") return;
+    if (!isAdmin) { setLoading(false); return; }
     fetch("/api/settings")
       .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
       .then((data) => {
@@ -162,7 +171,18 @@ export default function SettingsPage() {
       })
       .catch(() => toast.error("Failed to load settings"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [isAdmin, status]);
+
+  if (status !== "loading" && !isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <SettingsIcon className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only administrators can manage settings.</p>
+        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
+      </div>
+    );
+  }
 
   function handleChange(key: string, value: string) {
     setSettings((prev) => ({ ...prev, [key]: value }));

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -16,7 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Eye, Trash2, Search } from "lucide-react";
+import { Plus, Eye, Trash2, Search, Users } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -36,6 +38,10 @@ interface Employee {
 }
 
 export default function EmployeesPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const role = session?.user?.role;
+  const isAdmin = role === "ADMIN";
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<{id:string;name:string}|null>(null);
@@ -44,11 +50,28 @@ export default function EmployeesPage() {
   const perPage = 10;
 
   useEffect(() => {
+    if (status === "loading") return;
+    if (!isAdmin) { setLoading(false); return; }
     fetch("/api/employees")
-      .then((r) => r.json())
-      .then(setEmployees)
+      .then((r) => {
+        if (r.status === 403) throw new Error("Forbidden");
+        return r.json();
+      })
+      .then((d) => { if (Array.isArray(d)) setEmployees(d); })
+      .catch(() => toast.error("Access denied — admin only"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [isAdmin, status]);
+
+  if (status !== "loading" && !isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Users className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only administrators can manage employees.</p>
+        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
+      </div>
+    );
+  }
 
   const filtered = employees.filter((e) => {
     const q = search.toLowerCase();

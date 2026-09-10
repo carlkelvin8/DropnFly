@@ -25,6 +25,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ExportDialog } from "@/components/ui/export-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/ui/pagination";
+import { useSession } from "next-auth/react";
 
 interface Rider {
   id: string;
@@ -92,6 +93,11 @@ const statusBadge: Record<string, string> = {
 const ITEMS_PER_PAGE = 10;
 
 export default function BookingsPage() {
+  const { data: session } = useSession();
+  const role = session?.user?.role;
+  const canDelete = role === "ADMIN";
+  const canCancel = role === "ADMIN";
+  const canCreate = role === "ADMIN" || role === "STAFF";
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [riders, setRiders] = useState<RiderOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -195,9 +201,11 @@ export default function BookingsPage() {
           <Button variant="outline" onClick={() => setShowExport(true)}>
             <Download className="mr-2 h-4 w-4" /> Export CSV
           </Button>
-          <Button asChild>
-            <Link href="/dashboard/bookings/new"><Plus className="mr-2 h-4 w-4" /> New Booking</Link>
-          </Button>
+          {canCreate && (
+            <Button asChild>
+              <Link href="/dashboard/bookings/new"><Plus className="mr-2 h-4 w-4" /> New Booking</Link>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -251,10 +259,10 @@ export default function BookingsPage() {
         <div className="rounded-lg border bg-muted/50 p-3 flex items-center gap-3">
           <span className="text-sm font-medium">{selectedIds.size} selected</span>
           <div className="flex gap-2 ml-auto">
-            <Button size="sm" onClick={() => handleBatchAction("confirm")}>Confirm</Button>
-            <Button size="sm" onClick={() => handleBatchAction("deliver")}>Mark Delivered</Button>
-            <Button size="sm" variant="secondary" onClick={() => handleBatchAction("cancel")}>Cancel</Button>
-            <Button size="sm" variant="destructive" onClick={() => handleBatchAction("delete")}>Delete</Button>
+            {(role === "ADMIN" || role === "STAFF") && <Button size="sm" onClick={() => handleBatchAction("confirm")}>Confirm</Button>}
+            {(role === "ADMIN" || role === "STAFF") && <Button size="sm" onClick={() => handleBatchAction("deliver")}>Mark Delivered</Button>}
+            {canCancel && <Button size="sm" variant="secondary" onClick={() => handleBatchAction("cancel")}>Cancel</Button>}
+            {canDelete && <Button size="sm" variant="destructive" onClick={() => handleBatchAction("delete")}>Delete</Button>}
             <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Clear</Button>
           </div>
         </div>
@@ -362,9 +370,11 @@ export default function BookingsPage() {
                         <Button variant="ghost" size="icon" asChild>
                           <Link href={`/dashboard/bookings/${booking.id}`}><Eye className="h-4 w-4" /></Link>
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm({ id: booking.id, name: booking.referenceNumber })}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        {canDelete && (
+                          <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm({ id: booking.id, name: booking.referenceNumber })}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
