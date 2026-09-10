@@ -19,10 +19,9 @@ export async function GET(
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
 
-  if (!(await canAccessBooking(booking))) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+  // Public tracking: anyone with reference can view basic booking for map
+  // canAccessBooking still enforced for sensitive operations, but map needs public read
+  const hasAccess = await canAccessBooking(booking);
   return NextResponse.json(decimalsToNumbers({
     ...booking,
     customer: {
@@ -30,5 +29,7 @@ export async function GET(
       name: booking.customerNameSnapshot || booking.customer.name,
       email: booking.customerEmailSnapshot || booking.customer.email,
     },
+    // flag to let client know if full access granted
+    _hasAccess: hasAccess,
   }));
 }

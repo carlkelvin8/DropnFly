@@ -20,7 +20,18 @@ export async function GET(
     });
     if (!booking) return NextResponse.json({ error: "Booking assignment not found" }, { status: 404 });
     bookingId = booking.id;
-    if (!allowed) allowed = await canAccessBooking(booking);
+    if (!allowed) {
+      const hasAccess = await canAccessBooking(booking);
+      // Public tracking: allow anyone with valid reference + correct rider assignment to see live dot
+      if (hasAccess) allowed = true;
+      else {
+        // Check if booking is active and public tracking should be visible
+        const publicBooking = await prisma.booking.findUnique({ where: { id: booking.id }, select: { status: true } });
+        if (publicBooking && ["CONFIRMED","RECEIVED","IN_STORAGE","OUT_FOR_DELIVERY"].includes(publicBooking.status)) {
+          allowed = true;
+        }
+      }
+    }
   }
   if (!allowed) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

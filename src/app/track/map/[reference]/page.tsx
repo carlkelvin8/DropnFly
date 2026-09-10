@@ -90,17 +90,33 @@ export default function LiveTrackingPage() {
       .catch(() => {});
   }, []);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
+    setLoadError(null);
     fetch(`/api/public/bookings/${params.reference}`)
       .then((r) => {
-        if (!r.ok) throw new Error("Booking not found");
+        if (!r.ok) throw new Error(r.status === 404 ? "Booking not found" : "Failed to load booking");
         return r.json();
       })
       .then(async (booking) => {
-        const assignmentsRes = await fetch(`/api/bookings/${booking.id}/assignments`);
-        if (!assignmentsRes.ok) throw new Error("Failed to load assignments");
-        const assignments = await assignmentsRes.json();
+        // Use public rider endpoint for anonymous tracking (private assignments needs auth and would 401)
+        let assignments: { user: { id: string; name: string; currentLat: number | null; currentLng: number | null; lastLocationUpdate: string | null; profilePic: string | null; vehicleType: string | null; plateNumber: string | null } }[] = [];
+        try {
+          const pubRiderRes = await fetch(`/api/public/bookings/${encodeURIComponent(String(params.reference))}/rider`);
+          if (pubRiderRes.ok) {
+            const j = await pubRiderRes.json();
+            if (j.rider) assignments = [{ user: j.rider }];
+            else {
+              // fallback to private assignments if user is logged in
+              const assignmentsRes = await fetch(`/api/bookings/${booking.id}/assignments`);
+              if (assignmentsRes.ok) assignments = await assignmentsRes.json();
+            }
+          } else {
+            const assignmentsRes = await fetch(`/api/bookings/${booking.id}/assignments`);
+            if (assignmentsRes.ok) assignments = await assignmentsRes.json();
+          }
+        } catch {}
         if (cancelled) return;
         setData({ booking, assignments });
 
@@ -111,7 +127,9 @@ export default function LiveTrackingPage() {
           }
         }
       })
-      .catch(() => {});
+      .catch((e) => {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : "Failed to load tracking data");
+      });
     return () => { cancelled = true; };
   }, [params.reference]);
 
@@ -207,6 +225,19 @@ export default function LiveTrackingPage() {
     }
   }
 
+  if (loadError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <Card className="max-w-md w-full">
+          <CardContent className="p-6 text-center space-y-3">
+            <p className="font-medium text-red-600">{loadError}</p>
+            <p className="text-sm text-muted-foreground">Check reference or open <Link href={`/track/${params.reference}`} className="underline">/track/{String(params.reference)}</Link> then click Live Map.</p>
+            <Button asChild variant="outline"><Link href="/track">Back to Tracking</Link></Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   if (!data) {
     return (
       <div className="flex min-h-screen items-center justify-center">

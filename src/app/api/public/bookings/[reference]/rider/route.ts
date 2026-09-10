@@ -17,7 +17,8 @@ export async function GET(
   if (!booking) {
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
-  if (!(await canAccessBooking(booking))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Public rider location: allow anyone with valid reference to see rider pin for live map
+  // still check booking exists and assignment matches; canAccessBooking not required for tracking
 
   const assignment = await prisma.bookingAssignment.findFirst({
     where: {
