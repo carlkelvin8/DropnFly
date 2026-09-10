@@ -62,17 +62,6 @@ export default function EmployeesPage() {
       .finally(() => setLoading(false));
   }, [isAdmin, status]);
 
-  if (status !== "loading" && !isAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <Users className="h-10 w-10 text-muted-foreground mb-3" />
-        <h2 className="text-lg font-semibold">Access Denied</h2>
-        <p className="text-sm text-muted-foreground">Only administrators can manage employees.</p>
-        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
-      </div>
-    );
-  }
-
   const filtered = employees.filter((e) => {
     const q = search.toLowerCase();
     return !q || e.name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q);
@@ -94,6 +83,17 @@ export default function EmployeesPage() {
 
   function handleDelete(id: string, name: string) {
     setDeleteConfirm({ id, name });
+  }
+
+  if (status !== "loading" && !isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Users className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only administrators can manage employees.</p>
+        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
+      </div>
+    );
   }
 
   return (

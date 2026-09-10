@@ -115,17 +115,6 @@ export default function ActivityLogsPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
-  if (status !== "loading" && !isAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <ClipboardList className="h-10 w-10 text-muted-foreground mb-3" />
-        <h2 className="text-lg font-semibold">Access Denied</h2>
-        <p className="text-sm text-muted-foreground">Only administrators can view activity logs.</p>
-        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
-      </div>
-    );
-  }
-
   function fetchLogs() {
     const params = new URLSearchParams();
     if (entityFilter) params.set("entity", entityFilter);
@@ -152,6 +141,17 @@ export default function ActivityLogsPage() {
   }
 
   const groupedLogs = data?.logs ? groupLogsByDate(data.logs) : {};
+
+  if (status !== "loading" && !isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <ClipboardList className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only administrators can view activity logs.</p>
+        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

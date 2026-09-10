@@ -149,17 +149,6 @@ export default function AnalyticsPage() {
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [analyticsError, setAnalyticsError] = useState("");
 
-  if (status !== "loading" && !isAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <AlertCircle className="h-10 w-10 text-muted-foreground mb-3" />
-        <h2 className="text-lg font-semibold">Access Denied</h2>
-        <p className="text-sm text-muted-foreground">Only administrators can view analytics.</p>
-        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
-      </div>
-    );
-  }
-
   useEffect(() => {
     const abort = new AbortController();
     const params = new URLSearchParams();
@@ -198,6 +187,17 @@ export default function AnalyticsPage() {
 
   // Strict: PAID requires paidAt timestamp, otherwise it's not collected revenue (pending/outstanding). This fixes the bug where a new pending booking appeared as Paid in Recent Payments.
   const pendingPayments = payments.filter((p) => p.status === "PENDING" || (p.status === "PAID" && !p.paidAt));
+
+  if (status !== "loading" && !isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <AlertCircle className="h-10 w-10 text-muted-foreground mb-3" />
+        <h2 className="text-lg font-semibold">Access Denied</h2>
+        <p className="text-sm text-muted-foreground">Only administrators can view analytics.</p>
+        <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
