@@ -62,26 +62,23 @@ export async function POST(req: Request) {
       // identity; for truly distinct persons, staff should use distinct emails.
       const existing = await prisma.customer.findUnique({ where: { email: normalizedEmail } });
       if (existing) {
-        // Walk-in reuses Customer identity (same email), but each booking
-        // now snapshots the typed name/phone so the dashboard can show
-        // Carl Manahan for the new booking while Katrina Divivar stays on
-        // the previous one — even with same email. No need to mutate the
-        // shared Customer row; the booking's customerNameSnapshot carries it.
-        // Only fill missing origin if empty.
-        const enrich: Record<string, string> = {};
-        if (countryOfOrigin && !existing.countryOfOrigin) enrich.countryOfOrigin = countryOfOrigin;
-        if (cityOfOrigin && !existing.cityOfOrigin) enrich.cityOfOrigin = cityOfOrigin;
-        if (Object.keys(enrich).length > 0) {
-          const updated = await prisma.customer.update({
-            where: { id: existing.id },
-            data: enrich,
-          });
-          const { password: _pw, ...safe } = updated as unknown as Record<string, unknown>;
-          void _pw;
-          return NextResponse.json(safe);
-        }
-        const { password, ...safe } = existing as unknown as Record<string, unknown>;
-        void password;
+        // Same email = same Customer, but staff's latest typed name (Carl)
+        // must win for the new booking and for the shared row — otherwise
+        // the dashboard keeps showing stale Katrina for the new row.
+        // Always refresh so both snapshot (new code) and fallback (old
+        // cached JS without snapshot) show Carl. Distinct persons should use
+        // distinct emails.
+        const updated = await prisma.customer.update({
+          where: { id: existing.id },
+          data: {
+            name: trimmedName,
+            phone: trimmedPhone,
+            countryOfOrigin,
+            cityOfOrigin,
+          },
+        });
+        const { password: _pw, ...safe } = updated as unknown as Record<string, unknown>;
+        void _pw;
         return NextResponse.json(safe);
       }
       const customer = await prisma.customer.create({
