@@ -273,18 +273,19 @@ export default function TrackingDashboardPage() {
       {filteredMyTasks.filter((t) => !!t.pickupStartedAt).length > 0 && (
         <Card className="border-t-2 border-t-emerald-500 shadow-md">
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm"><Navigation className="h-4 w-4 text-emerald-600" /> Live Tracking — You to Customer</CardTitle>
-            <p className="text-xs text-muted-foreground">Customer NAIA terminal pinned for your guidance. Your live location is visible to customer with your profile (photo, name, vehicle).</p>
+            <CardTitle className="flex items-center gap-2 text-sm"><Navigation className="h-4 w-4 text-emerald-600" /> Employee Guide — Navigate to Customer</CardTitle>
+            <p className="text-xs text-muted-foreground">Your guide to the customer&apos;s NAIA terminal — pin varies per booking&apos;s terminal. Your live dot is monitored by Admin and shown to Customer as a started indicator.</p>
           </CardHeader>
           <CardContent className="space-y-3">
             {filteredMyTasks.filter((t) => !!t.pickupStartedAt).map((task) => {
               const terminal = task.pickupLocation.split(" - ")[0].trim();
+              const isDelivery = task.taskType === "delivery";
               return (
                 <div key={task.id} className="rounded-lg border bg-muted/20 p-3">
-                  <div className="flex items-center justify-between"><code className="rounded bg-white px-2 py-0.5 text-xs font-mono font-bold">{task.referenceNumber}</code><Badge variant="outline" className="text-[10px]">Tracking Active</Badge></div>
-                  <div className="mt-2 flex items-center gap-2 text-sm"><MapPin className="h-4 w-4 text-emerald-600" /><span>Customer at <strong>{terminal}</strong> — {task.pickupLocation}</span></div>
-                  <p className="mt-1 text-xs text-muted-foreground">NAIA pin shown on your map. Customer sees your live dot + profile.</p>
-                  <div className="mt-3 flex gap-2"><Button size="sm" asChild><Link href={`/track/map/${task.referenceNumber}`}><Navigation className="mr-1 h-3 w-3" /> Open Live Map</Link></Button><Button size="sm" variant="outline" asChild><Link href={`/track/${task.referenceNumber}`}><PackageOpen className="mr-1 h-3 w-3" /> Customer View</Link></Button></div>
+                  <div className="flex items-center justify-between"><code className="rounded bg-white px-2 py-0.5 text-xs font-mono font-bold">{task.referenceNumber}</code><Badge variant="outline" className="text-[10px]">Guide Active — {isDelivery ? "Deliver" : "Pick Up"}</Badge></div>
+                  <div className="mt-2 flex items-center gap-2 text-sm"><MapPin className="h-4 w-4 text-emerald-600" /><span>{isDelivery ? "Deliver to" : "Pick up at"} <strong>{terminal}</strong> — {isDelivery ? task.dropOffLocation : task.pickupLocation}</span></div>
+                  <p className="mt-1 text-xs text-muted-foreground">Follow the NAIA pin on your map. Admin tracks this run real-time; customer sees your profile + live dot as confirmation you&apos;ve started.</p>
+                  <div className="mt-3 flex gap-2"><Button size="sm" asChild><Link href={`/track/map/${task.referenceNumber}`}><Navigation className="mr-1 h-3 w-3" /> Open Guide Map</Link></Button><Button size="sm" variant="outline" asChild><Link href={`/track/${task.referenceNumber}`}><PackageOpen className="mr-1 h-3 w-3" /> Customer View</Link></Button></div>
                 </div>
               );
             })}

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LiveMap } from "@/components/tracking/LiveMap";
+import { NAIA_TERMINAL_COORDS } from "@/components/booking/constants";
 import {
   ChevronLeft,
   Clock,
@@ -179,22 +180,19 @@ export default function LiveTrackingPage() {
     setChatLoading(false);
   }
 
+  // Destination is the NAIA terminal booked by the customer — pin varies by terminal per booking
+  const pickupTerminalForMap = data?.booking ? data.booking.pickupLocation.split(" - ")[0].trim() : "";
+  const dropoffTerminalForMap = data?.booking ? data.booking.dropOffLocation.split(" - ")[0].trim() : "";
+  const pickupCoordsForMap = pickupTerminalForMap ? NAIA_TERMINAL_COORDS[pickupTerminalForMap] : null;
+  const dropoffCoordsForMap = dropoffTerminalForMap ? NAIA_TERMINAL_COORDS[dropoffTerminalForMap] : null;
+
   let distance: number | null = null;
   let eta: string | null = null;
   if (employeeLoc && data?.booking) {
-    const pickupWords = data.booking.pickupLocation.match(/(-?\d+\.?\d*)/g);
-    const dropoffWords = data.booking.dropOffLocation.match(/(-?\d+\.?\d*)/g);
-    let destLat: number | null = null;
-    let destLng: number | null = null;
-    if (dropoffWords && dropoffWords.length >= 2) {
-      destLat = parseFloat(dropoffWords[0]);
-      destLng = parseFloat(dropoffWords[1]);
-    } else if (pickupWords && pickupWords.length >= 2) {
-      destLat = parseFloat(pickupWords[0]);
-      destLng = parseFloat(pickupWords[1]);
-    }
-    if (destLat && destLng) {
-      const d = haversine(employeeLoc.lat, employeeLoc.lng, destLat, destLng);
+    // Fix: use NAIA terminal coords as destination, not regex parsing of address string
+    const dest = dropoffCoordsForMap || pickupCoordsForMap;
+    if (dest) {
+      const d = haversine(employeeLoc.lat, employeeLoc.lng, dest.lat, dest.lng);
       distance = d;
       const mins = Math.round((d / 30) * 60);
       eta = mins <= 1 ? "1 min" : `${mins} mins`;
@@ -254,6 +252,10 @@ export default function LiveTrackingPage() {
               employeeLat={employeeLoc?.lat || null}
               employeeLng={employeeLoc?.lng || null}
               employeeName={employee?.name}
+              pickupLat={pickupCoordsForMap?.lat}
+              pickupLng={pickupCoordsForMap?.lng}
+              dropoffLat={dropoffCoordsForMap?.lat}
+              dropoffLng={dropoffCoordsForMap?.lng}
               pickupAddress={data.booking.pickupLocation}
               dropoffAddress={data.booking.dropOffLocation}
               customerName={data.booking.customer.name}

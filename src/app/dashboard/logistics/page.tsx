@@ -15,6 +15,7 @@ import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { LocationPlayback } from "@/components/tracking/LocationPlayback";
 import { LocationUpdater } from "@/components/tracking/LocationUpdater";
+import { AdminLiveMonitor } from "@/components/tracking/AdminLiveMonitor";
 import { Pagination } from "@/components/ui/pagination";
 import { imageFileToDataUrl } from "@/lib/client-image";
 
@@ -74,7 +75,7 @@ export default function LogisticsPage() {
   const [actionNote, setActionNote] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [userRole, setUserRole] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"tasks" | "playback">("tasks");
+  const [activeTab, setActiveTab] = useState<"tasks" | "monitoring">("tasks");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmpId, setSelectedEmpId] = useState<string>("");
   const [now, setNow] = useState(() => Date.now());
@@ -179,31 +180,32 @@ export default function LogisticsPage() {
           {locationStatus === "active" ? "Live geolocation is active and updating the customer map." : locationStatus === "requesting" ? "Requesting location access…" : "Live map needs browser location permission. Enable Location for this site and refresh."}
         </div>
       )}
-      {/* Employee live tracking panel — visible only after Start Pickup/Drop-off, shows customer NAIA pin + employee live */}
+      {/* Employee Guide — visible only after Start Pickup/Drop-off, shows NAIA pin as navigation guide */}
       {roleTasks.filter((t) => t.isAssignedToMe && !!t.pickupStartedAt).length > 0 && (
         <Card className="border-t-2 border-t-emerald-500 shadow-md">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <Navigation className="h-4 w-4 text-emerald-600" /> Live Tracking — Employee to Customer
+              <Navigation className="h-4 w-4 text-emerald-600" /> Employee Guide — Navigate to Customer
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Customer location (NAIA terminal) pinned for your guidance. Your live location is now visible to the customer with your profile (photo, name, vehicle).</p>
+            <p className="text-xs text-muted-foreground">Your guide to the customer&apos;s NAIA terminal. This is your navigation cue — the same live dot is simultaneously monitored by Admin and visible to the Customer as a pickup/drop-off indicator.</p>
           </CardHeader>
           <CardContent className="space-y-3">
             {roleTasks.filter((t) => t.isAssignedToMe && !!t.pickupStartedAt).map((task) => {
               const terminal = task.pickupLocation.split(" - ")[0].trim();
+              const isDelivery = task.taskType === "delivery";
               return (
                 <div key={task.id} className="rounded-lg border bg-muted/20 p-3">
                   <div className="flex items-center justify-between">
                     <code className="rounded bg-white px-2 py-0.5 text-xs font-mono font-bold">{task.referenceNumber}</code>
-                    <Badge variant="outline" className="text-[10px]">Tracking Active</Badge>
+                    <Badge variant="outline" className="text-[10px]">{isDelivery ? "Delivering" : "Picking Up"} — Guide Active</Badge>
                   </div>
                   <div className="mt-2 flex items-center gap-2 text-sm">
                     <MapPin className="h-4 w-4 text-emerald-600" />
-                    <span>Customer at <strong>{terminal}</strong> — {task.pickupLocation}</span>
+                    <span>{isDelivery ? "Deliver to" : "Pick up at"} <strong>{terminal}</strong> — {isDelivery ? task.dropOffLocation : task.pickupLocation}</span>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">NAIA pin is shown on your map for navigation. Customer sees your live dot + your profile (photo, {task.rider?.vehicleType || "vehicle"}, {task.rider?.plateNumber || "plate"}).</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Follow the NAIA pin on your live map. Admin is monitoring this movement in real-time; customer sees your live dot + profile (photo, {task.rider?.vehicleType || "vehicle"}, {task.rider?.plateNumber || "plate"}) as confirmation you&apos;ve started.</p>
                   <div className="mt-3 flex gap-2">
-                    <Button size="sm" asChild><Link href={`/track/map/${task.referenceNumber}`}><Navigation className="mr-1 h-3 w-3" /> Open Live Map</Link></Button>
+                    <Button size="sm" asChild><Link href={`/track/map/${task.referenceNumber}`}><Navigation className="mr-1 h-3 w-3" /> Open Live Map (Guide)</Link></Button>
                     <Button size="sm" variant="outline" asChild><Link href={`/track/${task.referenceNumber}`}><Package className="mr-1 h-3 w-3" /> Customer View</Link></Button>
                   </div>
                 </div>
@@ -216,7 +218,7 @@ export default function LogisticsPage() {
         <div>
           <h1 className="text-2xl font-bold">Logistics & Routes</h1>
           <p className="text-sm text-muted-foreground">
-            {isAdmin ? "All employees' tasking and route playback" : "My assigned tasks"}
+            {isAdmin ? "Real-time monitoring of employees going to customers • Pin varies by NAIA terminal booked by customer" : "My assigned tasks — guide to customer NAIA terminal after you start pickup/drop-off"}
           </p>
         </div>
         {activeTab === "tasks" && (
@@ -226,7 +228,7 @@ export default function LogisticsPage() {
         )}
       </div>
 
-      {/* Tabs: Tasks | Route Playback */}
+      {/* Tabs: Tasks | Live Monitoring */}
       <div className="flex gap-1 rounded-xl border bg-muted/40 p-1">
         <button
           onClick={() => setActiveTab("tasks")}
@@ -237,23 +239,29 @@ export default function LogisticsPage() {
           <Activity className="h-4 w-4" /> Active Tasks
         </button>
         {isAdmin && <button
-          onClick={() => setActiveTab("playback")}
+          onClick={() => setActiveTab("monitoring")}
           className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-            activeTab === "playback" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+            activeTab === "monitoring" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <History className="h-4 w-4" /> Route Playback
+          <Navigation className="h-4 w-4" /> Live Monitoring
         </button>}
       </div>
 
-      {activeTab === "playback" && isAdmin ? (
+      {activeTab === "monitoring" && isAdmin ? (
         <div className="space-y-4">
+          <Card className="border-blue-200 bg-blue-50/30">
+            <CardContent className="p-3 text-xs text-muted-foreground">
+              <span className="font-medium text-blue-700">Admin Live Monitoring</span> — real-time tracking of employees going to customers. Pin location varies by NAIA terminal booked by the customer (Terminal 1–4). Becomes visible only after the employee taps <strong>Start Pickup</strong> / <strong>Start Delivery</strong> (sets <code>pickupStartedAt</code> and activates <code>LocationUpdater</code>). Employee&apos;s live dot is simultaneously the customer&apos;s pickup indicator.
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Users className="h-4 w-4" />
-                Select Rider / Employee
+                Select Employee to Monitor
               </CardTitle>
+              <p className="text-xs text-muted-foreground">Green = tracking active & recent GPS (≤5 min) • Gray = idle or stale. Pin shown below is the NAIA terminal for that employee&apos;s started transaction.</p>
             </CardHeader>
             <CardContent>
               {employees.length === 0 ? (
@@ -261,7 +269,8 @@ export default function LogisticsPage() {
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {employees.map((emp) => {
-                    const hasLiveForEmp = tasks.some((t) => t.rider?.id === emp.id && !!t.pickupStartedAt);
+                    const empTasks = tasks.filter((t) => t.rider?.id === emp.id && !!t.pickupStartedAt);
+                    const hasLiveForEmp = empTasks.length > 0;
                     const isRecent = !!(emp.lastLocationUpdate && (now - new Date(emp.lastLocationUpdate).getTime() < 300000));
                     const showGreen = hasLiveForEmp && isRecent;
                     return (
@@ -270,15 +279,15 @@ export default function LogisticsPage() {
                         onClick={() => setSelectedEmpId(emp.id)}
                         className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all ${
                           selectedEmpId === emp.id
-                            ? "border-cyan-500 bg-cyan-50 text-cyan-700 shadow-sm dark:bg-cyan-950/30 dark:text-cyan-400"
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm dark:bg-emerald-950/30 dark:text-emerald-400"
                             : "border-muted hover:border-muted-foreground/30 hover:bg-muted/50"
                         }`}
-                        title={hasLiveForEmp ? (isRecent ? "Live tracking active" : "Started but no recent GPS") : "No active pick-up/drop-off — no live map"}
+                        title={hasLiveForEmp ? (isRecent ? `Live monitoring active — ${empTasks[0]?.referenceNumber}` : "Started but no recent GPS") : "No active pick-up/drop-off — monitoring idle until Start Pickup/Delivery"}
                       >
-                        <span className={`h-2 w-2 rounded-full ${showGreen ? "bg-green-500" : "bg-gray-300"}`} />
+                        <span className={`h-2 w-2 rounded-full ${showGreen ? "bg-emerald-500 animate-pulse" : "bg-gray-300"}`} />
                         <span className="font-medium">{emp.name}</span>
                         <span className="text-xs text-muted-foreground">{emp.role}</span>
-                        {!hasLiveForEmp && <span className="text-[10px] text-muted-foreground">(idle)</span>}
+                        {hasLiveForEmp ? <Badge variant="outline" className="text-[10px]">Tracking {empTasks.length}</Badge> : <span className="text-[10px] text-muted-foreground">(idle)</span>}
                       </button>
                     );
                   })}
@@ -288,31 +297,30 @@ export default function LogisticsPage() {
           </Card>
 
           {selectedEmpId && (() => {
-            const hasLive = tasks.some((t) => t.rider?.id === selectedEmpId && !!t.pickupStartedAt);
             const emp = employees.find((e) => e.id === selectedEmpId);
-            const hasRecentPing = emp?.lastLocationUpdate ? (now - new Date(emp.lastLocationUpdate).getTime() < 300000) : false;
-            const showMap = hasLive && hasRecentPing;
-            // Real-time is employee→customer: only show map when employee started pickup/drop-off
-            if (!hasLive) {
-              return (
-                <Card className="border-dashed"><CardContent className="p-8 text-center text-sm text-muted-foreground">
-                  <Navigation className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                  <p className="font-medium">No live tracking — {emp?.name || "employee"} hasn&apos;t started any pick-up/drop-off yet</p>
-                  <p className="mt-1 text-xs">Live map appears only after employee taps <strong>Start Pickup</strong> or <strong>Start Delivery</strong> (sets pickupStartedAt and enables LocationUpdater).</p>
-                </CardContent></Card>
-              );
-            }
-            if (!showMap) {
-              return (
-                <Card className="border-amber-200 bg-amber-50/50"><CardContent className="p-6 text-center text-sm text-amber-800">
-                  <p className="font-medium">Waiting for live location…</p>
-                  <p className="mt-1 text-xs">Employee started task but no recent GPS ping (last: {emp?.lastLocationUpdate ? new Date(emp.lastLocationUpdate).toLocaleString("en-PH") : "never"}). Ask employee to allow Location and keep app open.</p>
-                  <div className="mt-4"><LocationPlayback userId={selectedEmpId} userName={emp?.name} /></div>
-                  <p className="mt-2 text-[11px] text-muted-foreground">History playback still available even without live ping.</p>
-                </CardContent></Card>
-              );
-            }
-            return <LocationPlayback userId={selectedEmpId} userName={emp?.name} />;
+            const empLiveTasks = tasks.filter((t) => t.rider?.id === selectedEmpId && !!t.pickupStartedAt);
+            return (
+              <div className="space-y-4">
+                <AdminLiveMonitor
+                  employeeId={selectedEmpId}
+                  employeeName={emp?.name || "Employee"}
+                  tasks={empLiveTasks.map((t) => ({ referenceNumber: t.referenceNumber, pickupLocation: t.pickupLocation, dropOffLocation: t.dropOffLocation, pickupStartedAt: t.pickupStartedAt }))}
+                  initialLat={emp?.currentLat ?? null}
+                  initialLng={emp?.currentLng ?? null}
+                  lastUpdate={emp?.lastLocationUpdate ?? null}
+                />
+                <details className="rounded-lg border bg-muted/20 p-3">
+                  <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                    <History className="h-4 w-4 text-muted-foreground" /> Route History (Audit) — not live
+                    <span className="ml-auto text-xs font-normal text-muted-foreground">For forensic review • filtered by date</span>
+                  </summary>
+                  <p className="mt-2 text-xs text-muted-foreground">This is historical playback (polyline + scrubber), independent of live monitoring. Use it to audit past movements, not to track ongoing pick-ups.</p>
+                  <div className="mt-3">
+                    <LocationPlayback userId={selectedEmpId} userName={emp?.name} />
+                  </div>
+                </details>
+              </div>
+            );
           })()}
         </div>
       ) : loading ? (
