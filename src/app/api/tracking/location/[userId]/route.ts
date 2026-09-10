@@ -47,12 +47,23 @@ export async function GET(
       orderBy: { createdAt: "desc" },
       select: { latitude: true, longitude: true, createdAt: true },
     });
+    // Fallback to user's last known generic location if no booking-scoped ping yet
+    // so map still shows last dot + NAIA pin instead of blank.
+    if (latest) {
+      return NextResponse.json({
+        id: user.id,
+        name: user.name,
+        currentLat: latest.latitude,
+        currentLng: latest.longitude,
+        lastLocationUpdate: latest.createdAt,
+      });
+    }
     return NextResponse.json({
       id: user.id,
       name: user.name,
-      currentLat: latest?.latitude ?? null,
-      currentLng: latest?.longitude ?? null,
-      lastLocationUpdate: latest?.createdAt ?? null,
+      currentLat: user.currentLat,
+      currentLng: user.currentLng,
+      lastLocationUpdate: user.lastLocationUpdate,
     });
   }
 

@@ -36,7 +36,11 @@ interface Task {
   referenceNumber: string;
   customer: { name: string; email: string; phone: string };
   pickupLocation: string;
+  pickupLat: number | null;
+  pickupLng: number | null;
   dropOffLocation: string;
+  dropOffLat: number | null;
+  dropOffLng: number | null;
   status: string;
   taskType: string;
   rider: { id: string; name: string; profilePic: string | null; vehicleType: string | null; plateNumber: string | null } | null;
@@ -77,6 +81,14 @@ export default function LogisticsPage() {
   const [taskPage, setTaskPage] = useState(1);
   const [locationStatus, setLocationStatus] = useState<"requesting" | "active" | "denied" | "error" | "idle">("idle");
   const handleLocationStatus = useCallback((status: "requesting" | "active" | "denied" | "error") => setLocationStatus(status), []);
+  const [selectedTrackedId, setSelectedTrackedId] = useState<string | null>(null);
+
+  // isolate photo/note when switching active task
+  useEffect(() => {
+    setPhotoProof(null);
+    setActionNote("");
+    setActiveAction(null);
+  }, [activeTask]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30000);
@@ -180,14 +192,31 @@ export default function LogisticsPage() {
   const taskTotalPages = Math.max(1, Math.ceil(filteredTasks.length / taskPageSize));
   const currentTaskPage = Math.min(taskPage, taskTotalPages);
   const paginatedTasks = filteredTasks.slice((currentTaskPage - 1) * taskPageSize, currentTaskPage * taskPageSize);
-  const trackedTask = roleTasks.find((task) => task.isAssignedToMe && Boolean(task.pickupStartedAt));
+  // Explicit selector for GPS: when multiple started tasks, employee chooses which booking to publish GPS for
+  const startedForMe = [...roleTasks]
+    .filter((task) => task.isAssignedToMe && Boolean(task.pickupStartedAt))
+    .sort((a, b) => new Date(b.pickupStartedAt as string).getTime() - new Date(a.pickupStartedAt as string).getTime());
+  const trackedTask = (selectedTrackedId ? startedForMe.find((t) => t.id === selectedTrackedId) : null) || startedForMe[0] || null;
+
+  const showLocationUpdater = Boolean(trackedTask) && !isAdmin;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      {trackedTask && <LocationUpdater enabled bookingId={trackedTask.id} onStatusChange={handleLocationStatus} />}
+      {showLocationUpdater && trackedTask && <LocationUpdater key={trackedTask.id} enabled bookingId={trackedTask.id} onStatusChange={handleLocationStatus} />}
+      {startedForMe.length > 1 && !isAdmin && (
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+          <span className="font-medium">GPS for booking:</span>
+          <select value={trackedTask?.id || ""} onChange={(e) => setSelectedTrackedId(e.target.value)} className="flex-1 rounded-md border bg-background px-2 py-1 text-xs">
+            {startedForMe.map((t) => (
+              <option key={t.id} value={t.id}>{t.referenceNumber} — {t.pickupLocation} → {t.dropOffLocation}</option>
+            ))}
+          </select>
+          <span className="text-[11px] text-muted-foreground">Map shows this booking&apos;s exact pin</span>
+        </div>
+      )}
       {locationStatus !== "idle" && (
         <div className={`rounded-lg border px-3 py-2 text-sm ${locationStatus === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : locationStatus === "requesting" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-          {locationStatus === "active" ? "Live geolocation is active and updating the customer map." : locationStatus === "requesting" ? "Requesting location access…" : "Live map needs browser location permission. Enable Location for this site and refresh."}
+          {locationStatus === "active" ? `Live geolocation is active for ${trackedTask?.referenceNumber || "booking"} and updating the customer map.` : locationStatus === "requesting" ? "Requesting location access…" : "Live map needs browser location permission. Enable Location for this site and refresh."}
         </div>
       )}
       {/* Employee Guide — visible only after Start Pickup/Drop-off, shows NAIA pin as navigation guide */}
@@ -238,6 +267,13 @@ export default function LogisticsPage() {
         )}
       </div>
 
+      {isAdmin && tasks.filter((t) => !t.rider).length > 0 && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="p-3 text-xs text-amber-900">
+            <span className="font-bold">{tasks.filter((t) => !t.rider).length} active booking{tasks.filter((t) => !t.rider).length !== 1 ? "s" : ""} without rider assignment</span> — hindi lalabas dati sa Logistics. Ngayon visible na dito. Assign a rider from <code className="rounded bg-white px-1">/dashboard/bookings/[id] → Assign Rider</code> para lumabas sa employee queue at live tracking.
+          </CardContent>
+        </Card>
+      )}
       {/* Tabs: Tasks | Live Monitoring */}
       <div className="flex gap-1 rounded-xl border bg-muted/40 p-1">
         <button
@@ -315,7 +351,7 @@ export default function LogisticsPage() {
                   key={selectedEmpId}
                   employeeId={selectedEmpId}
                   employeeName={emp?.name || "Employee"}
-                  tasks={empLiveTasks.map((t) => ({ referenceNumber: t.referenceNumber, pickupLocation: t.pickupLocation, dropOffLocation: t.dropOffLocation, pickupStartedAt: t.pickupStartedAt, status: t.status }))}
+                  tasks={empLiveTasks.map((t) => ({ referenceNumber: t.referenceNumber, pickupLocation: t.pickupLocation, dropOffLocation: t.dropOffLocation, pickupStartedAt: t.pickupStartedAt, status: t.status, pickupLat: t.pickupLat, pickupLng: t.pickupLng, dropOffLat: t.dropOffLat, dropOffLng: t.dropOffLng }))}
                   initialLat={emp?.currentLat ?? null}
                   initialLng={emp?.currentLng ?? null}
                   lastUpdate={emp?.lastLocationUpdate ?? null}
@@ -482,7 +518,7 @@ export default function LogisticsPage() {
               </CardContent>
             </Card>
           ))}
-          <Pagination currentPage={currentTaskPage} totalPages={taskTotalPages} onPageChange={setTaskPage} />
+          {filteredTasks.length > taskPageSize && <Pagination currentPage={currentTaskPage} totalPages={taskTotalPages} onPageChange={setTaskPage} />}
         </div>
       )}</>}
     </div>

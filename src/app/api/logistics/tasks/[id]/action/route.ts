@@ -33,6 +33,19 @@ export async function POST(
     if (!action || !ACTION_MAP[action]) {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
+    // validate optional coords if provided
+    if (latitude != null || longitude != null) {
+      if (typeof latitude !== "number" || typeof longitude !== "number" || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return NextResponse.json({ error: "Invalid coordinates" }, { status: 400 });
+      }
+      if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        return NextResponse.json({ error: "Coordinates out of range" }, { status: 400 });
+      }
+    }
+    // guard base64 photo size (prevent DB bloat DoS) — ~1.4MB decoded max (2MB dataURL)
+    if (photo && typeof photo === "string" && photo.length > 2_000_000) {
+      return NextResponse.json({ error: "Photo too large (max 2MB)" }, { status: 413 });
+    }
 
     const booking = await prisma.booking.findUnique({
       where: { id },
@@ -53,6 +66,14 @@ export async function POST(
     }
     if (isBookingLocked(booking.status)) {
       return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
+    }
+
+    // Bug5: idempotent guard — block duplicate arrive
+    if (action === "arrive-delivery" && booking.deliveryArrivedAt) {
+      return NextResponse.json({ error: "Already marked as arrived at delivery location" }, { status: 409 });
+    }
+    if (action === "arrive-pickup" && booking.status !== "CONFIRMED") {
+      return NextResponse.json({ error: "Already marked as arrived at pickup" }, { status: 409 });
     }
 
     const availableActions = availableLogisticsActions(booking.status, Boolean(booking.pickupStartedAt), Boolean(booking.deliveryArrivedAt));

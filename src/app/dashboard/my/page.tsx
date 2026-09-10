@@ -89,6 +89,12 @@ export default function TrackingDashboardPage() {
   const [myTaskDateFilter, setMyTaskDateFilter] = useState<"today" | "all" | "custom">("today");
   const [myTaskDate, setMyTaskDate] = useState(() => manilaDateStr(new Date()));
 
+  useEffect(() => {
+    setPhotoProof(null);
+    setActionNote("");
+    setActiveAction(null);
+  }, [activeTask]);
+
   const fetchAssignments = useCallback(async (signal?: AbortSignal) => {
     if (!session?.user?.id) return;
     try {
@@ -255,7 +261,9 @@ export default function TrackingDashboardPage() {
     if (myTaskDateFilter === "custom") return d === myTaskDate;
     return true;
   });
-  const trackedTask = logisticsTasks.find((task) => Boolean(task.pickupStartedAt));
+  const trackedTask = [...logisticsTasks]
+    .filter((task) => Boolean(task.pickupStartedAt))
+    .sort((a, b) => new Date(b.pickupStartedAt as string).getTime() - new Date(a.pickupStartedAt as string).getTime())[0] || null;
 
   return (
     <div className="space-y-6">
@@ -264,7 +272,7 @@ export default function TrackingDashboardPage() {
         <Badge variant="outline" className="text-xs">{logisticsTasks.length} pending logistic task{logisticsTasks.length !== 1 ? "s" : ""}</Badge>
       </div>
 
-      {trackedTask && <LocationUpdater enabled bookingId={trackedTask.id} onStatusChange={handleLocationStatus} />}
+      {trackedTask && <LocationUpdater key={trackedTask.id} enabled bookingId={trackedTask.id} onStatusChange={handleLocationStatus} />}
       {locationStatus !== "idle" && (
         <div className={`rounded-lg border px-3 py-2 text-sm ${locationStatus === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : locationStatus === "requesting" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
           {locationStatus === "active" ? "Live geolocation is active — customer map is updating." : locationStatus === "requesting" ? "Requesting location access…" : "Enable Location permission for live tracking."}

@@ -10,6 +10,7 @@ import {
   MapPin, Clock, Navigation, Gauge,
 } from "lucide-react";
 import { OPEN_STREET_MAP_STYLE } from "@/lib/map-style";
+import { manilaDateStr } from "@/lib/manila-time";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
@@ -53,6 +54,7 @@ export default function LocationPlaybackInner({ userId, userName }: LocationPlay
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const extraMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const animFrame = useRef<number | null>(null);
 
   const [points, setPoints] = useState<LocationPoint[]>([]);
@@ -60,10 +62,11 @@ export default function LocationPlaybackInner({ userId, userName }: LocationPlay
   const [playing, setPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [speed, setSpeed] = useState(1);
-  const [dateFrom, setDateFrom] = useState(() => new Date().toISOString().split("T")[0]);
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dateFrom, setDateFrom] = useState(() => manilaDateStr(new Date()));
+  const [dateTo, setDateTo] = useState(() => manilaDateStr(new Date()));
   const [totalDistance, setTotalDistance] = useState(0);
   const [mapReady, setMapReady] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const playingRef = useRef(playing);
   const currentIndexRef = useRef(currentIndex);
@@ -79,14 +82,16 @@ export default function LocationPlaybackInner({ userId, userName }: LocationPlay
     setCurrentIndex(0);
     try {
       const params = new URLSearchParams({ from: dateFrom, to: dateTo, limit: "2000" });
-      const res = await fetch(`/api/tracking/history/${userId}?${params}`);
+      const res = await fetch(`/api/tracking/history/${encodeURIComponent(userId)}?${params}`);
       if (!res.ok) throw new Error("Failed to fetch");
       const data: LocationPoint[] = await res.json();
-      setPoints(data);
+      setPoints(Array.isArray(data) ? data : []);
 
       let dist = 0;
       for (let i = 1; i < data.length; i++) {
-        dist += haversine(data[i - 1].latitude, data[i - 1].longitude, data[i].latitude, data[i].longitude);
+        // skip jumps >50km (gap across bookings/days)
+        const d = haversine(data[i - 1].latitude, data[i - 1].longitude, data[i].latitude, data[i].longitude);
+        if (d < 50) dist += d;
       }
       setTotalDistance(dist);
     } catch {
@@ -94,6 +99,7 @@ export default function LocationPlaybackInner({ userId, userName }: LocationPlay
       setTotalDistance(0);
     } finally {
       setLoading(false);
+      setHasLoadedOnce(true);
     }
   }, [userId, dateFrom, dateTo]);
 
@@ -115,8 +121,18 @@ export default function LocationPlaybackInner({ userId, userName }: LocationPlay
 
     map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
     map.current.on("load", () => setMapReady(true));
+    map.current.on("idle", () => {
+      if (map.current?.isStyleLoaded()) setMapReady(true);
+    });
+
+    const ro = new ResizeObserver(() => map.current?.resize());
+    if (mapContainer.current) ro.observe(mapContainer.current);
 
     return () => {
+      ro.disconnect();
+      extraMarkersRef.current.forEach((m) => m.remove());
+      extraMarkersRef.current = [];
+      markerRef.current?.remove();
       map.current?.remove();
       map.current = null;
     };
@@ -131,13 +147,28 @@ export default function LocationPlaybackInner({ userId, userName }: LocationPlay
       return;
     }
 
+    // cleanup previous playback artifacts
+    extraMarkersRef.current.forEach((m) => m.remove());
+    extraMarkersRef.current = [];
+    ["playback-route", "playback-progress"].forEach((id) => {
+      if (map.current?.getLayer(`${id}-line`)) map.current.removeLayer(`${id}-line`);
+      if (map.current?.getSource(id)) map.current.removeSource(id);
+    });
+
     const coords = points.map((p) => [p.longitude, p.latitude] as [number, number]);
 
     const bounds = new mapboxgl.LngLatBounds();
     coords.forEach((c) => bounds.extend(c));
     map.current.fitBounds(bounds, { padding: 60, maxZoom: 15 });
 
-    if (coords.length === 1) return;
+    if (coords.length === 1) {
+      const m = new mapboxgl.Marker({ color: "#22c55e" })
+        .setLngLat(coords[0])
+        .setPopup(new mapboxgl.Popup().setText("Single point"))
+        .addTo(map.current);
+      extraMarkersRef.current.push(m);
+      return;
+    }
 
     const geojson: GeoJSON.FeatureCollection = {
       type: "FeatureCollection",
@@ -169,7 +200,7 @@ export default function LocationPlaybackInner({ userId, userName }: LocationPlay
       features: [{
         type: "Feature",
         properties: {},
-        geometry: { type: "LineString", coordinates: coords.slice(0, 1) },
+        geometry: { type: "LineString", coordinates: coords.length >= 2 ? coords.slice(0, 2) : coords.slice(0, 1) },
       }],
     };
 
@@ -189,15 +220,17 @@ export default function LocationPlaybackInner({ userId, userName }: LocationPlay
       });
     }
 
-    new mapboxgl.Marker({ color: "#22c55e" })
+    const startM = new mapboxgl.Marker({ color: "#22c55e" })
       .setLngLat(coords[0])
       .setPopup(new mapboxgl.Popup().setText("Start"))
       .addTo(map.current);
+    extraMarkersRef.current.push(startM);
 
-    new mapboxgl.Marker({ color: "#ef4444" })
+    const endM = new mapboxgl.Marker({ color: "#ef4444" })
       .setLngLat(coords[coords.length - 1])
       .setPopup(new mapboxgl.Popup().setText("End"))
       .addTo(map.current);
+    extraMarkersRef.current.push(endM);
   }, [points, mapReady]);
 
   useEffect(() => {
@@ -210,7 +243,7 @@ export default function LocationPlaybackInner({ userId, userName }: LocationPlay
     } else {
       const el = document.createElement("div");
       el.className = "flex h-8 w-8 items-center justify-center rounded-full bg-cyan-500 text-white text-xs font-bold shadow-lg border-2 border-white";
-      el.innerHTML = "▶";
+      el.textContent = "▶";
       markerRef.current = new mapboxgl.Marker({ element: el })
         .setLngLat([point.longitude, point.latitude])
         .addTo(map.current);
@@ -369,7 +402,7 @@ export default function LocationPlaybackInner({ userId, userName }: LocationPlay
         </div>
       )}
 
-      {!loading && points.length === 0 && (
+      {!loading && hasLoadedOnce && points.length === 0 && (
         <div className="rounded-xl border-2 border-dashed border-muted p-8 text-center">
           <Navigation className="mx-auto h-10 w-10 text-muted-foreground/50 mb-3" />
           <p className="font-medium text-muted-foreground">No location data found</p>

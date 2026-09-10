@@ -32,6 +32,10 @@ export async function POST(req: Request) {
     if (accuracy != null && (typeof accuracy !== "number" || !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100000)) {
       return NextResponse.json({ error: "Invalid accuracy" }, { status: 400 });
     }
+    // filter extremely inaccurate pings server-side as well (client already filters >100m)
+    if (accuracy != null && accuracy > 200) {
+      // store but mark? still store — but could be jitter; we allow but downstream history filters
+    }
 
     const booking = await prisma.booking.findFirst({
       where: {
@@ -48,6 +52,28 @@ export async function POST(req: Request) {
     );
     if (!booking || !assignedToActivePhase) {
       return NextResponse.json({ error: "No active assigned task for this location update" }, { status: 403 });
+    }
+
+    // dedup: skip if last ping <10s and <5m away
+    const latest = await prisma.locationUpdate.findFirst({
+      where: { userId: session.user.id, bookingId },
+      orderBy: { createdAt: "desc" },
+      select: { latitude: true, longitude: true, createdAt: true },
+    });
+    if (latest) {
+      const ageMs = Date.now() - new Date(latest.createdAt).getTime();
+      const dLat = ((latitude - latest.latitude) * Math.PI) / 180;
+      const dLng = ((longitude - latest.longitude) * Math.PI) / 180;
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos((latest.latitude * Math.PI) / 180) * Math.cos((latitude * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+      const distM = 6371e3 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      if (ageMs < 10000 && distM < 5) {
+        // just refresh user's current location timestamp without creating duplicate point
+        await prisma.user.update({
+          where: { id: session.user.id },
+          data: { currentLat: latitude, currentLng: longitude, lastLocationUpdate: new Date() },
+        });
+        return NextResponse.json({ ...latest, deduped: true } as unknown as object, { status: 200 });
+      }
     }
 
     const update = await prisma.$transaction(async (tx) => {

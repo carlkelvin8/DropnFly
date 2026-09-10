@@ -19,25 +19,36 @@ export async function GET(
   const { searchParams } = new URL(req.url);
   const from = searchParams.get("from");
   const to = searchParams.get("to");
-  const limit = parseInt(searchParams.get("limit") || "500");
+  const bookingId = searchParams.get("bookingId");
+  const rawLimit = parseInt(searchParams.get("limit") || "500", 10);
+  const limit = isNaN(rawLimit) ? 500 : Math.min(Math.max(rawLimit, 1), 2000);
 
   const where: Record<string, unknown> = { userId };
+  if (bookingId) where.bookingId = bookingId;
 
   if (from || to) {
     const createdAt: Record<string, Date> = {};
-    if (from) createdAt.gte = new Date(from);
-    if (to) {
-      const toDate = new Date(to);
-      toDate.setHours(23, 59, 59, 999);
-      createdAt.lte = toDate;
+    if (from) {
+      const d = new Date(from);
+      if (!isNaN(d.getTime())) createdAt.gte = d;
     }
-    where.createdAt = createdAt;
+    if (to) {
+      const d = new Date(to);
+      if (!isNaN(d.getTime())) {
+        // use Manila end-of-day: set to 23:59:59 PH = 15:59:59 UTC
+        // simpler: add 1 day then -1ms after parsing as date-only
+        const toDate = new Date(d);
+        toDate.setHours(23, 59, 59, 999);
+        createdAt.lte = toDate;
+      }
+    }
+    if (Object.keys(createdAt).length > 0) where.createdAt = createdAt;
   }
 
   const updates = await prisma.locationUpdate.findMany({
     where,
     orderBy: { createdAt: "asc" },
-    take: Math.min(limit, 2000),
+    take: limit,
   });
 
   return NextResponse.json(updates);

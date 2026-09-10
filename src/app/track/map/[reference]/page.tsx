@@ -180,23 +180,30 @@ export default function LiveTrackingPage() {
     setChatLoading(false);
   }
 
-  // Destination is the NAIA terminal booked by the customer — pin varies by terminal per booking
+  // Destination: prefer exact lat/lng if booking has them, fallback to NAIA terminal
   const pickupTerminalForMap = data?.booking ? data.booking.pickupLocation.split(" - ")[0].trim() : "";
   const dropoffTerminalForMap = data?.booking ? data.booking.dropOffLocation.split(" - ")[0].trim() : "";
-  const pickupCoordsForMap = pickupTerminalForMap ? NAIA_TERMINAL_COORDS[pickupTerminalForMap] : null;
-  const dropoffCoordsForMap = dropoffTerminalForMap ? NAIA_TERMINAL_COORDS[dropoffTerminalForMap] : null;
+  const bAny = data?.booking as unknown as Record<string, unknown>;
+  const pickupCoordsForMap = bAny?.pickupLat != null && bAny?.pickupLng != null
+    ? { lat: bAny.pickupLat as number, lng: bAny.pickupLng as number }
+    : pickupTerminalForMap ? NAIA_TERMINAL_COORDS[pickupTerminalForMap] : null;
+  const dropoffCoordsForMap = bAny?.dropOffLat != null && bAny?.dropOffLng != null
+    ? { lat: bAny.dropOffLat as number, lng: bAny.dropOffLng as number }
+    : dropoffTerminalForMap ? NAIA_TERMINAL_COORDS[dropoffTerminalForMap] : null;
 
   let distance: number | null = null;
   let eta: string | null = null;
   if (employeeLoc && data?.booking) {
-    // Fix: use NAIA terminal coords as destination, not regex parsing of address string
     const isDeliveryPhase = data.booking.status === "OUT_FOR_DELIVERY" || data.booking.status === "DELIVERED";
     const dest = isDeliveryPhase ? dropoffCoordsForMap : pickupCoordsForMap;
     if (dest) {
-      const d = haversine(employeeLoc.lat, employeeLoc.lng, dest.lat, dest.lng);
+      const base = haversine(employeeLoc.lat, employeeLoc.lng, dest.lat, dest.lng);
+      const d = base * 1.35;
       distance = d;
-      const mins = Math.round((d / 30) * 60);
-      eta = mins <= 1 ? "1 min" : `${mins} mins`;
+      // Manila traffic factor
+      const minsOfDay = (() => { try { const p = new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila", hour:"2-digit", minute:"2-digit", hourCycle:"h23"}).formatToParts(new Date()); const hh=Number(p.find(x=>x.type==="hour")?.value||"12"); if((hh>=7&&hh<=9)||(hh>=17&&hh<=20)) return 0.7; if(hh>=22||hh<=5) return 1.25; return 1.0; } catch { return 1.0; } })();
+      const mins = Math.round((d / (30 * minsOfDay)) * 60);
+      if (mins <= 1) eta = "1 min"; else if (mins < 60) eta = `${mins} mins`; else { const h=Math.floor(mins/60); const m=mins%60; eta=m?`${h}h ${m}m`:`${h}h`; }
     }
   }
 
