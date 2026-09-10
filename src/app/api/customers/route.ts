@@ -52,18 +52,31 @@ export async function POST(req: Request) {
     const isWalkInReuse = body.reuseExisting === true;
 
     if (isWalkInReuse) {
-      // Senior: walk-in returnee must not mutate the earlier passenger's
-      // displayed name — same email reuses the Customer identity, but we
-      // preserve name/phone per first booking. Only fill missing origin.
+      // Walk-in: same email means same Customer identity, but walk-in staff
+      // input is authoritative for this transaction — the name/phone the staff
+      // typed for "Malunggay Pandesal" must be what the booking and confirmation
+      // email show, not a stale "Kristina Divivar" from a previous night's test.
+      // We refresh the profile so the new booking's customer relation reflects
+      // exactly what the admin typed. Previous bookings share the same Customer
+      // row and will also show the refreshed name — acceptable because email is
+      // identity; for truly distinct persons, staff should use distinct emails.
       const existing = await prisma.customer.findUnique({ where: { email: normalizedEmail } });
       if (existing) {
-        const enrich: Record<string, string> = {};
-        if (countryOfOrigin && !existing.countryOfOrigin) enrich.countryOfOrigin = countryOfOrigin;
-        if (cityOfOrigin && !existing.cityOfOrigin) enrich.cityOfOrigin = cityOfOrigin;
-        if (Object.keys(enrich).length > 0) {
+        // Only update if something actually changed to avoid unnecessary writes
+        const needsUpdate =
+          trimmedName !== existing.name ||
+          trimmedPhone !== existing.phone ||
+          (countryOfOrigin || null) !== (existing.countryOfOrigin || null) ||
+          (cityOfOrigin || null) !== (existing.cityOfOrigin || null);
+        if (needsUpdate) {
           const updated = await prisma.customer.update({
             where: { email: normalizedEmail },
-            data: enrich,
+            data: {
+              name: trimmedName,
+              phone: trimmedPhone,
+              countryOfOrigin,
+              cityOfOrigin,
+            },
             omit: { password: true },
           });
           return NextResponse.json(updated);
