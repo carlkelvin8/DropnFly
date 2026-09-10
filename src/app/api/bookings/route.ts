@@ -125,7 +125,11 @@ export async function GET(req: Request) {
     return {
       id: b.id,
       referenceNumber: b.referenceNumber,
-      customer: b.customer,
+      customer: {
+        ...b.customer,
+        name: (b as unknown as { customerNameSnapshot?: string | null }).customerNameSnapshot || b.customer.name,
+        email: (b as unknown as { customerEmailSnapshot?: string | null }).customerEmailSnapshot || b.customer.email,
+      } as unknown as typeof b.customer,
       pickupLocation: b.pickupLocation,
       dropOffLocation: b.dropOffLocation,
       numberOfBags: b.numberOfBags,
@@ -219,28 +223,16 @@ export async function POST(req: Request) {
       if (!location) return NextResponse.json({ error: "Location not found" }, { status: 404 });
     }
 
-    let customer = await prisma.customer.findUnique({ where: { id: customerId } });
+    const customer = await prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
-    // Walk-in safeguard: staff typed name (e.g. Carl Manahan) must be what
-    // the booking/email/dashboard shows, even when same email is reused for
-    // many transactions (e.g. Katrina Divivar). If the caller supplies a
-    // fresher snapshot, refresh the Customer so the include shows it.
-    // bookings/new sends customerName/customerPhone/country/city alongside customerId.
+    // Snapshot of what staff typed for this specific booking — even when
+    // same email is reused (Katrina Divivar → Carl Manahan), the booking
+    // keeps its own name so the dashboard shows Carl for the new row while
+    // the old row stays Katrina.
     const snapName = typeof body.customerName === "string" ? body.customerName.trim() : "";
     const snapPhone = typeof body.customerPhone === "string" ? body.customerPhone.trim() : "";
     const snapCountry = body.customerCountryOfOrigin || body.countryOfOrigin || null;
     const snapCity = body.customerCityOfOrigin || body.cityOfOrigin || null;
-    if (snapName && (snapName !== customer.name || snapPhone !== customer.phone || (snapCountry || null) !== (customer.countryOfOrigin || null) || (snapCity || null) !== (customer.cityOfOrigin || null))) {
-      customer = await prisma.customer.update({
-        where: { id: customerId },
-        data: {
-          ...(snapName ? { name: snapName } : {}),
-          ...(snapPhone ? { phone: snapPhone } : {}),
-          ...(snapCountry !== undefined ? { countryOfOrigin: snapCountry } : {}),
-          ...(snapCity !== undefined ? { cityOfOrigin: snapCity } : {}),
-        },
-      });
-    }
 
     const checkInDate = new Date(checkIn);
     if (isNaN(checkInDate.getTime())) {
@@ -446,6 +438,9 @@ export async function POST(req: Request) {
           qrCode: qrBase64,
           userId: session.user.id,
           customerId,
+          customerNameSnapshot: snapName || customer.name,
+          customerEmailSnapshot: customer.email,
+          customerPhoneSnapshot: snapPhone || customer.phone,
           locationId: locationId || null,
           pickupLocation: body.pickupLocation || "",
           dropOffLocation: body.dropOffLocation || "",

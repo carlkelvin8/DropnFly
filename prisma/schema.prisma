@@ -109,6 +109,9 @@ model Booking {
   locationId      String?
   pickupLocation  String
   dropOffLocation String
+  customerNameSnapshot  String?
+  customerEmailSnapshot String?
+  customerPhoneSnapshot String?
   luggageDetails  String?
   luggagePhotos   String[]
   checkIn         DateTime
