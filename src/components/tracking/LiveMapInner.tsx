@@ -118,14 +118,12 @@ export default function LiveMapInner({
     coords: [],
   });
 
-  const OSRM_SOURCES = [
-    "https://routing.openstreetmap.de/routed-car/route/v1/driving",
-    "https://router.project-osrm.org/route/v1/driving",
-  ];
+  const ROUTE_PROXY = "/api/geo/route";
 
-  // Road-following route via OSRM (no API key). Tries multiple public servers and
-  // returns null only if all fail — callers keep a dashed "guide" line so a straight
-  // solid line is never presented as if it were an actual street route.
+  // Road-following route fetched server-side via our own /api/geo/route proxy
+  // (multi-source OSRM behind it), so browser network filters can never degrade
+  // this to a straight line. Returns null only when every server failed — callers
+  // keep a dashed "guide" line in that case.
   async function fetchRoadRoute(
     fromLat: number,
     fromLng: number,
@@ -137,38 +135,25 @@ export default function LiveMapInner({
     const fromDrift = haversine(fromLat, fromLng, cache.from[0], cache.from[1]) * 1000;
     const destSame =
       Math.abs(cache.dest[0] - toLat) < 1e-9 && Math.abs(cache.dest[1] - toLng) < 1e-9;
-    // Throttle OSRM calls: reuse cached route if <15s old, position moved <100m and destination unchanged
+    // Throttle: reuse cached route if <15s old, position moved <100m and destination unchanged
     if (now - cache.ts < 15000 && fromDrift < 100 && destSame) {
       return cache.coords.length ? cache.coords : null;
     }
-    for (const base of OSRM_SOURCES) {
-      try {
-        const req = `${base}/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson`;
-        const timeoutSignal =
-          typeof AbortSignal !== "undefined" && typeof (AbortSignal as any).timeout === "function"
-            ? (AbortSignal as any).timeout(8000)
-            : undefined;
-        const res = await fetch(req, timeoutSignal ? { signal: timeoutSignal } : undefined);
-        if (!res.ok) continue;
-        const json = await res.json();
-        const pts = json?.routes?.[0]?.geometry?.coordinates as [number, number][] | undefined;
-        if (!pts || pts.length < 2) continue;
-        // OSRM returns [lng,lat]; convert to [lat,lng]
-        const converted = pts.map(([lng, lat]) => [lat, lng] as [number, number]);
-        cache.ts = now;
-        cache.from = [fromLat, fromLng];
-        cache.dest = [toLat, toLng];
-        cache.coords = converted;
-        return converted;
-      } catch {
-        // try next source
-      }
+    try {
+      const q = `fromLat=${fromLat}&fromLng=${fromLng}&toLat=${toLat}&toLng=${toLng}`;
+      const res = await fetch(`${ROUTE_PROXY}?${q}`, { cache: "no-store" });
+      if (!res.ok) return null;
+      const json = await res.json();
+      const pts = json?.coords as [number, number][] | undefined;
+      if (!Array.isArray(pts) || pts.length < 2) return null;
+      cache.ts = now;
+      cache.from = [fromLat, fromLng];
+      cache.dest = [toLat, toLng];
+      cache.coords = pts;
+      return pts;
+    } catch {
+      return null;
     }
-    cache.ts = now;
-    cache.from = [fromLat, fromLng];
-    cache.dest = [toLat, toLng];
-    cache.coords = [];
-    return null;
   }
 
   // Draws/updates the employee→destination line. Dashed = provisional straight guide
