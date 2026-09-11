@@ -224,6 +224,14 @@ export default function LiveMapInner({
         switchToOSM();
       }
     }, 4000);
+    // ensure loading overlay never blocks forever (maplibre sometimes slow)
+    setTimeout(() => {
+      if (!mapReadyRef.current && map.current?.isStyleLoaded()) {
+        markReady();
+      } else if (!mapReadyRef.current) {
+        setLoading(false);
+      }
+    }, 3000);
 
     // handle container resize (tab switch)
     const ro = new ResizeObserver(() => map.current?.resize());
@@ -396,7 +404,7 @@ export default function LiveMapInner({
   return (
     <div className="relative">
       {loading && !mapError && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-muted/50">
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-muted/50 pointer-events-none">
           <p className="text-sm text-muted-foreground">Loading map...</p>
         </div>
       )}
