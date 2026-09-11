@@ -27,6 +27,7 @@
     "framer-motion": "^12.40.0",
     "html5-qrcode": "2.3.8",
     "jose": "^6.0.11",
+    "leaflet": "1.9",
     "lucide-react": "^1.17.0",
     "mapbox-gl": "^3.24.0",
     "maplibre-gl": "^4.7.1",
@@ -47,6 +48,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
     "@types/qrcode": "^1.5.6",

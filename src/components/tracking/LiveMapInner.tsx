@@ -5,6 +5,7 @@ import mapboxgl from "mapbox-gl";
 import maplibregl from "maplibre-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "maplibre-gl/dist/maplibre-gl.css";
+import "leaflet/dist/leaflet.css";
 import { OPEN_STREET_MAP_STYLE } from "@/lib/map-style";
 import { manilaMinutesOfDay } from "@/lib/manila-time";
 
@@ -65,6 +66,8 @@ export default function LiveMapInner({
   const routeSourceId = useRef(`route-${referenceNumber}-${Math.random().toString(36).slice(2, 7)}`);
   const routeLayerId = useRef(`route-layer-${referenceNumber}-${Math.random().toString(36).slice(2, 7)}`);
   const mapLibRef = useRef<any>(null);
+  const fallbackRef = useRef<HTMLDivElement>(null);
+  const fallbackMapRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const mapReadyRef = useRef(false);
@@ -252,6 +255,48 @@ export default function LiveMapInner({
     }
   }, [pickupLat, pickupLng, dropoffLat, dropoffLng, pickupAddress, dropoffAddress, mapReady, employeeLat, employeeLng]);
 
+  // Fallback leaflet map when mapbox/maplibre fails - interactive OSM with both pins
+  useEffect(() => {
+    if (!mapError || !fallbackRef.current) return;
+    let leafletMap: any = null;
+    (async () => {
+      const L = await import("leaflet");
+      if (!fallbackRef.current || fallbackMapRef.current) return;
+      const centerLat = [employeeLat, pickupLat, dropoffLat].filter((v): v is number => v != null).reduce((a, b, _, arr) => a + b / arr.length, 0) || 14.5995;
+      const centerLng = [employeeLng, pickupLng, dropoffLng].filter((v): v is number => v != null).reduce((a, b, _, arr) => a + b / arr.length, 0) || 120.9842;
+      leafletMap = L.map(fallbackRef.current).setView([centerLat, centerLng], 13);
+      fallbackMapRef.current = leafletMap;
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap",
+        maxZoom: 19,
+      }).addTo(leafletMap);
+      const bounds: any[] = [];
+      if (pickupLat != null && pickupLng != null) {
+        const m = L.marker([pickupLat, pickupLng], { icon: L.divIcon({ html: '<div style="background:#22c55e;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">P</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
+        m.bindPopup(pickupAddress || "Pickup");
+        bounds.push([pickupLat, pickupLng]);
+      }
+      if (dropoffLat != null && dropoffLng != null) {
+        const m = L.marker([dropoffLat, dropoffLng], { icon: L.divIcon({ html: '<div style="background:#ef4444;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">D</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
+        m.bindPopup(dropoffAddress || "Drop-off");
+        bounds.push([dropoffLat, dropoffLng]);
+      }
+      if (employeeLat != null && employeeLng != null) {
+        const m = L.marker([employeeLat, employeeLng], { icon: L.divIcon({ html: `<div style="background:#f97316;color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${riderView ? "Y" : "E"}</div>`, className: "", iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(leafletMap);
+        m.bindPopup(employeeName || "Rider");
+        bounds.push([employeeLat, employeeLng]);
+      }
+      if (bounds.length > 1) leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+      setTimeout(() => leafletMap.invalidateSize(), 100);
+    })();
+    return () => {
+      if (leafletMap) {
+        leafletMap.remove();
+        fallbackMapRef.current = null;
+      }
+    };
+  }, [mapError, pickupLat, pickupLng, dropoffLat, dropoffLng, employeeLat, employeeLng, pickupAddress, dropoffAddress, employeeName, riderView]);
+
   useEffect(() => {
     if (!map.current || employeeLat == null || employeeLng == null || !mapReady) return;
     // Style must be fully loaded before adding sources/layers — otherwise Mapbox throws "Style is not done loading"
@@ -356,21 +401,11 @@ export default function LiveMapInner({
         </div>
       )}
       {mapError && (
-        <div className="absolute inset-0 z-10 flex flex-col rounded-lg border bg-amber-50/95 overflow-hidden">
-          <div className="flex-1 relative bg-white flex items-center justify-center p-6">
-            <div className="text-center space-y-2">
-              <p className="text-sm font-medium text-amber-800">Map is offline</p>
-              <div className="flex justify-center gap-4 text-xs">
-                {pickupLat != null && <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500 px-3 py-1 text-white"><span className="h-2 w-2 rounded-full bg-white" /> P {pickupAddress || "Pickup"}</span>}
-                {dropoffLat != null && <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500 px-3 py-1 text-white"><span className="h-2 w-2 rounded-full bg-white" /> D {dropoffAddress || "Drop-off"}</span>}
-                {employeeLat != null && <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-500 px-3 py-1 text-white"><span className="h-2 w-2 rounded-full bg-white animate-pulse" /> Rider</span>}
-              </div>
-              <p className="text-[11px] text-muted-foreground">Center {fbCenterLat.toFixed(4)}, {fbCenterLng.toFixed(4)} — retry to reload tiles</p>
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-2 bg-white px-3 py-2 text-xs">
-            <p className="text-amber-800">{mapError}</p>
-            <button onClick={() => { setMapError(null); setLoading(true); mapReadyRef.current = false; try { map.current?.setStyle(OPEN_STREET_MAP_STYLE as unknown as string); } catch {} }} className="rounded bg-amber-600 px-2 py-1 text-white hover:bg-amber-700">Retry</button>
+        <div className="absolute inset-0 z-10 flex flex-col rounded-lg border bg-white overflow-hidden">
+          <div ref={fallbackRef} className="flex-1 w-full" style={{ minHeight: 300 }} />
+          <div className="flex items-center justify-between gap-2 bg-white px-3 py-2 text-xs border-t">
+            <p className="text-amber-800">{mapError} — fallback interactive map</p>
+            <button onClick={() => { setMapError(null); setLoading(true); mapReadyRef.current = false; try { map.current?.setStyle(OPEN_STREET_MAP_STYLE as unknown as string); } catch {} fallbackMapRef.current?.remove(); fallbackMapRef.current = null; }} className="rounded bg-amber-600 px-2 py-1 text-white hover:bg-amber-700">Retry Mapbox</button>
           </div>
         </div>
       )}
