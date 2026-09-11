@@ -96,8 +96,7 @@ function cleanScanInput(ref: string): string {
   // starts with the same prefix (e.g. "DNF-DNF-260911-X5HJ3P"). Strip the
   // leading duplicate prefix so the lookup matches the DB reference.
   // Reference format: PREFIX-YYMMDD-6alphanum.
-  const prefixMatch = trimmed.match(/^([A-Z]+)-\1-(.+)$/);
-  return prefixMatch ? prefixMatch[2] : trimmed;
+  return trimmed.replace(/^([A-Z]+)-\1-/, "$1-");
 }
 
 export default function QrScannerPage() {
