@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
+import maplibregl from "maplibre-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { OPEN_STREET_MAP_STYLE } from "@/lib/map-style";
 import { manilaMinutesOfDay } from "@/lib/manila-time";
 
@@ -57,11 +59,12 @@ export default function LiveMapInner({
   destinationPhase = "dropoff",
 }: LiveMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const markerRef = useRef<mapboxgl.Marker | null>(null);
-  const extraMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const map = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const extraMarkersRef = useRef<any[]>([]);
   const routeSourceId = useRef(`route-${referenceNumber}-${Math.random().toString(36).slice(2, 7)}`);
   const routeLayerId = useRef(`route-layer-${referenceNumber}-${Math.random().toString(36).slice(2, 7)}`);
+  const mapLibRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const mapReadyRef = useRef(false);
@@ -76,6 +79,7 @@ export default function LiveMapInner({
   function drawPoints() {
     if (!map.current || !map.current.isStyleLoaded()) return;
     const mk = map.current;
+    const lib = mapLibRef.current;
     clearExtraMarkers();
     // offset when pins are <1km apart (Terminal2 vs Terminal4 ~0.4km) so they don't look "dikit"
     let close = false;
@@ -87,9 +91,9 @@ export default function LiveMapInner({
       el.className = "flex h-7 w-7 items-center justify-center rounded-full bg-green-500 border-2 border-white shadow text-[10px] font-bold text-white";
       el.textContent = "P";
       el.title = pickupAddress || "Pickup";
-      const m = new mapboxgl.Marker({ element: el, offset: close ? [0, -12] as [number, number] : undefined })
+      const m = new lib.Marker({ element: el, offset: close ? [0, -12] as [number, number] : undefined })
         .setLngLat([pickupLng, pickupLat])
-        .setPopup(new mapboxgl.Popup().setText(pickupAddress || "Pickup Location"))
+        .setPopup(new lib.Popup().setText(pickupAddress || "Pickup Location"))
         .addTo(mk);
       extraMarkersRef.current.push(m);
     }
@@ -98,9 +102,9 @@ export default function LiveMapInner({
       el.className = "flex h-7 w-7 items-center justify-center rounded-full bg-red-500 border-2 border-white shadow text-[10px] font-bold text-white";
       el.textContent = "D";
       el.title = dropoffAddress || "Drop-off";
-      const m = new mapboxgl.Marker({ element: el, offset: close ? [0, 12] as [number, number] : undefined })
+      const m = new lib.Marker({ element: el, offset: close ? [0, 12] as [number, number] : undefined })
         .setLngLat([dropoffLng, dropoffLat])
-        .setPopup(new mapboxgl.Popup().setText(dropoffAddress || "Drop-off Location"))
+        .setPopup(new lib.Popup().setText(dropoffAddress || "Drop-off Location"))
         .addTo(mk);
       extraMarkersRef.current.push(m);
     }
@@ -108,31 +112,54 @@ export default function LiveMapInner({
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
-
-    if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN;
+    const lib: any = MAPBOX_TOKEN ? mapboxgl : maplibregl;
+    if (MAPBOX_TOKEN) (lib as typeof mapboxgl).accessToken = MAPBOX_TOKEN;
 
     const centerLng = employeeLng ?? dropoffLng ?? pickupLng ?? 120.9842;
     const centerLat = employeeLat ?? dropoffLat ?? pickupLat ?? 14.5995;
 
-    map.current = new mapboxgl.Map({
+    mapLibRef.current = lib;
+    map.current = new lib.Map({
       container: mapContainer.current,
-      style: MAPBOX_TOKEN ? "mapbox://styles/mapbox/streets-v12" : OPEN_STREET_MAP_STYLE,
+      style: (MAPBOX_TOKEN ? "mapbox://styles/mapbox/streets-v12" : OPEN_STREET_MAP_STYLE) as any,
       center: [centerLng, centerLat],
       zoom: 13,
       attributionControl: false,
-    });
+    } as any);
 
-    map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
-    map.current.addControl(new mapboxgl.AttributionControl({ compact: true }));
+    map.current.addControl(new lib.NavigationControl(), "top-right");
+    map.current.addControl(new lib.AttributionControl({ compact: true }));
 
     let fallbackDone = false;
     const switchToOSM = () => {
       if (!map.current || fallbackDone) return;
       fallbackDone = true;
-      console.warn("[LiveMap] Mapbox style failed, switching to OSM");
+      console.warn("[LiveMap] Mapbox style failed, switching to OSM via maplibre");
       setMapError(null);
       try {
-        map.current.setStyle(OPEN_STREET_MAP_STYLE as unknown as string);
+        // For mapbox->OSM fallback, recreate with maplibre if needed
+        const isMapbox = MAPBOX_TOKEN && lib === mapboxgl;
+        if (isMapbox) {
+          const center: [number, number] = map.current.getCenter().toArray() as [number, number];
+          const zoom = map.current.getZoom();
+          map.current.remove();
+          mapLibRef.current = maplibregl;
+          map.current = new maplibregl.Map({
+            container: mapContainer.current!,
+            style: OPEN_STREET_MAP_STYLE as any,
+            center,
+            zoom,
+            attributionControl: false,
+          } as any);
+          map.current.addControl(new maplibregl.NavigationControl(), "top-right");
+          map.current.addControl(new maplibregl.AttributionControl({ compact: true }));
+          map.current.on("load", markReady);
+          map.current.on("error", onError);
+          map.current.on("idle", () => { if (map.current?.isStyleLoaded() && !mapReadyRef.current) markReady(); });
+          map.current.on("styledata", () => { if (map.current?.isStyleLoaded() && !mapReadyRef.current) markReady(); });
+        } else {
+          map.current.setStyle(OPEN_STREET_MAP_STYLE as unknown as string);
+        }
       } catch {}
     };
 
@@ -214,7 +241,8 @@ export default function LiveMapInner({
       drawPoints();
       if (employeeLat == null && pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null && map.current) {
         try {
-          const bounds = new mapboxgl.LngLatBounds();
+          const LngLatBounds = (mapLibRef.current?.LngLatBounds || (mapboxgl as any).LngLatBounds || (maplibregl as any).LngLatBounds);
+          const bounds = new LngLatBounds();
           bounds.extend([pickupLng, pickupLat]);
           bounds.extend([dropoffLng, dropoffLat]);
           map.current.fitBounds(bounds, { padding: 60, maxZoom: 14 });
@@ -315,15 +343,9 @@ export default function LiveMapInner({
     else { const h = Math.floor(etaMinutes / 60); const m = etaMinutes % 60; eta = m ? `${h}h ${m}m` : `${h}h`; }
   }
 
-  // Fallback static map (no drift on zoom) with both pins
+  // Fallback placeholder (no external DNS) – show pins text when map fails
   const fbCenterLat = [employeeLat, pickupLat, dropoffLat].filter((v): v is number => v != null).reduce((a, b, _, arr) => a + b / arr.length, 0) || 14.5995;
   const fbCenterLng = [employeeLng, pickupLng, dropoffLng].filter((v): v is number => v != null).reduce((a, b, _, arr) => a + b / arr.length, 0) || 120.9842;
-  const fbMarkers = [
-    pickupLat != null && pickupLng != null ? `${pickupLat},${pickupLng},lightgreen` : null,
-    dropoffLat != null && dropoffLng != null ? `${dropoffLat},${dropoffLng},red` : null,
-    employeeLat != null && employeeLng != null ? `${employeeLat},${employeeLng},orange` : null,
-  ].filter(Boolean).join("|");
-  const fbStatic = `https://staticmap.openstreetmap.de/staticmap.php?center=${fbCenterLat},${fbCenterLng}&zoom=14&size=600x400${fbMarkers ? `&markers=${fbMarkers}` : ""}`;
 
   return (
     <div className="relative">
@@ -334,9 +356,16 @@ export default function LiveMapInner({
       )}
       {mapError && (
         <div className="absolute inset-0 z-10 flex flex-col rounded-lg border bg-amber-50/95 overflow-hidden">
-          <div className="flex-1 relative bg-white">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={fbStatic} alt="Map fallback" className="absolute inset-0 h-full w-full object-cover" />
+          <div className="flex-1 relative bg-white flex items-center justify-center p-6">
+            <div className="text-center space-y-2">
+              <p className="text-sm font-medium text-amber-800">Map is offline</p>
+              <div className="flex justify-center gap-4 text-xs">
+                {pickupLat != null && <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500 px-3 py-1 text-white"><span className="h-2 w-2 rounded-full bg-white" /> P {pickupAddress || "Pickup"}</span>}
+                {dropoffLat != null && <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500 px-3 py-1 text-white"><span className="h-2 w-2 rounded-full bg-white" /> D {dropoffAddress || "Drop-off"}</span>}
+                {employeeLat != null && <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-500 px-3 py-1 text-white"><span className="h-2 w-2 rounded-full bg-white animate-pulse" /> Rider</span>}
+              </div>
+              <p className="text-[11px] text-muted-foreground">Center {fbCenterLat.toFixed(4)}, {fbCenterLng.toFixed(4)} — retry to reload tiles</p>
+            </div>
           </div>
           <div className="flex items-center justify-between gap-2 bg-white px-3 py-2 text-xs">
             <p className="text-amber-800">{mapError}</p>
