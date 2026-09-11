@@ -15,7 +15,7 @@ import {
   Phone, Mail, Globe, Building, Camera, CheckCircle2, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatDate } from "@/lib/utils";
+import { formatDate, roleLabel } from "@/lib/utils";
 
 interface BookingDetail {
   id: string;
@@ -340,7 +340,7 @@ export default function CustomerBookingDetailPage() {
                       <p className="text-sm font-semibold text-red-800">{event.user ? `Recorded by ${event.user.name}` : "Customer-initiated cancellation"}</p>
                       <p className="text-xs text-muted-foreground">{new Date(event.scannedAt).toLocaleString("en-PH")}</p>
                     </div>
-                    {event.user && <Badge variant="outline" className="border-red-200 text-[10px] text-red-700">{event.user.role}</Badge>}
+                    {event.user && <Badge variant="outline" className="border-red-200 text-[10px] text-red-700">{roleLabel(event.user.role)}</Badge>}
                   </div>
                   {event.note && <p className="mt-2 text-sm text-red-900">{event.note}</p>}
                   {event.photo ? (
@@ -906,7 +906,7 @@ export default function CustomerBookingDetailPage() {
                   <div key={msg.id} className={`flex ${msg.isFromCustomer ? "justify-end" : ""}`}>
                     <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${msg.isFromCustomer ? "bg-orange-500 text-white" : "bg-gray-100"}`}>
                       <p>{msg.message}</p>
-                      <p className={`mt-1 text-[10px] ${msg.isFromCustomer ? "text-blue-200" : "text-gray-400"}`}>{formatDate(msg.createdAt)}{!msg.isFromCustomer && ` · ${msg.sender?.name || "DropnFly staff"}${msg.sender?.role ? ` (${msg.sender.role.toLowerCase()})` : ""}`}</p>
+                      <p className={`mt-1 text-[10px] ${msg.isFromCustomer ? "text-blue-200" : "text-gray-400"}`}>{formatDate(msg.createdAt)}{!msg.isFromCustomer && ` · ${msg.sender?.name || "DropnFly staff"}${msg.sender?.role ? ` (${roleLabel(msg.sender.role)})` : ""}`}</p>
                     </div>
                   </div>
                 ))}

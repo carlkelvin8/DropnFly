@@ -14,6 +14,7 @@ import Image from "next/image";
 import { toast } from "sonner";
 import { CameraQRScanner } from "@/components/scanner/CameraQRScanner";
 import { imageFileToDataUrl } from "@/lib/client-image";
+import { formatCurrency } from "@/lib/utils";
 
 const STATUS_FLOW = [
   { value: "PENDING", label: "Pending", icon: Clock, color: "bg-amber-500" },
@@ -38,6 +39,8 @@ interface ScanResult {
   customerName: string;
   numberOfBags?: number;
   totalPrice?: number;
+  totalPaid?: number;
+  paymentStatus?: string;
   pickupLocation?: string;
   dropOffLocation?: string;
   checkIn?: string;
@@ -173,6 +176,8 @@ export default function QrScannerPage() {
         customerName: booking.customer?.name || "Unknown",
         numberOfBags: booking.numberOfBags,
         totalPrice: booking.totalPrice,
+        totalPaid: booking.totalPaid,
+        paymentStatus: booking.paymentStatus,
         pickupLocation: booking.pickupLocation,
         dropOffLocation: booking.dropOffLocation,
         checkIn: booking.checkIn,
@@ -664,6 +669,37 @@ export default function QrScannerPage() {
             </div>
           </div>
 
+          {/* Price & payment */}
+          {(scanResult.totalPrice != null || scanResult.paymentStatus) && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+              {scanResult.totalPrice != null && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">Total:</span>
+                  <span className="font-semibold text-foreground">{formatCurrency(scanResult.totalPrice)}</span>
+                </div>
+              )}
+              {scanResult.paymentStatus && (
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] font-semibold ${
+                    scanResult.paymentStatus === "full"
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                      : scanResult.paymentStatus === "dp"
+                      ? "border-amber-300 bg-amber-50 text-amber-700"
+                      : "border-red-300 bg-red-50 text-red-700"
+                  }`}
+                >
+                  {scanResult.paymentStatus === "full" ? "Paid in full" : scanResult.paymentStatus === "dp" ? "Down payment" : "Unpaid"}
+                </Badge>
+              )}
+              {scanResult.totalPaid != null && scanResult.totalPaid > 0 && scanResult.totalPrice != null && (
+                <span className="text-muted-foreground">
+                  ({formatCurrency(scanResult.totalPaid)} paid)
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Trip summary */}
           {scanResult.pickupLocation && (
             <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg border bg-muted/20 p-3 text-xs">
@@ -690,6 +726,21 @@ export default function QrScannerPage() {
                   </span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Luggage items */}
+          {scanResult.luggageItems && scanResult.luggageItems.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-1.5 text-[10px] font-medium uppercase text-muted-foreground">Luggage</p>
+              <div className="space-y-1">
+                {scanResult.luggageItems.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-1.5 text-xs">
+                    <span className="font-mono font-medium">{item.tagNumber}</span>
+                    <Badge variant="outline" className="text-[10px]">{item.status.replace(/_/g, " ")}</Badge>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

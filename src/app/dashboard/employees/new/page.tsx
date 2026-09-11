@@ -95,8 +95,8 @@ export default function NewEmployeePage() {
                   defaultValue="EMPLOYEE"
                   options={[
                     { value: "ADMIN", label: "Admin" },
-                    { value: "STAFF", label: "Staff" },
-                    { value: "EMPLOYEE", label: "Employee" },
+                    { value: "EMPLOYEE", label: "Rider" },
+                    { value: "STAFF", label: "Employee" },
                   ]}
                 />
               </div>

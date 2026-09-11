@@ -54,7 +54,7 @@ interface Booking {
   status: string;
   createdAt: string;
   pickupStartedAt: string | null;
-  assignments: { id: string; phase: string; user: { id: string; name: string; email: string } }[];
+  assignments: { id: string; phase: string; vehicleId: string | null; vehicleType: string | null; vehiclePlate: string | null; user: { id: string; name: string; email: string; vehicleType?: string | null; plateNumber?: string | null } }[];
   payments?: { id: string; amount: number; method: string; status: string; paidAt: string | null }[];
   promoCode?: { code: string } | null;
 }
@@ -138,6 +138,7 @@ export default function BookingDetailPage() {
   const router = useRouter();
   const [booking, setBooking] = useState<Booking | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [fleet, setFleet] = useState<{ id: string; type: string; plateNumber: string; color: string; count: number; icon: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -187,13 +188,19 @@ export default function BookingDetailPage() {
       fetch(`/api/bookings/${params.id}/extensions`, { signal: abort.signal }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/luggage`, { signal: abort.signal }).then((r) => r.json()),
       fetch("/api/baggage-tags/available", { signal: abort.signal }).then((r) => r.json()),
-    ]).then(([bookingData, empData, extData, luggageData, tagData]) => {
+      fetch("/api/settings", { signal: abort.signal }).then((r) => r.json()),
+    ]).then(([bookingData, empData, extData, luggageData, tagData, settingsData]) => {
       if (!abort.signal.aborted) {
         setBooking(bookingData);
         setEmployees(Array.isArray(empData) ? empData : []);
         setExtensions(Array.isArray(extData) ? extData : []);
         setLuggageItems(Array.isArray(luggageData) ? luggageData : []);
         setAvailableTags(Array.isArray(tagData?.tags) ? tagData.tags : []);
+        try {
+          const raw = settingsData?.fleet_data || "[]";
+          const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+          setFleet(Array.isArray(parsed) ? parsed : []);
+        } catch { setFleet([]); }
         const paid = (bookingData?.payments || [])
           .filter((p: { status: string }) => p.status === "PAID")
           .reduce((s: number, p: { amount: number }) => s + p.amount, 0);
@@ -401,23 +408,32 @@ export default function BookingDetailPage() {
     const formData = new FormData(e.currentTarget);
     const userId = formData.get("employeeId") as string;
     const phase = formData.get("phase") as string;
+    const rawVehicleId = formData.get("vehicleId") as string;
+    const vehicleType = formData.get("vehicleType") as string;
+    const vehiclePlate = formData.get("vehiclePlate") as string;
+    let vehicleId: string | null = null;
+    if (rawVehicleId?.startsWith("fleet:")) {
+      vehicleId = rawVehicleId.replace("fleet:", "");
+    } else if (rawVehicleId?.startsWith("personal:")) {
+      vehicleId = null; // personal vehicles don't have a fleet ID
+    }
     if (userId) {
       try {
         const res = await fetch(`/api/bookings/${params.id}/assign`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, phase }),
+          body: JSON.stringify({ userId, phase, vehicleId, vehicleType: vehicleType || null, vehiclePlate: vehiclePlate || null }),
         });
         if (!res.ok) {
           const error = await res.json().catch(() => ({}));
-          throw new Error(error.error || "Failed to assign employee");
+          throw new Error(error.error || "Failed to assign");
         }
         const getRes = await fetch(`/api/bookings/${params.id}`);
         if (!getRes.ok) throw new Error("Failed to reload booking");
         const updated = await getRes.json();
         setBooking(updated);
-        toast.success(`${phase === "DROPOFF" ? "Drop-off" : "Pickup"} employee ${booking?.assignments.some((assignment) => assignment.phase === phase) ? "re-assigned" : "assigned"} successfully`);
-      } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to assign employee"); }
+        toast.success(`${phase === "DROPOFF" ? "Drop-off" : "Pickup"} assigned successfully`);
+      } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to assign"); }
     }
     setSaving(false);
   }
@@ -1095,39 +1111,118 @@ export default function BookingDetailPage() {
               {(["PICKUP", "DROPOFF"] as const).map((phase) => {
                 const currentAssignment = booking.assignments.find((assignment) => assignment.phase === phase);
                 const phaseLabel = phase === "PICKUP" ? "Pickup" : "Drop-off";
+                const assignableEmployees = employees.filter((e) => e.isActive && e.isApproved && e.role === "EMPLOYEE");
+                // Build fleet vehicles with availability: exclude plates already assigned to overlapping bookings
+                const assignedPlates = new Set(
+                  booking.assignments
+                    .filter((a) => a.vehiclePlate && a.phase !== phase)
+                    .map((a) => a.vehiclePlate as string)
+                );
+                const fleetVehicles = fleet
+                  .filter((v) => v.count > 0)
+                  .flatMap((v) => Array.from({ length: v.count }, (_, i) => ({
+                    ...v,
+                    uniqueKey: `${v.id}-${i}`,
+                    plateDisplay: v.plateNumber || `Vehicle ${i + 1}`,
+                    isOccupied: assignedPlates.has(v.plateNumber),
+                  })));
+                // Also include employee personal vehicles as fallback option
+                const personalVehicles = assignableEmployees
+                  .filter((e) => e.vehicleType && e.plateNumber && !fleetVehicles.some((fv) => fv.plateDisplay === e.plateNumber))
+                  .map((e) => ({
+                    uniqueKey: `personal-${e.id}`,
+                    type: e.vehicleType as string,
+                    plateDisplay: e.plateNumber as string,
+                    color: "",
+                    icon: "bike" as const,
+                    isOccupied: assignedPlates.has(e.plateNumber as string),
+                    isPersonal: true,
+                    ownerName: e.name,
+                  }));
+                const allVehicles = [...fleetVehicles, ...personalVehicles];
                 return (
-                  <form key={phase} onSubmit={handleAssign} className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                  <form key={phase} onSubmit={handleAssign} className="space-y-3 rounded-lg border bg-muted/20 p-3">
                     <input type="hidden" name="phase" value={phase} />
+                    <input type="hidden" name="vehicleType" defaultValue={currentAssignment?.vehicleType || ""} />
+                    <input type="hidden" name="vehiclePlate" defaultValue={currentAssignment?.vehiclePlate || ""} />
                     <div>
-                      <Label htmlFor={`employee-${phase}`}>{phaseLabel} Employee + Vehicle</Label>
+                      <Label>{phaseLabel} Employee</Label>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {currentAssignment ? `Currently: ${currentAssignment.user.name}` : "No employee assigned — choose rider and vehicle below"}
+                        {currentAssignment ? `Currently: ${currentAssignment.user.name}` : "Select rider for this leg"}
                       </p>
                     </div>
                     <select
-                      id={`employee-${phase}`}
                       name="employeeId"
                       defaultValue={currentAssignment?.user.id || ""}
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                       required
                     >
-                      <option value="">Select employee + vehicle...</option>
-                      {employees.filter((employee) => employee.isActive && employee.isApproved && employee.role === "EMPLOYEE").map((employee) => {
-                        const vehicle = employee.vehicleType ? `${employee.vehicleType}${employee.plateNumber ? ` • ${employee.plateNumber}` : ""}` : "No vehicle set — update profile";
-                        return (
-                          <option key={employee.id} value={employee.id}>{employee.name} — {vehicle}</option>
-                        );
-                      })}
+                      <option value="">Select employee...</option>
+                      {assignableEmployees.map((emp) => (
+                        <option key={emp.id} value={emp.id}>{emp.name}</option>
+                      ))}
                     </select>
-                    {(() => {
-                      const preview = employees.find((e) => e.id === (typeof document !== "undefined" ? (document.getElementById(`employee-${phase}`) as HTMLSelectElement)?.value : "")) || null;
-                      // Show selected vehicle preview without extra state — simple hint
-                      return null;
-                    })()}
+                    <div>
+                      <Label>Vehicle</Label>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {currentAssignment?.vehiclePlate
+                          ? `Assigned: ${currentAssignment.vehicleType || "Vehicle"} ${currentAssignment.vehiclePlate}`
+                          : "Choose from fleet or employee personal vehicle"}
+                      </p>
+                    </div>
+                    <select
+                      name="vehicleId"
+                      defaultValue={currentAssignment?.vehicleId ? `fleet:${currentAssignment.vehicleId}` : ""}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                      onChange={(e) => {
+                        const form = e.currentTarget.form;
+                        if (!form) return;
+                        const val = e.currentTarget.value;
+                        const vtInput = form.querySelector('input[name="vehicleType"]') as HTMLInputElement;
+                        const vpInput = form.querySelector('input[name="vehiclePlate"]') as HTMLInputElement;
+                        if (val.startsWith("fleet:")) {
+                          const vId = val.replace("fleet:", "");
+                          const found = fleetVehicles.find((fv) => fv.id === vId);
+                          if (vtInput) vtInput.value = found?.type || "";
+                          if (vpInput) vpInput.value = found?.plateDisplay || "";
+                        } else if (val.startsWith("personal:")) {
+                          const parts = val.replace("personal:", "").split("::");
+                          if (vtInput) vtInput.value = parts[0] || "";
+                          if (vpInput) vpInput.value = parts[1] || "";
+                        } else {
+                          if (vtInput) vtInput.value = "";
+                          if (vpInput) vpInput.value = "";
+                        }
+                      }}
+                    >
+                      <option value="">No vehicle selected</option>
+                      {fleetVehicles.length > 0 && (
+                        <optgroup label="Fleet Vehicles">
+                          {fleetVehicles.map((v) => (
+                            <option key={v.uniqueKey} value={`fleet:${v.id}`} disabled={v.isOccupied}>
+                              {v.type} {v.plateDisplay}{v.color ? ` (${v.color})` : ""}{v.isOccupied ? " — Occupied" : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {personalVehicles.length > 0 && (
+                        <optgroup label="Employee Personal Vehicles">
+                          {personalVehicles.map((v) => (
+                            <option key={v.uniqueKey} value={`personal:${v.type}::${v.plateDisplay}`}>
+                              {v.type} {v.plateDisplay} ({v.ownerName}){v.isOccupied ? " — Occupied" : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {allVehicles.length === 0 && (
+                        <option value="" disabled>No vehicles registered — add in Settings → Fleet</option>
+                      )}
+                    </select>
+                    <input type="hidden" name="vehicleType" defaultValue={currentAssignment?.vehicleType || ""} />
+                    <input type="hidden" name="vehiclePlate" defaultValue={currentAssignment?.vehiclePlate || ""} />
                     <Button type="submit" className="w-full" variant={currentAssignment ? "outline" : "default"} disabled={saving || bookingLocked}>
-                      {currentAssignment ? `Re-assign ${phaseLabel} + Vehicle` : `Assign ${phaseLabel} + Vehicle`}
+                      {currentAssignment ? `Re-assign ${phaseLabel}` : `Assign ${phaseLabel}`}
                     </Button>
-                    <p className="text-[10px] text-muted-foreground">Vehicle from employee profile (plate, color, model). Update in Employees → Profile if missing.</p>
                   </form>
                 );
               })}

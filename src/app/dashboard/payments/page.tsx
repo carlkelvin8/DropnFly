@@ -103,7 +103,6 @@ export default function PaymentsPage() {
                     <th className="px-4 py-3 text-left font-medium">Reference</th>
                     <th className="px-4 py-3 text-left font-medium">Customer</th>
                     <th className="px-4 py-3 text-left font-medium">Amount</th>
-                    <th className="px-4 py-3 text-left font-medium">Method</th>
                     <th className="px-4 py-3 text-left font-medium">Status</th>
                     <th className="px-4 py-3 text-left font-medium">Date</th>
                   </tr>
@@ -114,7 +113,6 @@ export default function PaymentsPage() {
                       <td className="px-4 py-3 font-medium">{p.booking.referenceNumber}</td>
                       <td className="px-4 py-3">{p.customer.name}</td>
                       <td className="px-4 py-3">₱{p.amount.toFixed(2)}</td>
-                      <td className="px-4 py-3">{p.method}</td>
                       <td className="px-4 py-3">
                         <Badge variant={p.status === "PAID" ? "default" : "secondary"}>
                           {p.status}

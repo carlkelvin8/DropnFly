@@ -16,6 +16,7 @@ import {
   Package,
   MapPin,
   Calendar,
+  Clock,
   Luggage,
   Home,
   Navigation,
@@ -34,6 +35,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { PublicFooter } from "@/components/layout/PublicFooter";
+import { roleLabel } from "@/lib/utils";
 
 interface BookingData {
   referenceNumber: string;
@@ -46,6 +48,7 @@ interface BookingData {
   luggageDetails: string | null;
   totalPrice: number;
   status: string;
+  pickupStartedAt: string | null;
   customer: { name: string; email: string };
 }
 
@@ -321,6 +324,13 @@ export default function TrackResultPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {!booking.pickupStartedAt && ["CONFIRMED", "RECEIVED", "PENDING"].includes(booking.status) && (
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs text-amber-800">
+                    Your rider {rider.name} is assigned and will begin {booking.status === "OUT_FOR_DELIVERY" ? "delivery" : "pickup"} shortly. Live location appears here once they start.
+                  </p>
+                </div>
+              )}
               <div className="flex items-center gap-4">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-md overflow-hidden border-2 border-green-200">
                   {rider.profilePic ? (
@@ -396,12 +406,17 @@ export default function TrackResultPage() {
               </AnimatePresence>
 
               <div className="mt-4 flex gap-2">
-                {hasRecentLocation && (
+                {hasRecentLocation && booking.pickupStartedAt && (
                   <Button asChild className="flex-1 bg-green-600 text-white shadow-lg transition-all hover:bg-green-700 hover:shadow-xl">
                     <Link href={`/track/map/${params.reference}`}>
                       <Navigation className="mr-1.5 h-4 w-4" />
                       View Rider&apos;s Location
                     </Link>
+                  </Button>
+                )}
+                {!booking.pickupStartedAt && (
+                  <Button variant="outline" className="flex-1 border-amber-200 text-amber-700 hover:bg-amber-50" disabled>
+                    <Clock className="mr-1.5 h-4 w-4" /> Waiting for rider to start
                   </Button>
                 )}
                 <Button
@@ -460,7 +475,7 @@ export default function TrackResultPage() {
                         >
                           {msg.message}
                           {!msg.isFromCustomer && (
-                            <p className="mt-1 text-[10px] opacity-70">{msg.sender?.name || "DropnFly staff"}{msg.sender?.role ? ` · ${msg.sender.role.toLowerCase()}` : ""}</p>
+                            <p className="mt-1 text-[10px] opacity-70">{msg.sender?.name || "DropnFly staff"}{msg.sender?.role ? ` · ${roleLabel(msg.sender.role)}` : ""}</p>
                           )}
                         </div>
                       </div>

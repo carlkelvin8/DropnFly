@@ -47,7 +47,7 @@ export async function GET(
       location: true,
       user: { select: { name: true, email: true } },
       assignments: {
-        include: { user: { select: { id: true, name: true, email: true } } },
+        select: { id: true, phase: true, vehicleId: true, vehicleType: true, vehiclePlate: true, user: { select: { id: true, name: true, email: true, vehicleType: true, plateNumber: true } } },
       },
       payments: { select: { id: true, amount: true, method: true, status: true, paidAt: true } },
       promoCode: { select: { code: true } },

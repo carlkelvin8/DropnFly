@@ -55,6 +55,20 @@ export async function GET(
     }),
   ]);
 
+  // Security: do not expose the rider's live coordinates before the employee
+  // has started the task. Tracking only becomes visible once pickupStartedAt is set.
+  const trackable = Boolean(booking.pickupStartedAt);
+  const rider = assignment?.user
+    ? trackable
+      ? assignment.user
+      : {
+          ...assignment.user,
+          currentLat: null,
+          currentLng: null,
+          lastLocationUpdate: null,
+        }
+    : null;
+
   return NextResponse.json({
     booking: decimalsToNumbers({
       ...booking,
@@ -64,7 +78,7 @@ export async function GET(
         email: booking.customerEmailSnapshot || booking.customer.email,
       },
     }),
-    rider: assignment?.user ?? null,
+    rider,
     scans,
   });
 }

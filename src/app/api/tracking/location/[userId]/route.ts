@@ -11,26 +11,23 @@ export async function GET(
   const { userId } = await params;
   const reference = new URL(req.url).searchParams.get("reference");
   const session = await auth();
+  // Staff and the rider themselves can always read the location.
   let allowed = session?.user ? await canReadRiderLocation(session.user, userId) : false;
   let bookingId: string | null = null;
+  let started = false;
   if (reference) {
     const booking = await prisma.booking.findFirst({
       where: { referenceNumber: reference.trim().toUpperCase(), assignments: { some: { userId } } },
-      select: { id: true, customerId: true },
+      select: { id: true, customerId: true, pickupStartedAt: true },
     });
     if (!booking) return NextResponse.json({ error: "Booking assignment not found" }, { status: 404 });
     bookingId = booking.id;
+    started = Boolean(booking.pickupStartedAt);
     if (!allowed) {
-      const hasAccess = await canAccessBooking(booking);
-      // Public tracking: allow anyone with valid reference + correct rider assignment to see live dot
-      if (hasAccess) allowed = true;
-      else {
-        // Check if booking is active and public tracking should be visible
-        const publicBooking = await prisma.booking.findUnique({ where: { id: booking.id }, select: { status: true } });
-        if (publicBooking && ["CONFIRMED","RECEIVED","IN_STORAGE","OUT_FOR_DELIVERY"].includes(publicBooking.status)) {
-          allowed = true;
-        }
-      }
+      // Public tracking: only expose the live dot after the employee has
+      // started the leg (start-pickup / start-delivery), and only to an
+      // authorized viewer (granted booking_access cookie or the customer).
+      if (started && (await canAccessBooking(booking))) allowed = true;
     }
   }
   if (!allowed) {

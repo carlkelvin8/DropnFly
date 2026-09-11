@@ -45,6 +45,24 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// Marker icon "logos": person for customer/pickup, vehicle for employee/rider, box for storage/drop-off
+const PERSON_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>';
+const BOX_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><path d="M4 6.5l8 4.5 8-4.5"/><path d="M12 11v9"/></svg>';
+const VEHICLE_SVG =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11"/><path d="M3 13v4h18v-4"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/></svg>';
+
+function pickupIconHTML() {
+  return `<div style="background:#22c55e;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${PERSON_SVG}</div>`;
+}
+function dropoffIconHTML() {
+  return `<div style="background:#ef4444;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${BOX_SVG}</div>`;
+}
+function vehicleIconHTML() {
+  return `<div style="background:#f97316;color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.35)">${VEHICLE_SVG}</div>`;
+}
+
 export default function LiveMapInner({
   referenceNumber,
   employeeLat,
@@ -73,6 +91,46 @@ export default function LiveMapInner({
   const mapReadyRef = useRef(false);
   const lastCenterRef = useRef<{ lat: number; lng: number } | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const routeCacheRef = useRef<{ ts: number; from: [number, number]; dest: [number, number]; coords: [number, number][] }>({
+    ts: 0,
+    from: [0, 0],
+    dest: [0, 0],
+    coords: [],
+  });
+
+  async function fetchRoadRoute(
+    fromLat: number,
+    fromLng: number,
+    toLat: number,
+    toLng: number
+  ): Promise<[number, number][]> {
+    const now = Date.now();
+    const cache = routeCacheRef.current;
+    const fromDrift = haversine(fromLat, fromLng, cache.from[0], cache.from[1]) * 1000;
+    const destSame =
+      Math.abs(cache.dest[0] - toLat) < 1e-9 && Math.abs(cache.dest[1] - toLng) < 1e-9;
+    // Throttle OSRM calls: reuse cached route if <15s old, position moved <100m and destination unchanged
+    if (now - cache.ts < 15000 && fromDrift < 100 && destSame) {
+      return cache.coords;
+    }
+    try {
+      const req = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson`;
+      const res = await fetch(req);
+      if (!res.ok) return [[fromLat, fromLng], [toLat, toLng]];
+      const json = await res.json();
+      const pts = json?.routes?.[0]?.geometry?.coordinates as [number, number][] | undefined;
+      if (!pts || pts.length < 2) return [[fromLat, fromLng], [toLat, toLng]];
+      // OSRM returns [lng,lat]; convert to [lat,lng]
+      const converted = pts.map(([lng, lat]) => [lat, lng] as [number, number]);
+      cache.ts = now;
+      cache.from = [fromLat, fromLng];
+      cache.dest = [toLat, toLng];
+      cache.coords = converted;
+      return converted;
+    } catch {
+      return [[fromLat, fromLng], [toLat, toLng]];
+    }
+  }
 
   function clearExtraMarkers() {
     extraMarkersRef.current.forEach((m) => {
@@ -95,13 +153,13 @@ export default function LiveMapInner({
     }
     if (pickupLat != null && pickupLng != null) {
       if (!MAPBOX_TOKEN) {
-        const m = lib.marker([pickupLat, pickupLng], { icon: lib.divIcon({ html: '<div style="background:#22c55e;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">P</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
+        const m = lib.marker([pickupLat, pickupLng], { icon: lib.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
         try { m.bindPopup(pickupAddress || "Pickup"); } catch {}
         extraMarkersRef.current.push(m);
       } else {
         const el = document.createElement("div");
-        el.className = "flex h-7 w-7 items-center justify-center rounded-full bg-green-500 border-2 border-white shadow text-[10px] font-bold text-white";
-        el.textContent = "P";
+        el.innerHTML = pickupIconHTML();
+        el.className = "flex h-7 w-7 items-center justify-center rounded-full";
         el.title = pickupAddress || "Pickup";
         const m = new lib.Marker({ element: el, offset: close ? [0, -12] as [number, number] : undefined })
           .setLngLat([pickupLng, pickupLat])
@@ -112,13 +170,13 @@ export default function LiveMapInner({
     }
     if (dropoffLat != null && dropoffLng != null) {
       if (!MAPBOX_TOKEN) {
-        const m = lib.marker([dropoffLat, dropoffLng], { icon: lib.divIcon({ html: '<div style="background:#ef4444;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">D</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
+        const m = lib.marker([dropoffLat, dropoffLng], { icon: lib.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
         try { m.bindPopup(dropoffAddress || "Drop-off"); } catch {}
         extraMarkersRef.current.push(m);
       } else {
         const el = document.createElement("div");
-        el.className = "flex h-7 w-7 items-center justify-center rounded-full bg-red-500 border-2 border-white shadow text-[10px] font-bold text-white";
-        el.textContent = "D";
+        el.innerHTML = dropoffIconHTML();
+        el.className = "flex h-7 w-7 items-center justify-center rounded-full";
         el.title = dropoffAddress || "Drop-off";
         const m = new lib.Marker({ element: el, offset: close ? [0, 12] as [number, number] : undefined })
           .setLngLat([dropoffLng, dropoffLat])
@@ -150,23 +208,23 @@ export default function LiveMapInner({
         // add pickup/dropoff immediately
         const addLeafletPins = () => {
           if (pickupLat != null && pickupLng != null) {
-            L.marker([pickupLat, pickupLng], { icon: L.divIcon({ html: '<div style="background:#22c55e;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">P</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap).bindPopup(pickupAddress || "Pickup");
+            L.marker([pickupLat, pickupLng], { icon: L.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap).bindPopup(pickupAddress || "Pickup");
           }
           if (dropoffLat != null && dropoffLng != null) {
-            L.marker([dropoffLat, dropoffLng], { icon: L.divIcon({ html: '<div style="background:#ef4444;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">D</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap).bindPopup(dropoffAddress || "Drop-off");
+            L.marker([dropoffLat, dropoffLng], { icon: L.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap).bindPopup(dropoffAddress || "Drop-off");
           }
           if (pickupLat != null && dropoffLat != null && employeeLat == null) {
             leafletMap.fitBounds([[pickupLat, pickupLng!], [dropoffLat, dropoffLng!]], { padding: [40, 40], maxZoom: 15 });
           }
           if (employeeLat != null && employeeLng != null) {
-            const el = L.divIcon({ html: `<div style="background:#f97316;color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${riderView ? "Y" : "E"}</div>`, className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
+            const el = L.divIcon({ html: vehicleIconHTML(), className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
             const m = L.marker([employeeLat, employeeLng], { icon: el }).addTo(leafletMap).bindPopup(employeeName || "Rider");
             (markerRef as any).current = m;
           }
           const destLatLeaf = destinationPhase === "pickup" ? pickupLat : dropoffLat;
           const destLngLeaf = destinationPhase === "pickup" ? pickupLng : dropoffLng;
           if (employeeLat != null && employeeLng != null && destLatLeaf != null && destLngLeaf != null) {
-            L.polyline([[employeeLat, employeeLng], [destLatLeaf, destLngLeaf]], { color: "#3b7ac7", weight: 3, opacity: 0.8, dashArray: "8,8" }).addTo(leafletMap);
+            L.polyline([[employeeLat, employeeLng], [destLatLeaf, destLngLeaf]], { color: "#3b7ac7", weight: 4, opacity: 0.85 }).addTo(leafletMap);
           }
         };
         addLeafletPins();
@@ -351,17 +409,17 @@ export default function LiveMapInner({
       }).addTo(leafletMap);
       const bounds: any[] = [];
       if (pickupLat != null && pickupLng != null) {
-        const m = L.marker([pickupLat, pickupLng], { icon: L.divIcon({ html: '<div style="background:#22c55e;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">P</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
+        const m = L.marker([pickupLat, pickupLng], { icon: L.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
         m.bindPopup(pickupAddress || "Pickup");
         bounds.push([pickupLat, pickupLng]);
       }
       if (dropoffLat != null && dropoffLng != null) {
-        const m = L.marker([dropoffLat, dropoffLng], { icon: L.divIcon({ html: '<div style="background:#ef4444;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">D</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
+        const m = L.marker([dropoffLat, dropoffLng], { icon: L.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
         m.bindPopup(dropoffAddress || "Drop-off");
         bounds.push([dropoffLat, dropoffLng]);
       }
       if (employeeLat != null && employeeLng != null) {
-        const m = L.marker([employeeLat, employeeLng], { icon: L.divIcon({ html: `<div style="background:#f97316;color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${riderView ? "Y" : "E"}</div>`, className: "", iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(leafletMap);
+        const m = L.marker([employeeLat, employeeLng], { icon: L.divIcon({ html: vehicleIconHTML(), className: "", iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(leafletMap);
         m.bindPopup(employeeName || "Rider");
         bounds.push([employeeLat, employeeLng]);
       }
@@ -386,14 +444,14 @@ export default function LiveMapInner({
       if (markerRef.current) {
         try { markerRef.current.setLatLng([employeeLat, employeeLng]); } catch {}
       } else {
-        const el = L.divIcon({ html: `<div style="background:#f97316;color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${riderView ? "Y" : "E"}</div>`, className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
+        const el = L.divIcon({ html: vehicleIconHTML(), className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
         const m = L.marker([employeeLat, employeeLng], { icon: el }).addTo(leafletMap);
         m.bindPopup(employeeName || "Rider");
         (markerRef as any).current = m;
       }
       // simple pan, keep both pins in view - leaflet handles via setView
       try { leafletMap.panTo([employeeLat, employeeLng], { animate: true }); } catch {}
-      // polyline for leaflet
+      // polyline for leaflet — solid, road-following route via OSRM
       const destLatLeaf = destinationPhase === "pickup" ? pickupLat : dropoffLat;
       const destLngLeaf = destinationPhase === "pickup" ? pickupLng : dropoffLng;
       if (destLatLeaf != null && destLngLeaf != null) {
@@ -401,7 +459,12 @@ export default function LiveMapInner({
         if ((leafletMap as any)._routeLine) {
           try { leafletMap.removeLayer((leafletMap as any)._routeLine); } catch {}
         }
-        (leafletMap as any)._routeLine = L.polyline([[employeeLat, employeeLng], [destLatLeaf, destLngLeaf]], { color: "#3b7ac7", weight: 3, opacity: 0.8, dashArray: "8,8" }).addTo(leafletMap);
+        // immediate straight solid line for responsiveness, then upgrade to road-following route
+        (leafletMap as any)._routeLine = L.polyline([[employeeLat, employeeLng], [destLatLeaf, destLngLeaf]], { color: "#3b7ac7", weight: 4, opacity: 0.85 }).addTo(leafletMap);
+        void fetchRoadRoute(employeeLat, employeeLng, destLatLeaf, destLngLeaf).then((pts) => {
+          if (!(leafletMap as any)._routeLine) return;
+          try { (leafletMap as any)._routeLine.setLatLngs(pts); } catch {}
+        });
       }
       return;
     }
@@ -420,8 +483,8 @@ export default function LiveMapInner({
 
     const el = document.createElement("div");
     el.className =
-      "flex h-8 w-8 items-center justify-center rounded-full bg-orange-500 text-white text-xs font-bold shadow-lg border-2 border-white animate-bounce";
-    el.textContent = riderView ? "Y" : "E";
+      "flex h-8 w-8 items-center justify-center rounded-full animate-bounce";
+    el.innerHTML = vehicleIconHTML();
 
     try {
       markerRef.current = new mapboxgl.Marker({ element: el })
@@ -458,7 +521,7 @@ export default function LiveMapInner({
             type: "line",
             source: routeSourceId.current,
             layout: { "line-join": "round", "line-cap": "round" },
-            paint: { "line-color": "#3b7ac7", "line-width": 3, "line-opacity": 0.8, "line-dasharray": [1, 1] },
+            paint: { "line-color": "#3b7ac7", "line-width": 4, "line-opacity": 0.85 },
           });
         }
       };

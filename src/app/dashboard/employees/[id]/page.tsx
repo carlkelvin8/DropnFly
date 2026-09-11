@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDate } from "@/lib/utils";
+import { formatDate, roleLabel } from "@/lib/utils";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { signOut, useSession } from "next-auth/react";
@@ -136,7 +136,7 @@ export default function EmployeeDetailPage() {
                 Role
               </span>
               <Badge variant={employee.role === "ADMIN" ? "default" : "secondary"}>
-                {employee.role}
+                {roleLabel(employee.role)}
               </Badge>
             </div>
             <div className="flex items-center justify-between">
@@ -210,7 +210,7 @@ export default function EmployeeDetailPage() {
                 updateEmployee({ role: newRole });
               }}
             >
-              Switch to {employee.role === "ADMIN" ? "Staff" : "Admin"}
+              Switch to {employee.role === "ADMIN" ? "Employee" : "Admin"}
             </Button>
           </CardContent>
         </Card>

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { formatDate } from "@/lib/utils";
+import { formatDate, roleLabel } from "@/lib/utils";
 import { User, Mail, Shield, Calendar, ShieldCheck, Smartphone, QrCode as QrCodeIcon, Camera, Upload, Trash2 } from "lucide-react";
 import Link from "next/link";
 
@@ -311,7 +311,7 @@ export default function ProfilePage() {
             <Shield className="h-5 w-5 text-muted-foreground" />
             <div>
               <p className="text-sm text-muted-foreground">Role</p>
-              <p className="font-medium capitalize">{profile?.role?.toLowerCase() || "N/A"}</p>
+              <p className="font-medium">{roleLabel(profile?.role) || "N/A"}</p>
             </div>
           </div>
           <div className="flex items-center gap-3 rounded-lg border p-4">

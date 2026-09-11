@@ -58,3 +58,15 @@ export function calculateTotalPrice(
 export function normalizeReference(reference: string): string {
   return reference.trim().toUpperCase();
 }
+
+/**
+ * Human-friendly role label used across the UI.
+ * DB roles map 1:1 to the staff labels customers can recognize:
+ *   ADMIN -> Admin, STAFF -> Employee, EMPLOYEE -> Rider
+ */
+export function roleLabel(role?: string | null): string {
+  if (role === "EMPLOYEE") return "Rider";
+  if (role === "STAFF") return "Employee";
+  if (role === "ADMIN") return "Admin";
+  return role || "";
+}

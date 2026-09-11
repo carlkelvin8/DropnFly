@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Eye, Trash2, Search, Users } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { formatDate, roleLabel } from "@/lib/utils";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -145,7 +145,7 @@ export default function EmployeesPage() {
                   <TableCell>{emp.email}</TableCell>
                   <TableCell>
                     <Badge variant={emp.role === "ADMIN" ? "default" : "secondary"}>
-                      {emp.role}
+                      {roleLabel(emp.role)}
                     </Badge>
                   </TableCell>
                   <TableCell>

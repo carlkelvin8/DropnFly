@@ -176,6 +176,9 @@ model BookingAssignment {
   bookingId String
   userId    String
   phase     String   @default("PICKUP") // PICKUP or DROPOFF — separate riders per leg
+  vehicleId String?  // references fleet_data id or Vehicle table
+  vehicleType String?
+  vehiclePlate String?
   createdAt DateTime @default(now())
 
   booking Booking @relation(fields: [bookingId], references: [id])
@@ -183,6 +186,7 @@ model BookingAssignment {
 
   @@index([bookingId])
   @@index([userId])
+  @@index([vehicleId])
 }
 
 model ActivityLog {

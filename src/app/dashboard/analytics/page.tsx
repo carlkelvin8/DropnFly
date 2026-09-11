@@ -938,7 +938,6 @@ function FinancialTab({
                       <th className="px-4 py-3 text-left font-medium">Reference</th>
                       <th className="px-4 py-3 text-left font-medium">Customer</th>
                       <th className="px-4 py-3 text-left font-medium">Amount</th>
-                      <th className="px-4 py-3 text-left font-medium">Method</th>
                       <th className="px-4 py-3 text-left font-medium">Status</th>
                       <th className="px-4 py-3 text-left font-medium">Date</th>
                     </tr>
@@ -951,7 +950,6 @@ function FinancialTab({
                           <td className="px-4 py-3 font-medium">{p.booking.referenceNumber}</td>
                           <td className="px-4 py-3">{p.customer.name.split(" ").map((part) => `${part.charAt(0)}${"•".repeat(Math.max(part.length - 1, 1))}`).join(" ")}</td>
                           <td className="px-4 py-3 font-semibold">{formatCurrency(p.amount)}</td>
-                          <td className="px-4 py-3">{p.method}</td>
                           <td className="px-4 py-3">
                             <Badge variant={isPaid ? "default" : "secondary"}>
                               {isPaid ? "Paid" : p.status === "PENDING" ? "Pending" : p.status}
@@ -1388,7 +1386,7 @@ function CsvReportsSection({ period, dateFrom, dateTo }: { period: string; dateF
 
   const reports = [
     { id: "bookings", label: "Bookings Report", description: "All bookings with customer and payment details", icon: Package, endpoint: "/api/reports/bookings", filename: "bookings" },
-    { id: "revenue", label: "Revenue Report", description: "Paid payments with customer and method details", icon: DollarSign, endpoint: "/api/reports/revenue", filename: "revenue" },
+    { id: "revenue", label: "Revenue Report", description: "Paid payments with customer details", icon: DollarSign, endpoint: "/api/reports/revenue", filename: "revenue" },
     { id: "analytics", label: "Analytics Summary", description: "Key metrics including bookings, revenue, and ratings", icon: BarChart3, endpoint: "/api/reports/analytics", filename: "analytics" },
   ];
 

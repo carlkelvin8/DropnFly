@@ -26,7 +26,9 @@ import {
   MessageCircle,
   Phone,
   Send,
+  PlayCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 
 interface TrackingData {
   booking: {
@@ -36,6 +38,7 @@ interface TrackingData {
     dropOffLocation: string;
     status: string;
     checkIn: string;
+    pickupStartedAt: string | null;
     customer: { name: string; phone: string };
   };
   assignments: {
@@ -82,11 +85,13 @@ export default function LiveTrackingPage() {
   const chatStickToBottomRef = useRef(true);
   const lastChatMessageIdRef = useRef<string | null>(null);
   const [isRiderView, setIsRiderView] = useState(false);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/session")
       .then((r) => r.json())
-      .then((s) => { if (s?.user) setIsRiderView(true); })
+      .then((s) => { if (s?.user) { setIsRiderView(true); setSessionUserId(s.user.id || null); } })
       .catch(() => {});
   }, []);
 
@@ -255,6 +260,29 @@ export default function LiveTrackingPage() {
     : data.booking.status === "IN_STORAGE" ? "In Storage"
     : data.booking.status.replace("_", " ");
 
+  const imAssignedRider = Boolean(sessionUserId && employee && employee.id === sessionUserId);
+  const hasStarted = Boolean(data.booking.pickupStartedAt);
+  const startAction = data.booking.status === "OUT_FOR_DELIVERY" ? "start-delivery" : "start-pickup";
+
+  async function startTask() {
+    const bookingId = data?.booking?.id;
+    if (!bookingId) return;
+    setStarting(true);
+    try {
+      const res = await fetch(`/api/logistics/tasks/${bookingId}/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: startAction }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to start");
+      setData((prev) => prev ? { ...prev, booking: { ...prev.booking, pickupStartedAt: new Date().toISOString() } } : prev);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to start");
+    }
+    setStarting(false);
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
       <header className="sticky top-0 z-50 border-b bg-white/80 shadow-sm backdrop-blur-sm">
@@ -292,8 +320,8 @@ export default function LiveTrackingPage() {
           <div className="overflow-hidden rounded-xl border shadow-lg lg:col-span-2">
       <LiveMap
               referenceNumber={data.booking.referenceNumber}
-              employeeLat={employeeLoc?.lat ?? null}
-              employeeLng={employeeLoc?.lng ?? null}
+              employeeLat={hasStarted ? (employeeLoc?.lat ?? null) : null}
+              employeeLng={hasStarted ? (employeeLoc?.lng ?? null) : null}
               employeeName={employee?.name}
               pickupLat={pickupCoordsForMap?.lat}
               pickupLng={pickupCoordsForMap?.lng}
@@ -337,16 +365,32 @@ export default function LiveTrackingPage() {
                       <p className="font-medium">{data.booking.dropOffLocation}</p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg border bg-muted/30 p-2">
-                      <span className="text-muted-foreground">Distance</span>
-                      <p className="font-bold">{distance ? `${distance.toFixed(1)} km` : "—"}</p>
+                  {imAssignedRider && !hasStarted ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <p className="text-xs text-amber-800 font-medium">
+                        This task has not been started yet. Tap Start to begin {startAction === "start-delivery" ? "delivery" : "pickup"} and enable live tracking for the customer.
+                      </p>
+                      <Button
+                        size="sm"
+                        className="mt-2 w-full bg-blue-600 text-white hover:bg-blue-700"
+                        onClick={startTask}
+                        disabled={starting}
+                      >
+                        <PlayCircle className="mr-1.5 h-4 w-4" /> {starting ? "Starting..." : "Start Pickup / Delivery"}
+                      </Button>
                     </div>
-                    <div className="rounded-lg border bg-muted/30 p-2">
-                      <span className="text-muted-foreground">Est. Arrival</span>
-                      <p className="font-bold">{eta || "—"}</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg border bg-muted/30 p-2">
+                        <span className="text-muted-foreground">Distance</span>
+                        <p className="font-bold">{distance ? `${distance.toFixed(1)} km` : "—"}</p>
+                      </div>
+                      <div className="rounded-lg border bg-muted/30 p-2">
+                        <span className="text-muted-foreground">Est. Arrival</span>
+                        <p className="font-bold">{eta || "—"}</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <Badge>{statusLabel}</Badge>
                 </CardContent>
               </Card>
@@ -372,15 +416,24 @@ export default function LiveTrackingPage() {
                           </div>
                           <div>
                             <p className="font-semibold">{employee.name}</p>
-                            {employeeLoc ? (
-                              <Badge variant="success" className="shadow-sm text-[10px]">
-                                <div className="mr-1 h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" /> Moving
-                              </Badge>
+                            {hasStarted ? (
+                              employeeLoc ? (
+                                <Badge variant="success" className="shadow-sm text-[10px]">
+                                  <div className="mr-1 h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" /> {data.booking.status === "OUT_FOR_DELIVERY" ? "Delivering" : "On the way"}
+                                </Badge>
+                              ) : (
+                                <Badge variant="warning" className="text-[10px]">Starting up GPS</Badge>
+                              )
                             ) : (
-                              <Badge variant="warning" className="text-[10px]">Waiting</Badge>
+                              <Badge variant="secondary" className="text-[10px]">Waiting to start</Badge>
                             )}
                           </div>
                         </div>
+                        {!hasStarted && (
+                          <p className="rounded-lg bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
+                            Your rider is assigned but has not started yet. Live tracking will appear here once they begin {data.booking.status === "OUT_FOR_DELIVERY" ? "delivery" : "pickup"}.
+                          </p>
+                        )}
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           {employee.vehicleType && (
                             <div className="rounded-lg border bg-muted/30 p-2">
@@ -396,20 +449,26 @@ export default function LiveTrackingPage() {
                               <p className="font-mono font-bold text-blue-600">{employee.plateNumber}</p>
                             </div>
                           )}
-                          <div className="rounded-lg border bg-muted/30 p-2">
-                            <span className="text-muted-foreground">Distance</span>
-                            <p className="font-bold">{distance ? `${distance.toFixed(1)} km` : "—"}</p>
-                          </div>
-                          <div className="rounded-lg border bg-muted/30 p-2">
-                            <span className="text-muted-foreground">ETA</span>
-                            <p className="font-bold">{eta || "—"}</p>
-                          </div>
+                          {hasStarted && (
+                            <>
+                              <div className="rounded-lg border bg-muted/30 p-2">
+                                <span className="text-muted-foreground">Distance</span>
+                                <p className="font-bold">{distance ? `${distance.toFixed(1)} km` : "—"}</p>
+                              </div>
+                              <div className="rounded-lg border bg-muted/30 p-2">
+                                <span className="text-muted-foreground">ETA</span>
+                                <p className="font-bold">{eta || "—"}</p>
+                              </div>
+                            </>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <MapPin className="h-3 w-3" />
-                          {data.booking.pickupLocation}
-                        </div>
-                        {employee.lastLocationUpdate && (
+                        {hasStarted && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <MapPin className="h-3 w-3" />
+                            {data.booking.pickupLocation}
+                          </div>
+                        )}
+                        {hasStarted && employee.lastLocationUpdate && (
                           <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
                             <Clock className="h-3 w-3" />
                             Updated {new Date(employee.lastLocationUpdate).toLocaleTimeString()}

@@ -23,14 +23,13 @@ export async function GET(req: Request) {
     orderBy: { paidAt: "desc" },
   });
 
-  const header = "Reference,Customer,Email,Amount,Method,Status,Paid At\n";
+  const header = "Reference,Customer,Email,Amount,Status,Paid At\n";
   const rows = payments.map((p) =>
     [
       p.booking.referenceNumber,
       escapeCsv(p.customer.name),
       p.customer.email,
       p.amount,
-      p.method,
       p.status,
       p.paidAt?.toISOString() || "",
     ].join(",")

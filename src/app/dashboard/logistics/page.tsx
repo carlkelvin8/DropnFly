@@ -7,13 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import {
   Navigation, MapPin, Phone, User, Bike, Camera, CheckCircle,
   Loader2, ArrowRight, Package, Clock, Play,
-  History, Users, Activity,
+  Users, Activity,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import { formatDate } from "@/lib/utils";
+import { formatDate, roleLabel } from "@/lib/utils";
 import { toast } from "sonner";
-import { LocationPlayback } from "@/components/tracking/LocationPlayback";
 import { LocationUpdater } from "@/components/tracking/LocationUpdater";
 import { AdminLiveMonitor } from "@/components/tracking/AdminLiveMonitor";
 import { Pagination } from "@/components/ui/pagination";
@@ -274,7 +273,8 @@ export default function LogisticsPage() {
           </CardContent>
         </Card>
       )}
-      {/* Tabs: Tasks | Live Monitoring */}
+      {/* Tabs: Tasks | Live Monitoring — only for admin; employees just see their assigned tasks */}
+      {isAdmin && (
       <div className="flex gap-1 rounded-xl border bg-muted/40 p-1">
         <button
           onClick={() => setActiveTab("tasks")}
@@ -284,15 +284,16 @@ export default function LogisticsPage() {
         >
           <Activity className="h-4 w-4" /> Active Tasks
         </button>
-        {isAdmin && <button
+        <button
           onClick={() => setActiveTab("monitoring")}
           className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
             activeTab === "monitoring" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Navigation className="h-4 w-4" /> Live Monitoring
-        </button>}
+        </button>
       </div>
+      )}
 
       {activeTab === "monitoring" && isAdmin ? (
         <div className="space-y-4">
@@ -332,7 +333,7 @@ export default function LogisticsPage() {
                       >
                         <span className={`h-2 w-2 rounded-full ${showGreen ? "bg-emerald-500 animate-pulse" : "bg-gray-300"}`} />
                         <span className="font-medium">{emp.name}</span>
-                        <span className="text-xs text-muted-foreground">{emp.role}</span>
+                        <span className="text-xs text-muted-foreground">{roleLabel(emp.role)}</span>
                         {hasLiveForEmp ? <Badge variant="outline" className="text-[10px]">Tracking {empTasks.length}</Badge> : <span className="text-[10px] text-muted-foreground">(idle)</span>}
                       </button>
                     );
@@ -356,16 +357,6 @@ export default function LogisticsPage() {
                   initialLng={emp?.currentLng ?? null}
                   lastUpdate={emp?.lastLocationUpdate ?? null}
                 />
-                <details className="rounded-lg border bg-muted/20 p-3">
-                  <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-                    <History className="h-4 w-4 text-muted-foreground" /> Route History (Audit) — not live
-                    <span className="ml-auto text-xs font-normal text-muted-foreground">For forensic review • filtered by date</span>
-                  </summary>
-                  <p className="mt-2 text-xs text-muted-foreground">This is historical playback (polyline + scrubber), independent of live monitoring. Use it to audit past movements, not to track ongoing pick-ups.</p>
-                  <div className="mt-3">
-                    <LocationPlayback userId={selectedEmpId} userName={emp?.name} />
-                  </div>
-                </details>
               </div>
             );
           })()}
@@ -381,17 +372,19 @@ export default function LogisticsPage() {
           ))}
         </div>
       ) : <>
-        <div className="grid gap-2 sm:grid-cols-[1fr_140px_140px_150px]">
-          <input value={taskSearch} onChange={(e) => { setTaskSearch(e.target.value); setTaskPage(1); }} placeholder="Filter by reference, customer, or rider" className="h-10 rounded-lg border bg-background px-3 text-sm" />
-          <select value={taskTypeFilter} onChange={(e) => { setTaskTypeFilter(e.target.value); setTaskPage(1); }} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="all">All task types</option><option value="pickup">Pickup</option><option value="delivery">Delivery</option></select>
-          <select value={taskDateFilter} onChange={(e) => { const v = e.target.value as "today"|"all"|"custom"; setTaskDateFilter(v); setTaskPage(1); if (v === "today") setTaskDate(manilaDateStr(new Date())); }} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="today">Today only</option><option value="all">All dates</option><option value="custom">Pick date…</option></select>
-          {taskDateFilter === "custom" ? (
-            <input type="date" value={taskDate} onChange={(e) => { setTaskDate(e.target.value); setTaskPage(1); }} className="h-10 rounded-lg border bg-background px-3 text-sm" />
-          ) : (
-            <div className="flex h-10 items-center rounded-lg border bg-muted/30 px-3 text-xs text-muted-foreground">{taskDateFilter === "today" ? `Today • ${manilaDateStr(new Date())}` : "All dates — previous & future"}</div>
-          )}
-        </div>
-        <p className="text-[11px] text-muted-foreground">Active Tasks are filtered to {taskDateFilter === "today" ? "today" : taskDateFilter === "custom" ? taskDate : "all dates"} (by pickup date). Use All/Custom to see previous and future taskings.</p>
+        {isAdmin && (
+          <div className="grid gap-2 sm:grid-cols-[1fr_140px_140px_150px]">
+            <input value={taskSearch} onChange={(e) => { setTaskSearch(e.target.value); setTaskPage(1); }} placeholder="Filter by reference, customer, or rider" className="h-10 rounded-lg border bg-background px-3 text-sm" />
+            <select value={taskTypeFilter} onChange={(e) => { setTaskTypeFilter(e.target.value); setTaskPage(1); }} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="all">All task types</option><option value="pickup">Pickup</option><option value="delivery">Delivery</option></select>
+            <select value={taskDateFilter} onChange={(e) => { const v = e.target.value as "today"|"all"|"custom"; setTaskDateFilter(v); setTaskPage(1); if (v === "today") setTaskDate(manilaDateStr(new Date())); }} className="h-10 rounded-lg border bg-background px-3 text-sm"><option value="today">Today only</option><option value="all">All dates</option><option value="custom">Pick date…</option></select>
+            {taskDateFilter === "custom" ? (
+              <input type="date" value={taskDate} onChange={(e) => { setTaskDate(e.target.value); setTaskPage(1); }} className="h-10 rounded-lg border bg-background px-3 text-sm" />
+            ) : (
+              <div className="flex h-10 items-center rounded-lg border bg-muted/30 px-3 text-xs text-muted-foreground">{taskDateFilter === "today" ? `Today • ${manilaDateStr(new Date())}` : "All dates — previous & future"}</div>
+            )}
+          </div>
+        )}
+        {isAdmin && <p className="text-[11px] text-muted-foreground">Active Tasks are filtered to {taskDateFilter === "today" ? "today" : taskDateFilter === "custom" ? taskDate : "all dates"} (by pickup date). Use All/Custom to see previous and future taskings.</p>}
       {filteredTasks.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">

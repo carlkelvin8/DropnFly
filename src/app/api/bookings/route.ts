@@ -46,7 +46,10 @@ export async function GET(req: Request) {
   }
 
   const where: Record<string, unknown> = {};
-  if (session.user.role === "EMPLOYEE") {
+  // When scanning by exact reference, do NOT restrict by assignment — a freshly
+  // booked QR has no rider assigned yet, so the assignment filter would hide it
+  // and make valid scans return "Booking not found".
+  if (session.user.role === "EMPLOYEE" && !reference) {
     where.assignments = { some: { userId: session.user.id } };
   }
   if (reference) where.referenceNumber = normalizeReference(reference);

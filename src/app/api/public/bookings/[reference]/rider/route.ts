@@ -11,14 +11,19 @@ export async function GET(
 
   const booking = await prisma.booking.findUnique({
     where: { referenceNumber: normalizeReference(reference) },
-    select: { id: true, customerId: true, status: true },
+    select: { id: true, customerId: true, status: true, pickupStartedAt: true },
   });
 
   if (!booking) {
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
-  // Public rider location: allow anyone with valid reference to see rider pin for live map
-  // still check booking exists and assignment matches; canAccessBooking not required for tracking
+
+  // Tracking is only revealed after the employee started the leg, and only to
+  // authorized viewers (granted booking_access cookie, customer, staff, or the
+  // assigned rider). Same rule as /api/public/bookings/[reference]/status.
+  if (!booking.pickupStartedAt || !(await canAccessBooking(booking))) {
+    return NextResponse.json({ rider: null });
+  }
 
   const assignment = await prisma.bookingAssignment.findFirst({
     where: {
