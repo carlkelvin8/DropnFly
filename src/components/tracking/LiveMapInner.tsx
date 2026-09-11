@@ -125,6 +125,7 @@ export default function LiveMapInner({
       center: [centerLng, centerLat],
       zoom: 13,
       attributionControl: false,
+      interactive: true,
     } as any);
 
     map.current.addControl(new lib.NavigationControl(), "top-right");
