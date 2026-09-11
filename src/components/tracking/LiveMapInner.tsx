@@ -77,16 +77,20 @@ export default function LiveMapInner({
     if (!map.current || !map.current.isStyleLoaded()) return;
     const mk = map.current;
     clearExtraMarkers();
-
+    // offset when pins are <1km apart (Terminal2 vs Terminal4 ~0.4km) so they don't look "dikit"
+    let close = false;
+    if (pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null) {
+      close = haversine(pickupLat, pickupLng, dropoffLat, dropoffLng) < 1;
+    }
     if (pickupLat != null && pickupLng != null) {
-      const m = new mapboxgl.Marker({ color: "#22c55e" })
+      const m = new mapboxgl.Marker({ color: "#22c55e", offset: close ? [0, -12] as [number, number] : undefined })
         .setLngLat([pickupLng, pickupLat])
         .setPopup(new mapboxgl.Popup().setText(pickupAddress || "Pickup Location"))
         .addTo(mk);
       extraMarkersRef.current.push(m);
     }
     if (dropoffLat != null && dropoffLng != null) {
-      const m = new mapboxgl.Marker({ color: "#ef4444" })
+      const m = new mapboxgl.Marker({ color: "#ef4444", offset: close ? [0, 12] as [number, number] : undefined })
         .setLngLat([dropoffLng, dropoffLat])
         .setPopup(new mapboxgl.Popup().setText(dropoffAddress || "Drop-off Location"))
         .addTo(mk);
@@ -324,6 +328,7 @@ export default function LiveMapInner({
   const fbPickPct = toPct(pickupLat ?? undefined, pickupLng ?? undefined);
   const fbDropPct = toPct(dropoffLat ?? undefined, dropoffLng ?? undefined);
   const fbEmpPct = toPct(employeeLat ?? undefined, employeeLng ?? undefined);
+  const fbClose = pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null ? haversine(pickupLat, pickupLng, dropoffLat, dropoffLng) < 1 : false;
 
   return (
     <div className="relative">
@@ -343,10 +348,10 @@ export default function LiveMapInner({
               referrerPolicy="no-referrer-when-downgrade"
             />
             {fbPickPct && (
-              <div className="absolute -translate-x-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-green-500 border-2 border-white shadow text-[8px] font-bold text-white" style={{ left: `${fbPickPct.x}%`, top: `${fbPickPct.y}%` }}>P</div>
+              <div className="absolute -translate-x-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-green-500 border-2 border-white shadow text-[8px] font-bold text-white" style={{ left: `${fbPickPct.x}%`, top: fbClose ? `calc(${fbPickPct.y}% - 10px)` : `${fbPickPct.y}%` }}>P</div>
             )}
             {fbDropPct && (
-              <div className="absolute -translate-x-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 border-2 border-white shadow text-[8px] font-bold text-white" style={{ left: `${fbDropPct.x}%`, top: `${fbDropPct.y}%` }}>D</div>
+              <div className="absolute -translate-x-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 border-2 border-white shadow text-[8px] font-bold text-white" style={{ left: `${fbDropPct.x}%`, top: fbClose ? `calc(${fbDropPct.y}% + 10px)` : `${fbDropPct.y}%` }}>D</div>
             )}
             {fbEmpPct && (
               <div className="absolute -translate-x-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-orange-500 border-2 border-white shadow text-[10px] font-bold text-white animate-pulse" style={{ left: `${fbEmpPct.x}%`, top: `${fbEmpPct.y}%` }}>{riderView ? "Y" : "E"}</div>
