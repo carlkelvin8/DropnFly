@@ -90,7 +90,14 @@ function cleanScanInput(ref: string): string {
   const clean = withoutQuery.includes("/")
     ? withoutQuery.split("/").pop() || ""
     : withoutQuery;
-  return clean.trim().toUpperCase();
+  const trimmed = clean.trim().toUpperCase();
+
+  // QR codes embed ${qrPrefix}-${referenceNumber} where referenceNumber already
+  // starts with the same prefix (e.g. "DNF-DNF-260911-X5HJ3P"). Strip the
+  // leading duplicate prefix so the lookup matches the DB reference.
+  // Reference format: PREFIX-YYMMDD-6alphanum.
+  const prefixMatch = trimmed.match(/^([A-Z]+)-\1-(.+)$/);
+  return prefixMatch ? prefixMatch[2] : trimmed;
 }
 
 export default function QrScannerPage() {

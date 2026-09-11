@@ -240,7 +240,6 @@ export async function POST(req: Request) {
 
     const txPrefix = setting(settings, "tx_prefix", "DROPFLY");
     const qrSize = Math.min(1000, Math.max(100, parseInt(setting(settings, "qr_image_size", "300")) || 300));
-    const qrPrefix = setting(settings, "qr_code_prefix", "DNF");
 
     // Online booking is a reservation-only flow: the customer is not required to pay during
     // booking. No down-payment is collected now; the full estimated cost becomes an outstanding
@@ -259,7 +258,7 @@ export async function POST(req: Request) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         referenceNumber = generateReferenceNumber(txPrefix);
-        qrCode = await QRCode.toDataURL(`${qrPrefix}-${referenceNumber}`, {
+        qrCode = await QRCode.toDataURL(referenceNumber, {
           width: qrSize,
           margin: 2,
         });
