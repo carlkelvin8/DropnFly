@@ -75,48 +75,119 @@ export default function LiveMapInner({
   const [mapError, setMapError] = useState<string | null>(null);
 
   function clearExtraMarkers() {
-    extraMarkersRef.current.forEach((m) => m.remove());
+    extraMarkersRef.current.forEach((m) => {
+      try { m.remove(); } catch {}
+      try { if (map.current && (map.current as any).removeLayer) (map.current as any).removeLayer(m); } catch {}
+    });
     extraMarkersRef.current = [];
   }
 
   function drawPoints() {
-    if (!map.current || !map.current.isStyleLoaded()) return;
-    const mk = map.current;
-    const lib = mapLibRef.current;
+    if (!map.current) return;
+    const lib: any = mapLibRef.current;
+    if (!lib) return;
+    if (MAPBOX_TOKEN && !(map.current as any).isStyleLoaded?.()) return;
+    const mk: any = map.current;
     clearExtraMarkers();
-    // offset when pins are <1km apart (Terminal2 vs Terminal4 ~0.4km) so they don't look "dikit"
     let close = false;
     if (pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null) {
       close = haversine(pickupLat, pickupLng, dropoffLat, dropoffLng) < 1;
     }
     if (pickupLat != null && pickupLng != null) {
-      const el = document.createElement("div");
-      el.className = "flex h-7 w-7 items-center justify-center rounded-full bg-green-500 border-2 border-white shadow text-[10px] font-bold text-white";
-      el.textContent = "P";
-      el.title = pickupAddress || "Pickup";
-      const m = new lib.Marker({ element: el, offset: close ? [0, -12] as [number, number] : undefined })
-        .setLngLat([pickupLng, pickupLat])
-        .setPopup(new lib.Popup().setText(pickupAddress || "Pickup Location"))
-        .addTo(mk);
-      extraMarkersRef.current.push(m);
+      if (!MAPBOX_TOKEN) {
+        const m = lib.marker([pickupLat, pickupLng], { icon: lib.divIcon({ html: '<div style="background:#22c55e;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">P</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
+        try { m.bindPopup(pickupAddress || "Pickup"); } catch {}
+        extraMarkersRef.current.push(m);
+      } else {
+        const el = document.createElement("div");
+        el.className = "flex h-7 w-7 items-center justify-center rounded-full bg-green-500 border-2 border-white shadow text-[10px] font-bold text-white";
+        el.textContent = "P";
+        el.title = pickupAddress || "Pickup";
+        const m = new lib.Marker({ element: el, offset: close ? [0, -12] as [number, number] : undefined })
+          .setLngLat([pickupLng, pickupLat])
+          .setPopup(new lib.Popup().setText(pickupAddress || "Pickup Location"))
+          .addTo(mk);
+        extraMarkersRef.current.push(m);
+      }
     }
     if (dropoffLat != null && dropoffLng != null) {
-      const el = document.createElement("div");
-      el.className = "flex h-7 w-7 items-center justify-center rounded-full bg-red-500 border-2 border-white shadow text-[10px] font-bold text-white";
-      el.textContent = "D";
-      el.title = dropoffAddress || "Drop-off";
-      const m = new lib.Marker({ element: el, offset: close ? [0, 12] as [number, number] : undefined })
-        .setLngLat([dropoffLng, dropoffLat])
-        .setPopup(new lib.Popup().setText(dropoffAddress || "Drop-off Location"))
-        .addTo(mk);
-      extraMarkersRef.current.push(m);
+      if (!MAPBOX_TOKEN) {
+        const m = lib.marker([dropoffLat, dropoffLng], { icon: lib.divIcon({ html: '<div style="background:#ef4444;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">D</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
+        try { m.bindPopup(dropoffAddress || "Drop-off"); } catch {}
+        extraMarkersRef.current.push(m);
+      } else {
+        const el = document.createElement("div");
+        el.className = "flex h-7 w-7 items-center justify-center rounded-full bg-red-500 border-2 border-white shadow text-[10px] font-bold text-white";
+        el.textContent = "D";
+        el.title = dropoffAddress || "Drop-off";
+        const m = new lib.Marker({ element: el, offset: close ? [0, 12] as [number, number] : undefined })
+          .setLngLat([dropoffLng, dropoffLat])
+          .setPopup(new lib.Popup().setText(dropoffAddress || "Drop-off Location"))
+          .addTo(mk);
+        extraMarkersRef.current.push(m);
+      }
     }
   }
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
-    const lib: any = MAPBOX_TOKEN ? mapboxgl : maplibregl;
-    if (MAPBOX_TOKEN) (lib as typeof mapboxgl).accessToken = MAPBOX_TOKEN;
+
+    // No token -> use Leaflet directly (no Mapbox token required, fully interactive OSM)
+    if (!MAPBOX_TOKEN) {
+      let leafletMap: any = null;
+      (async () => {
+        const L = await import("leaflet");
+        if (!mapContainer.current || map.current) return;
+        const centerLatLeaf = employeeLat ?? pickupLat ?? dropoffLat ?? 14.5995;
+        const centerLngLeaf = employeeLng ?? dropoffLng ?? pickupLng ?? 120.9842;
+        leafletMap = L.map(mapContainer.current).setView([centerLatLeaf, centerLngLeaf], 13);
+        (map as any).current = leafletMap;
+        (mapLibRef as any).current = L;
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "© OpenStreetMap",
+          maxZoom: 19,
+        }).addTo(leafletMap);
+        // add pickup/dropoff immediately
+        const addLeafletPins = () => {
+          if (pickupLat != null && pickupLng != null) {
+            L.marker([pickupLat, pickupLng], { icon: L.divIcon({ html: '<div style="background:#22c55e;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">P</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap).bindPopup(pickupAddress || "Pickup");
+          }
+          if (dropoffLat != null && dropoffLng != null) {
+            L.marker([dropoffLat, dropoffLng], { icon: L.divIcon({ html: '<div style="background:#ef4444;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">D</div>', className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap).bindPopup(dropoffAddress || "Drop-off");
+          }
+          if (pickupLat != null && dropoffLat != null && employeeLat == null) {
+            leafletMap.fitBounds([[pickupLat, pickupLng!], [dropoffLat, dropoffLng!]], { padding: [40, 40], maxZoom: 15 });
+          }
+          if (employeeLat != null && employeeLng != null) {
+            const el = L.divIcon({ html: `<div style="background:#f97316;color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${riderView ? "Y" : "E"}</div>`, className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
+            const m = L.marker([employeeLat, employeeLng], { icon: el }).addTo(leafletMap).bindPopup(employeeName || "Rider");
+            (markerRef as any).current = m;
+          }
+          const destLatLeaf = destinationPhase === "pickup" ? pickupLat : dropoffLat;
+          const destLngLeaf = destinationPhase === "pickup" ? pickupLng : dropoffLng;
+          if (employeeLat != null && employeeLng != null && destLatLeaf != null && destLngLeaf != null) {
+            L.polyline([[employeeLat, employeeLng], [destLatLeaf, destLngLeaf]], { color: "#3b7ac7", weight: 3, opacity: 0.8, dashArray: "8,8" }).addTo(leafletMap);
+          }
+        };
+        addLeafletPins();
+        setLoading(false);
+        setMapReady(true);
+        setTimeout(() => leafletMap.invalidateSize(), 100);
+      })();
+      return () => {
+        if (leafletMap) {
+          leafletMap.remove();
+          (map as any).current = null;
+        }
+        if (fallbackMapRef.current) {
+          fallbackMapRef.current.remove();
+          fallbackMapRef.current = null;
+        }
+      };
+    }
+
+    const lib: any = mapboxgl;
+    (lib as typeof mapboxgl).accessToken = MAPBOX_TOKEN;
 
     const centerLng = employeeLng ?? dropoffLng ?? pickupLng ?? 120.9842;
     const centerLat = employeeLat ?? dropoffLat ?? pickupLat ?? 14.5995;
@@ -124,7 +195,7 @@ export default function LiveMapInner({
     mapLibRef.current = lib;
     map.current = new lib.Map({
       container: mapContainer.current,
-      style: (MAPBOX_TOKEN ? "mapbox://styles/mapbox/streets-v12" : OPEN_STREET_MAP_STYLE) as any,
+      style: "mapbox://styles/mapbox/streets-v12" as any,
       center: [centerLng, centerLat],
       zoom: 13,
       attributionControl: false,
@@ -306,6 +377,34 @@ export default function LiveMapInner({
   }, [mapError, pickupLat, pickupLng, dropoffLat, dropoffLng, employeeLat, employeeLng, pickupAddress, dropoffAddress, employeeName, riderView]);
 
   useEffect(() => {
+    // Leaflet primary (no token) - update marker and polyline
+    if (!MAPBOX_TOKEN) {
+      const leafletMap: any = map.current;
+      const L: any = mapLibRef.current;
+      if (!leafletMap || !L || employeeLat == null || employeeLng == null) return;
+      // update or create employee marker
+      if (markerRef.current) {
+        try { markerRef.current.setLatLng([employeeLat, employeeLng]); } catch {}
+      } else {
+        const el = L.divIcon({ html: `<div style="background:#f97316;color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${riderView ? "Y" : "E"}</div>`, className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
+        const m = L.marker([employeeLat, employeeLng], { icon: el }).addTo(leafletMap);
+        m.bindPopup(employeeName || "Rider");
+        (markerRef as any).current = m;
+      }
+      // simple pan, keep both pins in view - leaflet handles via setView
+      try { leafletMap.panTo([employeeLat, employeeLng], { animate: true }); } catch {}
+      // polyline for leaflet
+      const destLatLeaf = destinationPhase === "pickup" ? pickupLat : dropoffLat;
+      const destLngLeaf = destinationPhase === "pickup" ? pickupLng : dropoffLng;
+      if (destLatLeaf != null && destLngLeaf != null) {
+        // remove old polyline if exists (stored on map)
+        if ((leafletMap as any)._routeLine) {
+          try { leafletMap.removeLayer((leafletMap as any)._routeLine); } catch {}
+        }
+        (leafletMap as any)._routeLine = L.polyline([[employeeLat, employeeLng], [destLatLeaf, destLngLeaf]], { color: "#3b7ac7", weight: 3, opacity: 0.8, dashArray: "8,8" }).addTo(leafletMap);
+      }
+      return;
+    }
     if (!map.current || employeeLat == null || employeeLng == null || !mapReady) return;
     // Style must be fully loaded before adding sources/layers — otherwise Mapbox throws "Style is not done loading"
     if (!map.current.isStyleLoaded()) {
