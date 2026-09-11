@@ -47,6 +47,7 @@ interface ScanResult {
   checkOut?: string | null;
   location?: { name?: string; city?: string } | null;
   luggageItems?: LuggageItemSummary[];
+  scannedTag?: string;
 }
 
 interface IntakeResult {
@@ -157,13 +158,32 @@ export default function QrScannerPage() {
     const cleanRef = cleanScanInput(ref);
 
     setScanning(true);
+    setScanError(null);
     try {
-      const res = await fetch(`/api/bookings?include=basic&ref=${encodeURIComponent(cleanRef)}`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      const booking = Array.isArray(data)
-        ? data.find((b: { referenceNumber: string }) => b.referenceNumber === cleanRef)
-        : null;
+      const lookupByRef = async (candidate: string) => {
+        const res = await fetch(`/api/bookings?include=basic&ref=${encodeURIComponent(candidate)}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        return Array.isArray(data)
+          ? data.find((b: { referenceNumber: string }) => b.referenceNumber === candidate) || null
+          : null;
+      };
+
+      // A scanned QR may be a booking reference OR a physical luggage tag number.
+      // Resolve the tag to its booking before looking the full booking up.
+      let booking = await lookupByRef(cleanRef);
+      let scannedTag: string | undefined;
+      if (!booking) {
+        const tagRes = await fetch(`/api/luggage/by-tag?tagNumber=${encodeURIComponent(cleanRef)}`);
+        if (tagRes.ok) {
+          const tagData = await tagRes.json();
+          const bookingRef = tagData?.booking?.referenceNumber;
+          if (bookingRef) {
+            booking = await lookupByRef(bookingRef);
+            scannedTag = cleanRef;
+          }
+        }
+      }
       if (!booking) {
         toast.error(`No booking found for ${cleanRef}`);
         setScanError(`No booking found for "${cleanRef}". Double-check the QR code or try manual entry.`);
@@ -187,6 +207,7 @@ export default function QrScannerPage() {
         checkOut: booking.checkOut,
         location: booking.location,
         luggageItems: booking.luggageItems || [],
+        scannedTag,
       });
       setTagNumbers(
         Array.from({ length: slots }, () => "")
@@ -679,6 +700,11 @@ export default function QrScannerPage() {
               <p className="text-xs text-muted-foreground">Reference</p>
               <p className="text-lg font-bold font-mono">{scanResult.referenceNumber}</p>
               <p className="text-sm text-muted-foreground mt-0.5">{scanResult.customerName}</p>
+              {scanResult.scannedTag && (
+                <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
+                  <Tag className="h-3 w-3" /> Tag {scanResult.scannedTag}
+                </p>
+              )}
             </div>
             <div className="text-right">
               {scanResult.numberOfBags && (
