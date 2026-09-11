@@ -224,7 +224,7 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
               <Button
                 size="sm"
                 variant="outline"
-                className="text-white border-white/30 hover:bg-white/10"
+                className="border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
                 onClick={startCamera}
               >
                 Scan Another
@@ -239,7 +239,7 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
             <div className="text-center space-y-3">
               <Camera className="mx-auto h-12 w-12 text-red-400" />
               <p className="text-sm text-red-300">{error}</p>
-              <Button size="sm" variant="outline" className="text-white border-white/30 hover:bg-white/10"
+              <Button size="sm" variant="outline" className="border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
                 onClick={startCamera}>
                 Retry
               </Button>
