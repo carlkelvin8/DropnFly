@@ -64,12 +64,14 @@ export default function BookPage() {
   const [pickupSlot, setPickupSlot] = useState("");
   const [pickupSlots, setPickupSlots] = useState<TimeSlot[]>([]);
   const [pickupSlotsLoading, setPickupSlotsLoading] = useState(false);
+  const [pickupMaxConcurrent, setPickupMaxConcurrent] = useState(1);
   const [pickupTerminal, setPickupTerminal] = useState("");
   const [pickupAirline, setPickupAirline] = useState("");
   const [deliveryDate, setDeliveryDate] = useState("");
   const [deliverySlot, setDeliverySlot] = useState("");
   const [deliverySlots, setDeliverySlots] = useState<TimeSlot[]>([]);
   const [deliverySlotsLoading, setDeliverySlotsLoading] = useState(false);
+  const [deliveryMaxConcurrent, setDeliveryMaxConcurrent] = useState(1);
   const [deliveryTerminal, setDeliveryTerminal] = useState("");
   const [deliveryAirline, setDeliveryAirline] = useState("");
   const [luggageQty, setLuggageQty] = useState<Record<string, number>>({});
@@ -188,17 +190,17 @@ export default function BookPage() {
     return () => { window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onVisibility); };
   }, [fetchPublicSettings]);
 
-  const fetchSlots = useCallback(async (date: string, type: "pickup" | "delivery"): Promise<TimeSlot[]> => {
-    if (!date) return [];
+  const fetchSlots = useCallback(async (date: string, type: "pickup" | "delivery"): Promise<{ slots: TimeSlot[]; maxConcurrent: number }> => {
+    if (!date) return { slots: [], maxConcurrent: 1 };
     try {
       const res = await fetch(`/api/public/time-slots?date=${date}&type=${type}`, {
         cache: "no-store",
         headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
       });
-      if (!res.ok) return [];
+      if (!res.ok) return { slots: [], maxConcurrent: 1 };
       const data = await res.json();
-      return data.slots || [];
-    } catch { return []; }
+      return { slots: data.slots || [], maxConcurrent: Number(data.maxConcurrent) || 1 };
+    } catch { return { slots: [], maxConcurrent: 1 }; }
   }, []);
 
   useEffect(() => {
@@ -208,18 +210,20 @@ export default function BookPage() {
 
   useEffect(() => {
     if (!pickupDate) return;
-    fetchSlots(pickupDate, "pickup").then((slots) => {
-      setPickupSlots(slots);
-      setPickupSlot((selected) => selected && !slots.some((slot) => slot.start === selected && slot.available) ? "" : selected);
+    fetchSlots(pickupDate, "pickup").then((r) => {
+      setPickupSlots(r.slots);
+      setPickupMaxConcurrent(r.maxConcurrent);
+      setPickupSlot((selected) => selected && !r.slots.some((slot) => slot.start === selected && slot.available) ? "" : selected);
       setPickupSlotsLoading(false);
     });
   }, [pickupDate, fetchSlots, slotRefreshTick]);
 
   useEffect(() => {
     if (!deliveryDate) return;
-    fetchSlots(deliveryDate, "delivery").then((slots) => {
-      setDeliverySlots(slots);
-      setDeliverySlot((selected) => selected && !slots.some((slot) => slot.start === selected && slot.available) ? "" : selected);
+    fetchSlots(deliveryDate, "delivery").then((r) => {
+      setDeliverySlots(r.slots);
+      setDeliveryMaxConcurrent(r.maxConcurrent);
+      setDeliverySlot((selected) => selected && !r.slots.some((slot) => slot.start === selected && slot.available) ? "" : selected);
       setDeliverySlotsLoading(false);
     });
   }, [deliveryDate, fetchSlots, slotRefreshTick]);
@@ -417,12 +421,14 @@ export default function BookPage() {
                     pickupDate={pickupDate} setPickupDate={updatePickupDate}
                     setPickupSlotsLoading={setPickupSlotsLoading}
                     pickupSlots={pickupSlots} pickupSlotsLoading={pickupSlotsLoading}
+                    pickupMaxConcurrent={pickupMaxConcurrent}
                     pickupSlot={pickupSlot} setPickupSlot={setPickupSlot}
                     deliveryTerminal={deliveryTerminal} setDeliveryTerminal={setDeliveryTerminal}
                     deliveryAirline={deliveryAirline} setDeliveryAirline={setDeliveryAirline}
                     deliveryDate={deliveryDate} setDeliveryDate={updateDeliveryDate}
                     setDeliverySlotsLoading={setDeliverySlotsLoading}
                     deliverySlots={deliverySlots} deliverySlotsLoading={deliverySlotsLoading}
+                    deliveryMaxConcurrent={deliveryMaxConcurrent}
                     deliverySlot={deliverySlot} setDeliverySlot={setDeliverySlot}
                     storageDays={storageDays} error={error} onNext={handleNextStep} onPrev={prevStep}
                   />

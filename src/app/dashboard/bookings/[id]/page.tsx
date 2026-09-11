@@ -139,6 +139,7 @@ export default function BookingDetailPage() {
   const [booking, setBooking] = useState<Booking | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [fleet, setFleet] = useState<{ id: string; type: string; plateNumber: string; color: string; count: number; icon: string }[]>([]);
+  const [plateConflicts, setPlateConflicts] = useState<Record<string, { referenceNumber: string; checkIn: string; checkOut: string | null; phase: string; customerName: string }[]>>({});
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -204,6 +205,7 @@ export default function BookingDetailPage() {
       fetch(`/api/bookings/${params.id}/extensions`, { signal: abort.signal }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/luggage`, { signal: abort.signal }).then((r) => r.json()),
       fetch("/api/baggage-tags/available", { signal: abort.signal }).then((r) => r.json()),
+      fetch(`/api/fleet/availability?bookingId=${params.id}`, { signal: abort.signal }).then((r) => r.json()),
     ]).then((results) => {
       if (abort.signal.aborted) return;
       const [bookingData] = results.map((r) => (r.status === "fulfilled" ? r.value : null));
@@ -211,11 +213,13 @@ export default function BookingDetailPage() {
       const extData = results[2].status === "fulfilled" ? results[2].value : null;
       const luggageData = results[3].status === "fulfilled" ? results[3].value : null;
       const tagData = results[4].status === "fulfilled" ? results[4].value : null;
+      const availabilityData = results[5].status === "fulfilled" ? results[5].value : null;
       if (bookingData !== null) setBooking(bookingData);
       setEmployees(Array.isArray(empData) ? empData : []);
       setExtensions(Array.isArray(extData) ? extData : []);
       setLuggageItems(Array.isArray(luggageData) ? luggageData : []);
       setAvailableTags(Array.isArray(tagData?.tags) ? tagData.tags : []);
+      setPlateConflicts(typeof availabilityData?.conflicts === "object" && availabilityData.conflicts ? availabilityData.conflicts : {});
       const paid = (bookingData?.payments || [])
         .filter((p: { status: string }) => p.status === "PAID")
         .reduce((s: number, p: { amount: number }) => s + p.amount, 0);
@@ -1132,27 +1136,57 @@ export default function BookingDetailPage() {
                     .filter((a) => a.vehiclePlate && a.phase !== phase)
                     .map((a) => a.vehiclePlate as string)
                 );
+                const fmtConflict = (d: string) => d.replace("T", " ").slice(0, 16);
+                const conflictsFor = (plate: string) => plateConflicts[plate] || [];
                 const fleetVehicles = fleet
                   .filter((v) => v.count > 0)
-                  .flatMap((v) => Array.from({ length: v.count }, (_, i) => ({
-                    ...v,
-                    uniqueKey: `${v.id}-${i}`,
-                    plateDisplay: v.plateNumber || `Vehicle ${i + 1}`,
-                    isOccupied: assignedPlates.has(v.plateNumber),
-                  })));
+                  .flatMap((v) => Array.from({ length: v.count }, (_, i) => {
+                    const plate = v.plateNumber;
+                    const conflictList = plate ? conflictsFor(plate) : [];
+                    const isOwn = !!plate && assignedPlates.has(plate);
+                    const isOccupied = isOwn || conflictList.length > 0;
+                    return {
+                      ...v,
+                      uniqueKey: `${v.id}-${i}`,
+                      plateDisplay: plate || `Vehicle ${i + 1}`,
+                      isOccupied,
+                      conflictText: isOwn
+                        ? "In use on this booking's other leg"
+                        : conflictList.length > 0
+                          ? `Occupied by ${conflictList.length > 1 ? `${conflictList.length} booking(s)` : `${conflictList[0].referenceNumber} ${fmtConflict(conflictList[0].checkIn)} ${conflictList[0].phase.toLowerCase()}`}`
+                          : "",
+                      conflictTitle: conflictList.length > 0
+                        ? conflictList.map((c) => `${c.referenceNumber} • ${fmtConflict(c.checkIn)} • ${c.phase.toLowerCase()} • ${c.customerName}`).join("; ")
+                        : "",
+                    };
+                  }));
                 // Also include employee personal vehicles as fallback option
                 const personalVehicles = assignableEmployees
                   .filter((e) => e.vehicleType && e.plateNumber && !fleetVehicles.some((fv) => fv.plateDisplay === e.plateNumber))
-                  .map((e) => ({
-                    uniqueKey: `personal-${e.id}`,
-                    type: e.vehicleType as string,
-                    plateDisplay: e.plateNumber as string,
-                    color: "",
-                    icon: "bike" as const,
-                    isOccupied: assignedPlates.has(e.plateNumber as string),
-                    isPersonal: true,
-                    ownerName: e.name,
-                  }));
+                  .map((e) => {
+                    const plate = e.plateNumber as string;
+                    const conflictList = conflictsFor(plate);
+                    const isOwn = assignedPlates.has(plate);
+                    const isOccupied = isOwn || conflictList.length > 0;
+                    return {
+                      uniqueKey: `personal-${e.id}`,
+                      type: e.vehicleType as string,
+                      plateDisplay: plate,
+                      color: "",
+                      icon: "bike" as const,
+                      isOccupied,
+                      conflictText: isOwn
+                        ? "In use on this booking's other leg"
+                        : conflictList.length > 0
+                          ? `Occupied by ${conflictList.length > 1 ? `${conflictList.length} booking(s)` : `${conflictList[0].referenceNumber} ${fmtConflict(conflictList[0].checkIn)} ${conflictList[0].phase.toLowerCase()}`}`
+                          : "",
+                      conflictTitle: conflictList.length > 0
+                        ? conflictList.map((c) => `${c.referenceNumber} • ${fmtConflict(c.checkIn)} • ${c.phase.toLowerCase()} • ${c.customerName}`).join("; ")
+                        : "",
+                      isPersonal: true,
+                      ownerName: e.name,
+                    };
+                  });
                 const allVehicles = [...fleetVehicles, ...personalVehicles];
                 return (
                   <form key={phase} onSubmit={handleAssign} className="space-y-3 rounded-lg border bg-muted/20 p-3">
@@ -1213,8 +1247,8 @@ export default function BookingDetailPage() {
                       {fleetVehicles.length > 0 && (
                         <optgroup label="Fleet Vehicles">
                           {fleetVehicles.map((v) => (
-                            <option key={v.uniqueKey} value={`fleet:${v.id}`} disabled={v.isOccupied}>
-                              {v.type} {v.plateDisplay}{v.color ? ` (${v.color})` : ""}{v.isOccupied ? " — Occupied" : ""}
+                            <option key={v.uniqueKey} value={`fleet:${v.id}`} disabled={v.isOccupied} title={v.conflictTitle}>
+                              {v.type} {v.plateDisplay}{v.color ? ` (${v.color})` : ""}{v.isOccupied ? ` — ${v.conflictText || "Occupied"}` : ""}
                             </option>
                           ))}
                         </optgroup>
@@ -1222,8 +1256,8 @@ export default function BookingDetailPage() {
                       {personalVehicles.length > 0 && (
                         <optgroup label="Employee Personal Vehicles">
                           {personalVehicles.map((v) => (
-                            <option key={v.uniqueKey} value={`personal:${v.type}::${v.plateDisplay}`}>
-                              {v.type} {v.plateDisplay} ({v.ownerName}){v.isOccupied ? " — Occupied" : ""}
+                            <option key={v.uniqueKey} value={`personal:${v.type}::${v.plateDisplay}`} disabled={v.isOccupied} title={v.conflictTitle}>
+                              {v.type} {v.plateDisplay} ({v.ownerName}){v.isOccupied ? ` — ${v.conflictText || "Occupied"}` : ""}
                             </option>
                           ))}
                         </optgroup>

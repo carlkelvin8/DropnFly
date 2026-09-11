@@ -211,7 +211,7 @@ export async function POST(req: Request) {
       ]);
       const count = movementsOverlappingSlot(slotStartMinutes, durationMin, movements);
       if (count >= maxConcurrent) {
-        throw new Error(`All fleet vehicles are occupied during the selected ${type} time. Please choose another slot.`);
+        throw new Error(`All ${maxConcurrent} fleet vehicle${maxConcurrent > 1 ? "s" : ""} are occupied in the selected ${type} time (${count} booking${count > 1 ? "s" : ""} already scheduled). Please choose another slot.`);
       }
     };
 
@@ -442,7 +442,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
     const message = error instanceof Error ? error.message : "";
-    if (message.includes("fleet vehicles are occupied") || message.includes("outside operating hours") || message.includes("closed on the selected")) {
+    if ((message.includes("fleet vehicle") && message.includes("occupied")) || message.includes("outside operating hours") || message.includes("closed on the selected")) {
       return NextResponse.json({ error: message }, { status: 409 });
     }
     console.error("Booking creation error:", error);

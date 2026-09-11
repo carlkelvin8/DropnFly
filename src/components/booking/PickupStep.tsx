@@ -24,6 +24,7 @@ interface PickupStepProps {
   setPickupSlotsLoading: (v: boolean) => void;
   pickupSlots: TimeSlot[];
   pickupSlotsLoading: boolean;
+  pickupMaxConcurrent: number;
   pickupSlot: string;
   setPickupSlot: (v: string) => void;
   deliveryTerminal: string;
@@ -35,6 +36,7 @@ interface PickupStepProps {
   setDeliverySlotsLoading: (v: boolean) => void;
   deliverySlots: TimeSlot[];
   deliverySlotsLoading: boolean;
+  deliveryMaxConcurrent: number;
   deliverySlot: string;
   setDeliverySlot: (v: string) => void;
   storageDays: number;
@@ -46,10 +48,10 @@ interface PickupStepProps {
 export function PickupStep({
   pickupTerminal, setPickupTerminal, setPickupAirline, pickupAirline,
   pickupDate, setPickupDate, setPickupSlotsLoading,
-  pickupSlots, pickupSlotsLoading, pickupSlot, setPickupSlot,
+  pickupSlots, pickupSlotsLoading, pickupMaxConcurrent, pickupSlot, setPickupSlot,
   deliveryTerminal, setDeliveryTerminal, deliveryAirline, setDeliveryAirline,
   deliveryDate, setDeliveryDate, setDeliverySlotsLoading,
-  deliverySlots, deliverySlotsLoading, deliverySlot, setDeliverySlot,
+  deliverySlots, deliverySlotsLoading, deliveryMaxConcurrent, deliverySlot, setDeliverySlot,
   storageDays, error, onNext, onPrev,
 }: PickupStepProps) {
   return (
@@ -123,7 +125,7 @@ export function PickupStep({
               {pickupSlots.every((s) => !s.available && s.unavailableReason === "full") && (
                 <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>All vehicles are occupied on this date — please choose another pickup date or time.</span>
+                  <span>All {pickupMaxConcurrent} fleet vehicle{pickupMaxConcurrent > 1 ? "s" : ""} are occupied at every slot on this date — please choose another pickup date or time.</span>
                 </div>
               )}
               <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -132,7 +134,7 @@ export function PickupStep({
                     key={slot.start}
                     type="button"
                     disabled={!slot.available}
-                    title={!slot.available ? (slot.unavailableReason === "full" ? `Fully booked — ${slot.booked} vehicle(s) occupied` : "Past") : `${slot.start}–${slot.end} available`}
+                    title={!slot.available ? (slot.unavailableReason === "full" ? `Fully booked — ${slot.booked} of ${pickupMaxConcurrent} vehicle(s) already occupied at ${slot.start}` : "Past") : `${slot.start}–${slot.end} available`}
                     onClick={() => setPickupSlot(slot.start)}
                     className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${
                       pickupSlot === slot.start
@@ -145,7 +147,7 @@ export function PickupStep({
                     }`}
                   >
                     <span className="block">{slot.start}</span>
-                    <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full • Occupied"}</span>
+                    <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : `Full • ${slot.booked}/${pickupMaxConcurrent} veh`}</span>
                   </button>
                 ))}
               </div>
@@ -221,7 +223,7 @@ export function PickupStep({
               {deliverySlots.every((s) => !s.available && s.unavailableReason === "full") && (
                 <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>All vehicles are occupied on this date — please choose another delivery date or time.</span>
+                  <span>All {deliveryMaxConcurrent} fleet vehicle{deliveryMaxConcurrent > 1 ? "s" : ""} are occupied at every slot on this date — please choose another delivery date or time.</span>
                 </div>
               )}
               <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -230,7 +232,7 @@ export function PickupStep({
                     key={slot.start}
                     type="button"
                     disabled={!slot.available}
-                    title={!slot.available ? (slot.unavailableReason === "full" ? `Fully booked — ${slot.booked} vehicle(s) occupied` : "Past") : `${slot.start}–${slot.end} available`}
+                    title={!slot.available ? (slot.unavailableReason === "full" ? `Fully booked — ${slot.booked} of ${deliveryMaxConcurrent} vehicle(s) already occupied at ${slot.start}` : "Past") : `${slot.start}–${slot.end} available`}
                     onClick={() => setDeliverySlot(slot.start)}
                     className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${
                       deliverySlot === slot.start
@@ -243,7 +245,7 @@ export function PickupStep({
                     }`}
                   >
                     <span className="block">{slot.start}</span>
-                    <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full • Occupied"}</span>
+                    <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : `Full • ${slot.booked}/${deliveryMaxConcurrent} veh`}</span>
                   </button>
                 ))}
               </div>
