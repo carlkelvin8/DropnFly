@@ -293,9 +293,27 @@ export default function LiveMapInner({
     else { const h = Math.floor(etaMinutes / 60); const m = etaMinutes % 60; eta = m ? `${h}h ${m}m` : `${h}h`; }
   }
 
-  const fbLat = employeeLat ?? pickupLat ?? dropoffLat ?? 14.5995;
-  const fbLng = employeeLng ?? pickupLng ?? dropoffLng ?? 120.9842;
-  const osmEmbed = `https://www.openstreetmap.org/export/embed.html?bbox=${fbLng - 0.03}%2C${fbLat - 0.03}%2C${fbLng + 0.03}%2C${fbLat + 0.03}&layer=mapnik&marker=${fbLat}%2C${fbLng}`;
+  // Fallback bbox that includes both pickup and dropoff + employee
+  const fbAllLats = [employeeLat, pickupLat, dropoffLat].filter((v): v is number => v != null);
+  const fbAllLngs = [employeeLng, pickupLng, dropoffLng].filter((v): v is number => v != null);
+  const fbMinLat = fbAllLats.length ? Math.min(...fbAllLats) : 14.5995;
+  const fbMaxLat = fbAllLats.length ? Math.max(...fbAllLats) : 14.5995;
+  const fbMinLng = fbAllLngs.length ? Math.min(...fbAllLngs) : 120.9842;
+  const fbMaxLng = fbAllLngs.length ? Math.max(...fbAllLngs) : 120.9842;
+  const fbPad = 0.015;
+  const fbBbox = `${fbMinLng - fbPad},${fbMinLat - fbPad},${fbMaxLng + fbPad},${fbMaxLat + fbPad}`;
+  const fbCenterLat = fbAllLats.length ? fbAllLats.reduce((a, b) => a + b, 0) / fbAllLats.length : 14.5995;
+  const fbCenterLng = fbAllLngs.length ? fbAllLngs.reduce((a, b) => a + b, 0) / fbAllLngs.length : 120.9842;
+  const osmEmbed = `https://www.openstreetmap.org/export/embed.html?bbox=${fbBbox}&layer=mapnik`;
+  const toPct = (lat: number | undefined, lng: number | undefined) => {
+    if (lat == null || lng == null) return null;
+    const x = ((lng - (fbMinLng - fbPad)) / ((fbMaxLng + fbPad) - (fbMinLng - fbPad))) * 100;
+    const y = ((fbMaxLat + fbPad - lat) / ((fbMaxLat + fbPad) - (fbMinLat - fbPad))) * 100;
+    return { x: Math.max(5, Math.min(95, x)), y: Math.max(5, Math.min(95, y)) };
+  };
+  const fbPickPct = toPct(pickupLat ?? undefined, pickupLng ?? undefined);
+  const fbDropPct = toPct(dropoffLat ?? undefined, dropoffLng ?? undefined);
+  const fbEmpPct = toPct(employeeLat ?? undefined, employeeLng ?? undefined);
 
   return (
     <div className="relative">
@@ -314,6 +332,15 @@ export default function LiveMapInner({
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
             />
+            {fbPickPct && (
+              <div className="absolute -translate-x-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-green-500 border-2 border-white shadow text-[8px] font-bold text-white" style={{ left: `${fbPickPct.x}%`, top: `${fbPickPct.y}%` }}>P</div>
+            )}
+            {fbDropPct && (
+              <div className="absolute -translate-x-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 border-2 border-white shadow text-[8px] font-bold text-white" style={{ left: `${fbDropPct.x}%`, top: `${fbDropPct.y}%` }}>D</div>
+            )}
+            {fbEmpPct && (
+              <div className="absolute -translate-x-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-orange-500 border-2 border-white shadow text-[10px] font-bold text-white animate-pulse" style={{ left: `${fbEmpPct.x}%`, top: `${fbEmpPct.y}%` }}>{riderView ? "Y" : "E"}</div>
+            )}
           </div>
           <div className="flex items-center justify-between gap-2 bg-white px-3 py-2 text-xs">
             <p className="text-amber-800">{mapError}</p>
