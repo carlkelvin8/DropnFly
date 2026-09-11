@@ -118,12 +118,20 @@ export default function LiveMapInner({
     coords: [],
   });
 
+  const OSRM_SOURCES = [
+    "https://routing.openstreetmap.de/routed-car/route/v1/driving",
+    "https://router.project-osrm.org/route/v1/driving",
+  ];
+
+  // Road-following route via OSRM (no API key). Tries multiple public servers and
+  // returns null only if all fail — callers keep a dashed "guide" line so a straight
+  // solid line is never presented as if it were an actual street route.
   async function fetchRoadRoute(
     fromLat: number,
     fromLng: number,
     toLat: number,
     toLng: number
-  ): Promise<[number, number][]> {
+  ): Promise<[number, number][] | null> {
     const now = Date.now();
     const cache = routeCacheRef.current;
     const fromDrift = haversine(fromLat, fromLng, cache.from[0], cache.from[1]) * 1000;
@@ -131,25 +139,75 @@ export default function LiveMapInner({
       Math.abs(cache.dest[0] - toLat) < 1e-9 && Math.abs(cache.dest[1] - toLng) < 1e-9;
     // Throttle OSRM calls: reuse cached route if <15s old, position moved <100m and destination unchanged
     if (now - cache.ts < 15000 && fromDrift < 100 && destSame) {
-      return cache.coords;
+      return cache.coords.length ? cache.coords : null;
     }
-    try {
-      const req = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson`;
-      const res = await fetch(req);
-      if (!res.ok) return [[fromLat, fromLng], [toLat, toLng]];
-      const json = await res.json();
-      const pts = json?.routes?.[0]?.geometry?.coordinates as [number, number][] | undefined;
-      if (!pts || pts.length < 2) return [[fromLat, fromLng], [toLat, toLng]];
-      // OSRM returns [lng,lat]; convert to [lat,lng]
-      const converted = pts.map(([lng, lat]) => [lat, lng] as [number, number]);
-      cache.ts = now;
-      cache.from = [fromLat, fromLng];
-      cache.dest = [toLat, toLng];
-      cache.coords = converted;
-      return converted;
-    } catch {
-      return [[fromLat, fromLng], [toLat, toLng]];
+    for (const base of OSRM_SOURCES) {
+      try {
+        const req = `${base}/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson`;
+        const timeoutSignal =
+          typeof AbortSignal !== "undefined" && typeof (AbortSignal as any).timeout === "function"
+            ? (AbortSignal as any).timeout(8000)
+            : undefined;
+        const res = await fetch(req, timeoutSignal ? { signal: timeoutSignal } : undefined);
+        if (!res.ok) continue;
+        const json = await res.json();
+        const pts = json?.routes?.[0]?.geometry?.coordinates as [number, number][] | undefined;
+        if (!pts || pts.length < 2) continue;
+        // OSRM returns [lng,lat]; convert to [lat,lng]
+        const converted = pts.map(([lng, lat]) => [lat, lng] as [number, number]);
+        cache.ts = now;
+        cache.from = [fromLat, fromLng];
+        cache.dest = [toLat, toLng];
+        cache.coords = converted;
+        return converted;
+      } catch {
+        // try next source
+      }
     }
+    cache.ts = now;
+    cache.from = [fromLat, fromLng];
+    cache.dest = [toLat, toLng];
+    cache.coords = [];
+    return null;
+  }
+
+  // Draws/updates the employee→destination line. Dashed = provisional straight guide
+  // (OSRM still loading/failed); solid = actual street-following route.
+  function applyRoute(lat: number, lng: number, destLat: number, destLng: number) {
+    const leafletMap: any = map.current;
+    const L: any = mapLibRef.current;
+    if (!leafletMap || !L) return;
+    const straight: [number, number][] = [[lat, lng], [destLat, destLng]];
+    const cache = routeCacheRef.current;
+    const cachedValid =
+      cache.coords.length > 0 &&
+      Date.now() - cache.ts < 15000 &&
+      Math.abs(cache.dest[0] - destLat) < 1e-9 &&
+      Math.abs(cache.dest[1] - destLng) < 1e-9;
+    const pts = cachedValid ? cache.coords : straight;
+    const line: any = (leafletMap as any)._routeLine;
+    if (line) {
+      try { line.setLatLngs(pts); } catch {}
+      line.setStyle(cachedValid
+        ? { dashArray: null, weight: 4, opacity: 0.85 }
+        : { dashArray: "6,10", weight: 3, opacity: 0.45 });
+    } else {
+      (leafletMap as any)._routeLine = L.polyline(pts, {
+        color: "#3b7ac7",
+        weight: cachedValid ? 4 : 3,
+        opacity: cachedValid ? 0.85 : 0.45,
+        dashArray: cachedValid ? null : "6,10",
+      }).addTo(leafletMap);
+    }
+    void fetchRoadRoute(lat, lng, destLat, destLng).then((pts) => {
+      if (!(leafletMap as any)._routeLine) return;
+      if (pts) {
+        try {
+          (leafletMap as any)._routeLine.setLatLngs(pts);
+          (leafletMap as any)._routeLine.setStyle({ dashArray: null, weight: 4, opacity: 0.85 });
+        } catch {}
+      }
+    });
   }
 
   function clearExtraMarkers() {
@@ -244,7 +302,7 @@ export default function LiveMapInner({
           const destLatLeaf = destinationPhase === "pickup" ? pickupLat : dropoffLat;
           const destLngLeaf = destinationPhase === "pickup" ? pickupLng : dropoffLng;
           if (employeeLat != null && employeeLng != null && destLatLeaf != null && destLngLeaf != null) {
-            L.polyline([[employeeLat, employeeLng], [destLatLeaf, destLngLeaf]], { color: "#3b7ac7", weight: 4, opacity: 0.85 }).addTo(leafletMap);
+            applyRoute(employeeLat, employeeLng, destLatLeaf, destLngLeaf);
           }
         };
         addLeafletPins();
@@ -471,20 +529,11 @@ export default function LiveMapInner({
       }
       // simple pan, keep both pins in view - leaflet handles via setView
       try { leafletMap.panTo([employeeLat, employeeLng], { animate: true }); } catch {}
-      // polyline for leaflet — solid, road-following route via OSRM
+      // polyline for leaflet — dashed guide, upgraded to road-following street route via OSRM
       const destLatLeaf = destinationPhase === "pickup" ? pickupLat : dropoffLat;
       const destLngLeaf = destinationPhase === "pickup" ? pickupLng : dropoffLng;
       if (destLatLeaf != null && destLngLeaf != null) {
-        // remove old polyline if exists (stored on map)
-        if ((leafletMap as any)._routeLine) {
-          try { leafletMap.removeLayer((leafletMap as any)._routeLine); } catch {}
-        }
-        // immediate straight solid line for responsiveness, then upgrade to road-following route
-        (leafletMap as any)._routeLine = L.polyline([[employeeLat, employeeLng], [destLatLeaf, destLngLeaf]], { color: "#3b7ac7", weight: 4, opacity: 0.85 }).addTo(leafletMap);
-        void fetchRoadRoute(employeeLat, employeeLng, destLatLeaf, destLngLeaf).then((pts) => {
-          if (!(leafletMap as any)._routeLine) return;
-          try { (leafletMap as any)._routeLine.setLatLngs(pts); } catch {}
-        });
+        applyRoute(employeeLat, employeeLng, destLatLeaf, destLngLeaf);
       }
       return;
     }
