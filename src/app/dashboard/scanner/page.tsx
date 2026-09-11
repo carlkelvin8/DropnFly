@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, QrCode, Camera, CheckCircle, Loader2, Package,
   Truck, Warehouse, ShieldCheck, MapPin, Clock,
-  Tag, Briefcase, Search,
+  Tag, Briefcase, Search, AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -94,6 +94,7 @@ function cleanScanInput(ref: string): string {
 
 export default function QrScannerPage() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState("");
   const [photo, setPhoto] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -164,10 +165,12 @@ export default function QrScannerPage() {
         ? data.find((b: { referenceNumber: string }) => b.referenceNumber === cleanRef)
         : null;
       if (!booking) {
-        toast.error("Booking not found");
+        toast.error(`No booking found for ${cleanRef}`);
+        setScanError(`No booking found for "${cleanRef}". Double-check the QR code or try manual entry.`);
         setScanning(false);
         return;
       }
+      setScanError(null);
       const existingCount = booking.luggageItems?.length || 0;
       const slots = Math.max(0, (booking.numberOfBags || 0) - existingCount);
       setScanResult({
@@ -202,6 +205,7 @@ export default function QrScannerPage() {
 
       setMode("idle");
     } catch {
+      setScanError("Booking not found or the API could not be reached. Check your connection and try again.");
       toast.error("Booking not found or API error");
     }
     setScanning(false);
@@ -382,11 +386,27 @@ export default function QrScannerPage() {
           </button>
         </div>
 
+        {/* Scan error (booking not found etc.) */}
+        {scanError && (
+          <Card className="border-red-300 bg-red-50">
+            <CardContent className="flex items-start gap-3 p-4">
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-800">Scan failed</p>
+                <p className="text-xs leading-relaxed text-red-700">{scanError}</p>
+              </div>
+              <Button variant="ghost" size="sm" className="text-red-700" onClick={() => setScanError(null)}>
+                Dismiss
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Booking flow: action buttons */}
         {flow === "booking" && mode === "idle" && (
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={() => setMode("camera")}
+              onClick={() => { setMode("camera"); setScanError(null); }}
               className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 p-6 transition-all hover:border-blue-400 hover:bg-blue-50 hover:shadow-md"
             >
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-blue-500 shadow-lg">
@@ -398,7 +418,7 @@ export default function QrScannerPage() {
               </div>
             </button>
             <button
-              onClick={() => setMode("manual")}
+              onClick={() => { setMode("manual"); setScanError(null); }}
               className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 p-6 transition-all hover:border-blue-400 hover:bg-blue-50 hover:shadow-md"
             >
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-blue-500 shadow-lg">

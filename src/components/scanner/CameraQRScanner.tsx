@@ -29,6 +29,17 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [scanned, setScanned] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const flashTimerRef = useRef<number | null>(null);
+
+  const resumeAfterFlash = useCallback((start: () => void) => {
+    if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = window.setTimeout(() => {
+      if (!mountedRef.current) return;
+      setScanned(false);
+      handledRef.current = false;
+      start();
+    }, 1400);
+  }, []);
 
   const stopCamera = useCallback(async () => {
     try {
@@ -85,8 +96,10 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
             setScanned(true);
             onScanRef.current(decodedText);
             if (navigator.vibrate) navigator.vibrate(200);
-            // Stop after successful scan
+            // Stop after successful scan; the flash auto-dismisses shortly and
+            // the camera resumes unless the parent swapped this view out.
             scanner.stop().catch(() => {});
+            resumeAfterFlash(startCamera);
           },
           () => { /* QR not found in frame — ignore */ }
         );
@@ -141,6 +154,7 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
       setScanned(true);
       onScanRef.current(decodedText);
       if (navigator.vibrate) navigator.vibrate(200);
+      resumeAfterFlash(startCamera);
     } catch {
       if (mountedRef.current) {
         setError("No readable QR code was found in that image. Try a clearer screenshot or photo.");
@@ -156,6 +170,7 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
     startCamera();
     return () => {
       mountedRef.current = false;
+      if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
       stopCamera();
     };
   }, [facingMode]); // eslint-disable-line react-hooks/exhaustive-deps
