@@ -196,10 +196,20 @@ export default function LiveMapInner({
     };
   }, []);
 
-  // Redraw terminal pins when they change after map is ready
+  // Redraw terminal pins when they change after map is ready - also fit bounds to show both pickup and dropoff when no employee yet
   useEffect(() => {
-    if (mapReady) drawPoints();
-  }, [pickupLat, pickupLng, dropoffLat, dropoffLng, pickupAddress, dropoffAddress, mapReady]);
+    if (mapReady) {
+      drawPoints();
+      if (employeeLat == null && pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null && map.current) {
+        try {
+          const bounds = new mapboxgl.LngLatBounds();
+          bounds.extend([pickupLng, pickupLat]);
+          bounds.extend([dropoffLng, dropoffLat]);
+          map.current.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+        } catch {}
+      }
+    }
+  }, [pickupLat, pickupLng, dropoffLat, dropoffLng, pickupAddress, dropoffAddress, mapReady, employeeLat, employeeLng]);
 
   useEffect(() => {
     if (!map.current || employeeLat == null || employeeLng == null || !mapReady) return;
