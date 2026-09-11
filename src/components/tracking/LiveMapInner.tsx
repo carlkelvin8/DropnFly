@@ -83,14 +83,22 @@ export default function LiveMapInner({
       close = haversine(pickupLat, pickupLng, dropoffLat, dropoffLng) < 1;
     }
     if (pickupLat != null && pickupLng != null) {
-      const m = new mapboxgl.Marker({ color: "#22c55e", offset: close ? [0, -12] as [number, number] : undefined })
+      const el = document.createElement("div");
+      el.className = "flex h-7 w-7 items-center justify-center rounded-full bg-green-500 border-2 border-white shadow text-[10px] font-bold text-white";
+      el.textContent = "P";
+      el.title = pickupAddress || "Pickup";
+      const m = new mapboxgl.Marker({ element: el, offset: close ? [0, -12] as [number, number] : undefined })
         .setLngLat([pickupLng, pickupLat])
         .setPopup(new mapboxgl.Popup().setText(pickupAddress || "Pickup Location"))
         .addTo(mk);
       extraMarkersRef.current.push(m);
     }
     if (dropoffLat != null && dropoffLng != null) {
-      const m = new mapboxgl.Marker({ color: "#ef4444", offset: close ? [0, 12] as [number, number] : undefined })
+      const el = document.createElement("div");
+      el.className = "flex h-7 w-7 items-center justify-center rounded-full bg-red-500 border-2 border-white shadow text-[10px] font-bold text-white";
+      el.textContent = "D";
+      el.title = dropoffAddress || "Drop-off";
+      const m = new mapboxgl.Marker({ element: el, offset: close ? [0, 12] as [number, number] : undefined })
         .setLngLat([dropoffLng, dropoffLat])
         .setPopup(new mapboxgl.Popup().setText(dropoffAddress || "Drop-off Location"))
         .addTo(mk);
@@ -307,28 +315,15 @@ export default function LiveMapInner({
     else { const h = Math.floor(etaMinutes / 60); const m = etaMinutes % 60; eta = m ? `${h}h ${m}m` : `${h}h`; }
   }
 
-  // Fallback bbox that includes both pickup and dropoff + employee
-  const fbAllLats = [employeeLat, pickupLat, dropoffLat].filter((v): v is number => v != null);
-  const fbAllLngs = [employeeLng, pickupLng, dropoffLng].filter((v): v is number => v != null);
-  const fbMinLat = fbAllLats.length ? Math.min(...fbAllLats) : 14.5995;
-  const fbMaxLat = fbAllLats.length ? Math.max(...fbAllLats) : 14.5995;
-  const fbMinLng = fbAllLngs.length ? Math.min(...fbAllLngs) : 120.9842;
-  const fbMaxLng = fbAllLngs.length ? Math.max(...fbAllLngs) : 120.9842;
-  const fbPad = 0.015;
-  const fbBbox = `${fbMinLng - fbPad},${fbMinLat - fbPad},${fbMaxLng + fbPad},${fbMaxLat + fbPad}`;
-  const fbCenterLat = fbAllLats.length ? fbAllLats.reduce((a, b) => a + b, 0) / fbAllLats.length : 14.5995;
-  const fbCenterLng = fbAllLngs.length ? fbAllLngs.reduce((a, b) => a + b, 0) / fbAllLngs.length : 120.9842;
-  const osmEmbed = `https://www.openstreetmap.org/export/embed.html?bbox=${fbBbox}&layer=mapnik`;
-  const toPct = (lat: number | undefined, lng: number | undefined) => {
-    if (lat == null || lng == null) return null;
-    const x = ((lng - (fbMinLng - fbPad)) / ((fbMaxLng + fbPad) - (fbMinLng - fbPad))) * 100;
-    const y = ((fbMaxLat + fbPad - lat) / ((fbMaxLat + fbPad) - (fbMinLat - fbPad))) * 100;
-    return { x: Math.max(5, Math.min(95, x)), y: Math.max(5, Math.min(95, y)) };
-  };
-  const fbPickPct = toPct(pickupLat ?? undefined, pickupLng ?? undefined);
-  const fbDropPct = toPct(dropoffLat ?? undefined, dropoffLng ?? undefined);
-  const fbEmpPct = toPct(employeeLat ?? undefined, employeeLng ?? undefined);
-  const fbClose = pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null ? haversine(pickupLat, pickupLng, dropoffLat, dropoffLng) < 1 : false;
+  // Fallback static map (no drift on zoom) with both pins
+  const fbCenterLat = [employeeLat, pickupLat, dropoffLat].filter((v): v is number => v != null).reduce((a, b, _, arr) => a + b / arr.length, 0) || 14.5995;
+  const fbCenterLng = [employeeLng, pickupLng, dropoffLng].filter((v): v is number => v != null).reduce((a, b, _, arr) => a + b / arr.length, 0) || 120.9842;
+  const fbMarkers = [
+    pickupLat != null && pickupLng != null ? `${pickupLat},${pickupLng},lightgreen` : null,
+    dropoffLat != null && dropoffLng != null ? `${dropoffLat},${dropoffLng},red` : null,
+    employeeLat != null && employeeLng != null ? `${employeeLat},${employeeLng},orange` : null,
+  ].filter(Boolean).join("|");
+  const fbStatic = `https://staticmap.openstreetmap.de/staticmap.php?center=${fbCenterLat},${fbCenterLng}&zoom=14&size=600x400${fbMarkers ? `&markers=${fbMarkers}` : ""}`;
 
   return (
     <div className="relative">
@@ -339,23 +334,9 @@ export default function LiveMapInner({
       )}
       {mapError && (
         <div className="absolute inset-0 z-10 flex flex-col rounded-lg border bg-amber-50/95 overflow-hidden">
-          <div className="flex-1 relative">
-            <iframe
-              title="OSM Fallback"
-              src={osmEmbed}
-              className="absolute inset-0 h-full w-full border-0"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
-            {fbPickPct && (
-              <div className="absolute -translate-x-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-green-500 border-2 border-white shadow text-[8px] font-bold text-white" style={{ left: `${fbPickPct.x}%`, top: fbClose ? `calc(${fbPickPct.y}% - 10px)` : `${fbPickPct.y}%` }}>P</div>
-            )}
-            {fbDropPct && (
-              <div className="absolute -translate-x-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 border-2 border-white shadow text-[8px] font-bold text-white" style={{ left: `${fbDropPct.x}%`, top: fbClose ? `calc(${fbDropPct.y}% + 10px)` : `${fbDropPct.y}%` }}>D</div>
-            )}
-            {fbEmpPct && (
-              <div className="absolute -translate-x-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-orange-500 border-2 border-white shadow text-[10px] font-bold text-white animate-pulse" style={{ left: `${fbEmpPct.x}%`, top: `${fbEmpPct.y}%` }}>{riderView ? "Y" : "E"}</div>
-            )}
+          <div className="flex-1 relative bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={fbStatic} alt="Map fallback" className="absolute inset-0 h-full w-full object-cover" />
           </div>
           <div className="flex items-center justify-between gap-2 bg-white px-3 py-2 text-xs">
             <p className="text-amber-800">{mapError}</p>

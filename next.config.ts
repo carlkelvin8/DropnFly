@@ -22,7 +22,7 @@ const nextConfig: NextConfig = {
       "object-src 'none'",
       `script-src 'self' 'unsafe-inline' blob:${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
       "style-src 'self' 'unsafe-inline' https://api.mapbox.com",
-      "img-src 'self' data: blob: https://*.mapbox.com https://fastly.picsum.photos https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.openstreetmap.org",
+      "img-src 'self' data: blob: https://*.mapbox.com https://fastly.picsum.photos https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.openstreetmap.org https://staticmap.openstreetmap.de",
       "font-src 'self' data:",
       "connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://api.paymongo.com https://restcountries.com https://countriesnow.space wss:",
       "worker-src 'self' blob:",
