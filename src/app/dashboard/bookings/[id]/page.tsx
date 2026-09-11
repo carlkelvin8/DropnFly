@@ -182,30 +182,44 @@ export default function BookingDetailPage() {
 
   useEffect(() => {
     const abort = new AbortController();
-    Promise.all([
+
+    // Fleet (registered vehicles) is loaded independently so it always populates
+    // even if another API call on this page fails.
+    fetch("/api/settings", { signal: abort.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("settings failed"))))
+      .then((settingsData) => {
+        if (!abort.signal.aborted) {
+          try {
+            const raw = settingsData?.fleet_data || "[]";
+            const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+            setFleet(Array.isArray(parsed) ? parsed : []);
+          } catch { setFleet([]); }
+        }
+      })
+      .catch(() => { if (!abort.signal.aborted) setFleet([]); });
+
+    Promise.allSettled([
       fetch(`/api/bookings/${params.id}`, { signal: abort.signal }).then((r) => r.json()),
       fetch("/api/employees?assignable=true", { signal: abort.signal, cache: "no-store" }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/extensions`, { signal: abort.signal }).then((r) => r.json()),
       fetch(`/api/bookings/${params.id}/luggage`, { signal: abort.signal }).then((r) => r.json()),
       fetch("/api/baggage-tags/available", { signal: abort.signal }).then((r) => r.json()),
-      fetch("/api/settings", { signal: abort.signal }).then((r) => r.json()),
-    ]).then(([bookingData, empData, extData, luggageData, tagData, settingsData]) => {
-      if (!abort.signal.aborted) {
-        setBooking(bookingData);
-        setEmployees(Array.isArray(empData) ? empData : []);
-        setExtensions(Array.isArray(extData) ? extData : []);
-        setLuggageItems(Array.isArray(luggageData) ? luggageData : []);
-        setAvailableTags(Array.isArray(tagData?.tags) ? tagData.tags : []);
-        try {
-          const raw = settingsData?.fleet_data || "[]";
-          const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-          setFleet(Array.isArray(parsed) ? parsed : []);
-        } catch { setFleet([]); }
-        const paid = (bookingData?.payments || [])
-          .filter((p: { status: string }) => p.status === "PAID")
-          .reduce((s: number, p: { amount: number }) => s + p.amount, 0);
-        setSettleAmount(bookingData && bookingData.totalPrice - paid > 0 ? bookingData.totalPrice - paid : 0);
-      }
+    ]).then((results) => {
+      if (abort.signal.aborted) return;
+      const [bookingData] = results.map((r) => (r.status === "fulfilled" ? r.value : null));
+      const empData = results[1].status === "fulfilled" ? results[1].value : null;
+      const extData = results[2].status === "fulfilled" ? results[2].value : null;
+      const luggageData = results[3].status === "fulfilled" ? results[3].value : null;
+      const tagData = results[4].status === "fulfilled" ? results[4].value : null;
+      if (bookingData !== null) setBooking(bookingData);
+      setEmployees(Array.isArray(empData) ? empData : []);
+      setExtensions(Array.isArray(extData) ? extData : []);
+      setLuggageItems(Array.isArray(luggageData) ? luggageData : []);
+      setAvailableTags(Array.isArray(tagData?.tags) ? tagData.tags : []);
+      const paid = (bookingData?.payments || [])
+        .filter((p: { status: string }) => p.status === "PAID")
+        .reduce((s: number, p: { amount: number }) => s + p.amount, 0);
+      setSettleAmount(bookingData && bookingData.totalPrice - paid > 0 ? bookingData.totalPrice - paid : 0);
     }).catch(() => {});
     return () => abort.abort();
   }, [params.id]);
