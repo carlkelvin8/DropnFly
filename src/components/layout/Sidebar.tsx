@@ -23,7 +23,6 @@ import {
   AlertTriangle,
   BarChart3,
   Tag,
-  CreditCard,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "@/components/ThemeProvider";
@@ -40,7 +39,6 @@ const ADMIN_ONLY_ITEMS = new Set([
 const STAFF_AND_ABOVE_ITEMS = new Set([
   "/dashboard/customers",
   "/dashboard/incidents",
-  "/dashboard/payments",
 ]);
 
 const allNavItems = [
@@ -53,7 +51,6 @@ const allNavItems = [
   { href: "/dashboard/chat", label: "Chat", icon: MessageCircle },
   { href: "/dashboard/support", label: "General Support", icon: HeadphonesIcon },
   { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
-  { href: "/dashboard/payments", label: "Payments", icon: CreditCard },
   { href: "/dashboard/promo-codes", label: "Promo Codes", icon: Tag },
   { href: "/dashboard/employees", label: "Employees", icon: UserCog },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
