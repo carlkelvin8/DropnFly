@@ -58,7 +58,16 @@ export async function GET() {
   const mapped = bookings.map((b: any) => {
     const taskType = logisticsTaskType(b.status);
     const activePhase = taskType === "delivery" ? "DROPOFF" : "PICKUP";
-    const rider = (b.assignments as any[]).find((assignment: any) => assignment.phase === activePhase)?.user || null;
+    const activeAssignment = (b.assignments as any[]).find((assignment: any) => assignment.phase === activePhase) || null;
+    // Reflect the ASSIGNED vehicle (e.g. fleet unit) when present, else the rider's personal vehicle —
+    // drives the map marker "logo" and the rider/vehicle display.
+    const rider = activeAssignment
+      ? {
+          ...activeAssignment.user,
+          vehicleType: activeAssignment.vehicleType || activeAssignment.user?.vehicleType || null,
+          plateNumber: activeAssignment.vehiclePlate || activeAssignment.user?.plateNumber || null,
+        }
+      : null;
 
     return {
       id: b.id,

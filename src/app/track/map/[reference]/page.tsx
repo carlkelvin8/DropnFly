@@ -323,6 +323,8 @@ export default function LiveTrackingPage() {
               employeeLat={hasStarted ? (employeeLoc?.lat ?? null) : null}
               employeeLng={hasStarted ? (employeeLoc?.lng ?? null) : null}
               employeeName={employee?.name}
+              employeeVehicleType={employee?.vehicleType ?? null}
+              employeePlate={employee?.plateNumber ?? null}
               pickupLat={pickupCoordsForMap?.lat}
               pickupLng={pickupCoordsForMap?.lng}
               dropoffLat={dropoffCoordsForMap?.lat}

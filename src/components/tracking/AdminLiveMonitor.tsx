@@ -13,7 +13,7 @@ interface AdminLiveMonitorProps {
   employeeId: string;
   employeeName: string;
   // active tasks where this employee is the rider and pickupStartedAt is set
-  tasks: { referenceNumber: string; pickupLocation: string; dropOffLocation: string; pickupStartedAt: string | null; status: string; pickupLat?: number | null; pickupLng?: number | null; dropOffLat?: number | null; dropOffLng?: number | null }[];
+  tasks: { referenceNumber: string; pickupLocation: string; dropOffLocation: string; pickupStartedAt: string | null; status: string; pickupLat?: number | null; pickupLng?: number | null; dropOffLat?: number | null; dropOffLng?: number | null; riderVehicleType?: string | null; riderPlate?: string | null }[];
   // snapshot from /api/riders — may be stale, will be refreshed via polling
   initialLat: number | null;
   initialLng: number | null;
@@ -153,6 +153,8 @@ export function AdminLiveMonitor({ employeeId, employeeName, tasks, initialLat, 
         employeeLat={liveLat}
         employeeLng={liveLng}
         employeeName={employeeName}
+        employeeVehicleType={activeTask.riderVehicleType ?? null}
+        employeePlate={activeTask.riderPlate ?? null}
         pickupLat={pickup?.lat}
         pickupLng={pickup?.lng}
         dropoffLat={dropoff?.lat}

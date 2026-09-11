@@ -24,6 +24,8 @@ interface LiveMapProps {
   employeeLat?: number | null;
   employeeLng?: number | null;
   employeeName?: string;
+  employeeVehicleType?: string | null;
+  employeePlate?: string | null;
   pickupLat?: number;
   pickupLng?: number;
   dropoffLat?: number;
@@ -45,13 +47,25 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Marker icon "logos": person for customer/pickup, vehicle for employee/rider, box for storage/drop-off
+// Marker icon "logos": company-coded by role — PERSON = customer (pickup), BOX = drop-off/storage, VEHICLE = employee/rider.
+// Vehicle icon is type-specific (motorcycle / car / truck-van) so the indicator matches the rider's real vehicle.
 const PERSON_SVG =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>';
 const BOX_SVG =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><path d="M4 6.5l8 4.5 8-4.5"/><path d="M12 11v9"/></svg>';
-const VEHICLE_SVG =
+const CAR_SVG =
   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11"/><path d="M3 13v4h18v-4"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/></svg>';
+const BIKE_SVG =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg>';
+const TRUCK_SVG =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>';
+
+function vehicleLogoSVG(type: string | null | undefined): string {
+  const t = (type || "").toLowerCase();
+  if (t.includes("motor") || t.includes("bike") || t.includes("scooter")) return BIKE_SVG;
+  if (t.includes("truck") || t.includes("van") || t.includes("suv")) return TRUCK_SVG;
+  return CAR_SVG;
+}
 
 function pickupIconHTML() {
   return `<div style="background:#22c55e;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${PERSON_SVG}</div>`;
@@ -59,8 +73,11 @@ function pickupIconHTML() {
 function dropoffIconHTML() {
   return `<div style="background:#ef4444;color:white;border:2px solid white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${BOX_SVG}</div>`;
 }
-function vehicleIconHTML() {
-  return `<div style="background:#f97316;color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.35)">${VEHICLE_SVG}</div>`;
+function vehicleIconHTML(vehicleType?: string | null) {
+  return `<div style="background:#f97316;color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.35)">${vehicleLogoSVG(vehicleType)}</div>`;
+}
+function employeeLabel(name?: string, vehicleType?: string | null, plate?: string | null): string {
+  return [name || "Rider", vehicleType, plate].filter(Boolean).join(" · ") || "Rider";
 }
 
 export default function LiveMapInner({
@@ -68,12 +85,15 @@ export default function LiveMapInner({
   employeeLat,
   employeeLng,
   employeeName,
+  employeeVehicleType,
+  employeePlate,
   pickupLat,
   pickupLng,
   dropoffLat,
   dropoffLng,
   pickupAddress,
   dropoffAddress,
+  customerName,
   riderView = false,
   destinationPhase = "dropoff",
 }: LiveMapProps) {
@@ -154,7 +174,7 @@ export default function LiveMapInner({
     if (pickupLat != null && pickupLng != null) {
       if (!MAPBOX_TOKEN) {
         const m = lib.marker([pickupLat, pickupLng], { icon: lib.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
-        try { m.bindPopup(pickupAddress || "Pickup"); } catch {}
+        try { m.bindPopup(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup"); } catch {}
         extraMarkersRef.current.push(m);
       } else {
         const el = document.createElement("div");
@@ -163,7 +183,7 @@ export default function LiveMapInner({
         el.title = pickupAddress || "Pickup";
         const m = new lib.Marker({ element: el, offset: close ? [0, -12] as [number, number] : undefined })
           .setLngLat([pickupLng, pickupLat])
-          .setPopup(new lib.Popup().setText(pickupAddress || "Pickup Location"))
+          .setPopup(new lib.Popup().setText(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup Location"))
           .addTo(mk);
         extraMarkersRef.current.push(m);
       }
@@ -208,7 +228,7 @@ export default function LiveMapInner({
         // add pickup/dropoff immediately
         const addLeafletPins = () => {
           if (pickupLat != null && pickupLng != null) {
-            L.marker([pickupLat, pickupLng], { icon: L.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap).bindPopup(pickupAddress || "Pickup");
+            L.marker([pickupLat, pickupLng], { icon: L.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap).bindPopup(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup");
           }
           if (dropoffLat != null && dropoffLng != null) {
             L.marker([dropoffLat, dropoffLng], { icon: L.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap).bindPopup(dropoffAddress || "Drop-off");
@@ -217,8 +237,8 @@ export default function LiveMapInner({
             leafletMap.fitBounds([[pickupLat, pickupLng!], [dropoffLat, dropoffLng!]], { padding: [40, 40], maxZoom: 15 });
           }
           if (employeeLat != null && employeeLng != null) {
-            const el = L.divIcon({ html: vehicleIconHTML(), className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
-            const m = L.marker([employeeLat, employeeLng], { icon: el }).addTo(leafletMap).bindPopup(employeeName || "Rider");
+            const el = L.divIcon({ html: vehicleIconHTML(employeeVehicleType), className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
+            const m = L.marker([employeeLat, employeeLng], { icon: el }).addTo(leafletMap).bindPopup(employeeLabel(employeeName, employeeVehicleType, employeePlate));
             (markerRef as any).current = m;
           }
           const destLatLeaf = destinationPhase === "pickup" ? pickupLat : dropoffLat;
@@ -419,8 +439,8 @@ export default function LiveMapInner({
         bounds.push([dropoffLat, dropoffLng]);
       }
       if (employeeLat != null && employeeLng != null) {
-        const m = L.marker([employeeLat, employeeLng], { icon: L.divIcon({ html: vehicleIconHTML(), className: "", iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(leafletMap);
-        m.bindPopup(employeeName || "Rider");
+        const m = L.marker([employeeLat, employeeLng], { icon: L.divIcon({ html: vehicleIconHTML(employeeVehicleType), className: "", iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(leafletMap);
+        m.bindPopup(employeeLabel(employeeName, employeeVehicleType, employeePlate));
         bounds.push([employeeLat, employeeLng]);
       }
       if (bounds.length > 1) leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
@@ -432,7 +452,7 @@ export default function LiveMapInner({
         fallbackMapRef.current = null;
       }
     };
-  }, [mapError, pickupLat, pickupLng, dropoffLat, dropoffLng, employeeLat, employeeLng, pickupAddress, dropoffAddress, employeeName, riderView]);
+  }, [mapError, pickupLat, pickupLng, dropoffLat, dropoffLng, employeeLat, employeeLng, pickupAddress, dropoffAddress, employeeName, employeeVehicleType, employeePlate, riderView]);
 
   useEffect(() => {
     // Leaflet primary (no token) - update marker and polyline
@@ -444,9 +464,9 @@ export default function LiveMapInner({
       if (markerRef.current) {
         try { markerRef.current.setLatLng([employeeLat, employeeLng]); } catch {}
       } else {
-        const el = L.divIcon({ html: vehicleIconHTML(), className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
+        const el = L.divIcon({ html: vehicleIconHTML(employeeVehicleType), className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
         const m = L.marker([employeeLat, employeeLng], { icon: el }).addTo(leafletMap);
-        m.bindPopup(employeeName || "Rider");
+        m.bindPopup(employeeLabel(employeeName, employeeVehicleType, employeePlate));
         (markerRef as any).current = m;
       }
       // simple pan, keep both pins in view - leaflet handles via setView
@@ -484,12 +504,12 @@ export default function LiveMapInner({
     const el = document.createElement("div");
     el.className =
       "flex h-8 w-8 items-center justify-center rounded-full animate-bounce";
-    el.innerHTML = vehicleIconHTML();
+    el.innerHTML = vehicleIconHTML(employeeVehicleType);
 
     try {
       markerRef.current = new mapboxgl.Marker({ element: el })
         .setLngLat([employeeLng, employeeLat])
-        .setPopup(new mapboxgl.Popup().setText(employeeName || (riderView ? "You" : "Rider")))
+        .setPopup(new mapboxgl.Popup().setText(employeeLabel(employeeName, employeeVehicleType, employeePlate) || (riderView ? "You" : "Rider")))
         .addTo(map.current);
 
       // avoid stealing user pan: only flyTo if moved >50m or first fix
@@ -541,7 +561,7 @@ export default function LiveMapInner({
       // Mapbox can throw if style unloaded mid-update — defer to next tick
       console.warn("[LiveMap] style not ready, deferring:", e);
     }
-  }, [employeeLat, employeeLng, mapReady, pickupLat, pickupLng, dropoffLat, dropoffLng, employeeName, riderView, destinationPhase]);
+  }, [employeeLat, employeeLng, mapReady, pickupLat, pickupLng, dropoffLat, dropoffLng, employeeName, employeeVehicleType, employeePlate, riderView, destinationPhase]);
 
   const destLat = destinationPhase === "pickup" ? pickupLat : dropoffLat;
   const destLng = destinationPhase === "pickup" ? pickupLng : dropoffLng;

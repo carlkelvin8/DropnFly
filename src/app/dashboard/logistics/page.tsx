@@ -352,7 +352,7 @@ export default function LogisticsPage() {
                   key={selectedEmpId}
                   employeeId={selectedEmpId}
                   employeeName={emp?.name || "Employee"}
-                  tasks={empLiveTasks.map((t) => ({ referenceNumber: t.referenceNumber, pickupLocation: t.pickupLocation, dropOffLocation: t.dropOffLocation, pickupStartedAt: t.pickupStartedAt, status: t.status, pickupLat: t.pickupLat, pickupLng: t.pickupLng, dropOffLat: t.dropOffLat, dropOffLng: t.dropOffLng }))}
+                  tasks={empLiveTasks.map((t) => ({ referenceNumber: t.referenceNumber, pickupLocation: t.pickupLocation, dropOffLocation: t.dropOffLocation, pickupStartedAt: t.pickupStartedAt, status: t.status, pickupLat: t.pickupLat, pickupLng: t.pickupLng, dropOffLat: t.dropOffLat, dropOffLng: t.dropOffLng, riderVehicleType: t.rider?.vehicleType ?? null, riderPlate: t.rider?.plateNumber ?? null }))}
                   initialLat={emp?.currentLat ?? null}
                   initialLng={emp?.currentLng ?? null}
                   lastUpdate={emp?.lastLocationUpdate ?? null}

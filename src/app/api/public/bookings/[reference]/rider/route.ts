@@ -51,5 +51,14 @@ export async function GET(
     return NextResponse.json({ rider: null });
   }
 
-  return NextResponse.json({ rider: assignment.user });
+  // Surface the ASSIGNED vehicle (e.g. fleet unit) when present, falling back to
+  // the rider's personal registered vehicle — so customers and maps see the actual
+  // vehicle performing the leg (type + plate drive the map marker "logo").
+  return NextResponse.json({
+    rider: {
+      ...assignment.user,
+      vehicleType: assignment.vehicleType || assignment.user.vehicleType,
+      plateNumber: assignment.vehiclePlate || assignment.user.plateNumber,
+    },
+  });
 }
