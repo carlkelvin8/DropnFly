@@ -1218,8 +1218,6 @@ export default function BookingDetailPage() {
                         <option value="" disabled>No vehicles registered — add in Settings → Fleet</option>
                       )}
                     </select>
-                    <input type="hidden" name="vehicleType" defaultValue={currentAssignment?.vehicleType || ""} />
-                    <input type="hidden" name="vehiclePlate" defaultValue={currentAssignment?.vehiclePlate || ""} />
                     <Button type="submit" className="w-full" variant={currentAssignment ? "outline" : "default"} disabled={saving || bookingLocked}>
                       {currentAssignment ? `Re-assign ${phaseLabel}` : `Assign ${phaseLabel}`}
                     </Button>
