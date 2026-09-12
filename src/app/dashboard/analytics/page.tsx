@@ -35,7 +35,6 @@ import {
   Globe2,
   MapPin,
   Store,
-  Warehouse,
   UserPlus,
 } from "lucide-react";
 import { Bar, BarChart, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
@@ -990,14 +989,17 @@ function ReportSectionContent({ content }: { content: string }) {
   const flushBullets = () => {
     if (!bullets.length) return;
     elements.push(
-      <dl key={`bullets-${elements.length}`} className="grid gap-2 sm:grid-cols-2">
+      <div key={`bullets-${elements.length}`} className="space-y-2.5">
         {bullets.map((item, index) => (
-          <div key={index} className="rounded-lg border bg-muted/20 px-3 py-2.5">
-            {item.label && <dt className="text-xs font-semibold text-foreground">{item.label}</dt>}
-            <dd className={`text-sm leading-relaxed text-muted-foreground ${item.label ? "mt-1" : ""}`}>{item.text}</dd>
+          <div key={index} className="flex gap-3">
+            <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-[2px] bg-primary/60" aria-hidden="true" />
+            <p className="min-w-0 flex-1 text-[13.5px] leading-relaxed text-justify text-slate-700" style={{ textJustify: "inter-word" }}>
+              {item.label && <span className="font-semibold text-slate-900">{item.label}: </span>}
+              {item.text}
+            </p>
           </div>
         ))}
-      </dl>
+      </div>
     );
     bullets = [];
   };
@@ -1006,9 +1008,9 @@ function ReportSectionContent({ content }: { content: string }) {
     elements.push(
       <ol key={`numbered-${elements.length}`} className="space-y-2">
         {numbered.map((item, index) => (
-          <li key={index} className="flex gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm leading-relaxed text-muted-foreground">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">{index + 1}</span>
-            <span>{item}</span>
+          <li key={index} className="flex gap-3 text-[13.5px] leading-relaxed text-justify text-slate-700" style={{ textJustify: "inter-word" }}>
+            <span className="shrink-0 font-mono font-semibold text-slate-900">{String(index + 1).padStart(2, "0")}.</span>
+            <span className="min-w-0 flex-1">{item}</span>
           </li>
         ))}
       </ol>
@@ -1032,13 +1034,17 @@ function ReportSectionContent({ content }: { content: string }) {
     } else {
       flushBullets();
       flushNumbered();
-      elements.push(<p key={`paragraph-${elements.length}`} className="text-sm leading-relaxed text-muted-foreground">{line}</p>);
+      elements.push(
+        <p key={`paragraph-${elements.length}`} className="text-[13.5px] leading-relaxed text-justify text-slate-700" style={{ textJustify: "inter-word" }}>
+          {line}
+        </p>
+      );
     }
   }
   flushBullets();
   flushNumbered();
 
-  return <div className="space-y-3">{elements}</div>;
+  return <div className="space-y-3.5">{elements}</div>;
 }
 
 function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFrom: string; dateTo: string }) {
@@ -1263,115 +1269,119 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
       )}
 
       {report && (
-        <div className="space-y-5">
-          {/* Report Header — organized & detailed for decision making */}
-          <Card className="overflow-hidden border-t-4 shadow-lg" style={{ borderTopColor: selected.bar.replace('bg-','') } as React.CSSProperties}>
-            <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-6 py-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary" className={`gap-1.5 ${selected.iconBg} border-0`}>
-                      <selected.icon className="h-3.5 w-3.5" />
-                      {selected.label}
-                    </Badge>
-                    <Badge variant="outline" className="text-xs font-normal">
-                      Period: {period === "custom" ? `${dateFrom || "—"} → ${dateTo || "—"}` : period.charAt(0).toUpperCase() + period.slice(1)}
-                    </Badge>
-                    <span className="text-[11px] text-muted-foreground">Generated {new Date(report.generatedAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}</span>
-                  </div>
-                  <h3 className="mt-2 text-xl font-bold tracking-tight">{report.title}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">For admin decision-making — grounded in the selected period’s live data. Verify figures in Financial Oversight before acting.</p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={downloadPdf} disabled={pdfLoading} className="shadow-sm">
-                    <Download className="mr-2 h-4 w-4" />{pdfLoading ? "Preparing PDF…" : "Download PDF"}
-                  </Button>
-                </div>
+        <div className="mx-auto w-full max-w-[840px]">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.28)] print:border-0 print:shadow-none dark:border-slate-700">
+            {/* Toolbar — controls, not part of the document itself */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/70 px-6 py-3 dark:border-slate-700 dark:bg-slate-800/60">
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                Report Preview
+              </p>
+              <div className="flex items-center gap-3">
+                <span className="hidden font-mono text-[10px] uppercase tracking-wider text-slate-400 sm:inline">
+                  {report.generatedAt.slice(0, 10)}-{reportType}
+                </span>
+                <Button size="sm" variant="outline" onClick={downloadPdf} disabled={pdfLoading} className="bg-white text-slate-700 shadow-sm">
+                  <Download className="mr-2 h-4 w-4" />{pdfLoading ? "Preparing PDF…" : "Download PDF"}
+                </Button>
               </div>
             </div>
-            <CardContent className="space-y-5 p-6">
-              {/* Executive Summary — detailed */}
-              <div className="rounded-xl border-l-4 bg-muted/30 p-4" style={{ borderLeftColor: "hsl(var(--primary))" }}>
-                <div className="mb-1 flex items-center gap-2">
-                  <div className="rounded-md bg-primary/10 p-1.5">
-                    <FileText className="h-4 w-4 text-primary" />
-                  </div>
-                  <h4 className="text-sm font-bold">Report at a Glance</h4>
-                  <Badge variant="secondary" className="ml-auto text-[10px]">Decision-ready</Badge>
+
+            {/* Document page */}
+            <div className="px-8 py-10 sm:px-14 sm:py-14">
+              {/* Letterhead */}
+              <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b-2 border-slate-900 pb-6 dark:border-slate-300">
+                <div>
+                  <p className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">DropNfly Logistics Inc.</p>
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+                    Luggage Storage &amp; Delivery
+                  </p>
                 </div>
-                <p className="text-sm leading-relaxed text-foreground/90">{report.summary}</p>
+                <div className="space-y-1 text-right font-mono text-[10.5px] leading-relaxed text-slate-600 dark:text-slate-400">
+                  <p><span className="font-bold text-slate-900 dark:text-slate-200">{selected.label}</span> Report&ensp;·&ensp;{period === "custom" ? `${dateFrom || "—"} → ${dateTo || "—"}` : period.charAt(0).toUpperCase() + period.slice(1)}</p>
+                  <p>Report ID: {report.generatedAt.slice(0, 10)}-{reportType}</p>
+                  <p>Generated: {new Date(report.generatedAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}</p>
+                </div>
               </div>
 
-              {/* Table of Contents — organized navigation */}
-              <div className="rounded-xl border bg-card p-4">
-                <h4 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  <BarChart3 className="h-3.5 w-3.5" />
-                  Report Contents
-                </h4>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {report.sections.map((s, i) => (
-                    <a key={i} href={`#report-section-${i}`} className="flex items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-sm transition-colors hover:bg-muted/40 hover:text-primary">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">{i + 1}</span>
-                      <span className="truncate font-medium">{s.heading}</span>
+              {/* Title */}
+              <div className="pt-9 pb-8 text-center">
+                <span className="inline-flex items-center gap-1.5 rounded-sm border border-primary/30 bg-primary/5 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">
+                  <selected.icon className="h-3 w-3" /> {selected.label}
+                </span>
+                <h2 className="mx-auto mt-4 max-w-[580px] text-[26px] font-black leading-snug tracking-tight text-slate-900 dark:text-slate-100">
+                  {report.title}
+                </h2>
+                <div className="mx-auto mt-5 h-px w-24 bg-primary/50" />
+                <p className="mx-auto mt-4 max-w-[440px] text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  Prepared from live DropNfly booking and payment records for management review.
+                </p>
+              </div>
+
+              {/* Executive Summary */}
+              <div className="mb-9 rounded-md border border-slate-200 bg-slate-50 px-6 py-5 dark:border-slate-700 dark:bg-slate-800/40">
+                <p className="mb-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Executive Summary</p>
+                <p className="text-[13.5px] leading-relaxed text-justify text-slate-700 dark:text-slate-300" style={{ textJustify: "inter-word" }}>
+                  {report.summary}
+                </p>
+              </div>
+
+              {/* Contents */}
+              <div className="mb-9">
+                <p className="mb-3 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Contents</p>
+                <div className="grid gap-x-8 gap-y-2 rounded-md border border-slate-200 bg-slate-50/60 px-5 py-4 sm:grid-cols-2 dark:border-slate-700 dark:bg-slate-800/30">
+                  {report.sections.map((section, i) => (
+                    <a key={i} href={`#report-section-${i}`} className="flex items-baseline gap-2 text-[12.5px] leading-snug text-slate-700 hover:text-primary dark:text-slate-300">
+                      <span className="w-5 shrink-0 text-right font-mono font-semibold text-slate-400 dark:text-slate-500">{i + 1}.</span>
+                      <span className="font-medium">{section.heading}</span>
                     </a>
                   ))}
                 </div>
               </div>
 
-              {/* Detailed Sections — organized with icons & hierarchy */}
-              <div className="space-y-4">
-                {report.sections.map((section, i) => {
-                  const isRecommendation = /recommend|action|decision/i.test(section.heading);
-                  const isRisk = /risk|limit|caveat/i.test(section.heading);
-                  const Icon = isRecommendation ? TrendingUp : isRisk ? AlertCircle : i === 0 ? Package : i === 1 ? DollarSign : i === 2 ? Warehouse : Users;
-                  return (
-                    <div
-                      key={i}
-                      id={`report-section-${i}`}
-                      className={`scroll-mt-6 rounded-xl border p-5 transition-shadow hover:shadow-sm ${isRecommendation ? "bg-amber-50/50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900/50" : isRisk ? "bg-slate-50 border-slate-200 dark:bg-slate-900/30" : "bg-card"}`}
-                    >
-                      <div className="mb-3 flex items-start gap-3">
-                        <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${isRecommendation ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" : isRisk ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300" : "bg-primary/10 text-primary"}`}>
-                          <Icon className="h-3.5 w-3.5" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="text-sm font-bold leading-tight">{section.heading}</h4>
-                            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Section {i + 1} of {report.sections.length}</span>
-                          </div>
-                          <div className="mt-1 h-0.5 w-8 rounded bg-primary/20" />
-                        </div>
-                        <span className="hidden sm:inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">{i + 1}</span>
-                      </div>
-                      <ReportSectionContent content={section.content} />
-                      {isRecommendation && (
-                        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-                          <TrendingUp className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                          <span className="font-medium">For decision: prioritize, assign owner, and set a review date for each action before closing this report.</span>
-                        </div>
-                      )}
+              {/* Numbered sections */}
+              <div className="space-y-9">
+                {report.sections.map((section, i) => (
+                  <section key={i} id={`report-section-${i}`} className="scroll-mt-24">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 font-mono text-[11px] font-bold text-white dark:bg-slate-100 dark:text-slate-900">
+                        {i + 1}
+                      </span>
+                      <h3 className="text-[15px] font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                        {section.heading}
+                      </h3>
                     </div>
-                  );
-                })}
+                    <div className="mt-3.5 ml-[15px] space-y-3.5 border-l border-slate-200 pl-5 dark:border-slate-700">
+                      <ReportSectionContent content={section.content} />
+                    </div>
+                  </section>
+                ))}
               </div>
 
-              {/* Footer — detailed & decision-support */}
-              <div className="rounded-xl border bg-muted/20 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="flex items-center gap-1.5 text-xs font-semibold"><AlertCircle className="h-3.5 w-3.5 text-muted-foreground" /> How to use this report</p>
-                    <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
-                      Cross-check figures in <span className="font-medium text-foreground">Financial Oversight</span> and <span className="font-medium text-foreground">Graphical Data</span>, reconcile pending collections, and validate capacity/staffing against the selected period before committing resources. Re-generate for another period to compare.
-                    </p>
+              {/* Signature / footer */}
+              <div className="mt-10 border-t border-slate-200 pt-6 dark:border-slate-700">
+                <div className="grid gap-6 text-[11px] text-slate-600 sm:grid-cols-3 dark:text-slate-400">
+                  <div>
+                    <p className="mb-1 font-mono text-[9.5px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Prepared By</p>
+                    <p className="font-medium text-slate-800 dark:text-slate-200">DropNfly Management System</p>
+                    <p>Administrator Access</p>
                   </div>
-                  <div className="text-right text-[11px] text-muted-foreground">
-                    <p>Report ID: {report.generatedAt.slice(0, 10)}-{reportType}</p>
-                    <p>Source: live bookings/payments • Not financial advice</p>
+                  <div>
+                    <p className="mb-1 font-mono text-[9.5px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Date Issued</p>
+                    <p className="font-medium">{new Date(report.generatedAt).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}</p>
+                    <p>{new Date(report.generatedAt).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}</p>
+                  </div>
+                  <div>
+                    <p className="mb-1 font-mono text-[9.5px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Source</p>
+                    <p className="font-medium">Live bookings &amp; payments</p>
+                    <p>Reconcile in Financial Oversight</p>
                   </div>
                 </div>
+                <p className="mt-6 border-t border-dashed border-slate-200 pt-4 text-center font-mono text-[10px] uppercase tracking-[0.22em] text-slate-400 dark:border-slate-700 dark:text-slate-500">
+                  — End of Report —
+                </p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
     </div>
