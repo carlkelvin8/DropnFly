@@ -260,7 +260,6 @@ export default function BookingsPage() {
           <span className="text-sm font-medium">{selectedIds.size} selected</span>
           <div className="flex gap-2 ml-auto">
             {(role === "ADMIN" || role === "STAFF") && <Button size="sm" onClick={() => handleBatchAction("confirm")}>Confirm</Button>}
-            {(role === "ADMIN" || role === "STAFF") && <Button size="sm" onClick={() => handleBatchAction("deliver")}>Mark Delivered</Button>}
             {canCancel && <Button size="sm" variant="secondary" onClick={() => handleBatchAction("cancel")}>Cancel</Button>}
             {canDelete && <Button size="sm" variant="destructive" onClick={() => handleBatchAction("delete")}>Delete</Button>}
             <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Clear</Button>

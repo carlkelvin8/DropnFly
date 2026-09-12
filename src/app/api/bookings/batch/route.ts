@@ -3,7 +3,6 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { hasStaffRole } from "@/lib/staff-access";
-import { awardDeliveryPoints } from "@/lib/loyalty";
 
 export async function PATCH(req: Request) {
   const session = await auth();
@@ -74,56 +73,6 @@ export async function PATCH(req: Request) {
       });
 
       return NextResponse.json({ success: true, count: result.count });
-    }
-
-    if (action === "deliver") {
-      const deliverable = await prisma.booking.findMany({
-        where: { id: { in: cappedIds }, status: { in: ["IN_STORAGE", "OUT_FOR_DELIVERY"] } },
-        select: { id: true, customerId: true, totalPrice: true, referenceNumber: true },
-      });
-      const deliverableIds = deliverable.map((b) => b.id);
-
-      if (deliverableIds.length === 0) {
-        return NextResponse.json({ success: true, count: 0, message: "No bookings were in a deliverable state" });
-      }
-
-      await prisma.booking.updateMany({
-        where: { id: { in: deliverableIds } },
-        data: { status: "DELIVERED" },
-      });
-
-      for (const booking of deliverable) await awardDeliveryPoints(booking);
-
-      const completedBookings = await prisma.booking.findMany({
-        where: { id: { in: deliverableIds } },
-        select: {
-          id: true,
-          referenceNumber: true,
-          customerId: true,
-          status: true,
-          updatedAt: true,
-          feedbackInviteSentAt: true,
-        },
-      });
-      const { trySendFeedbackInvitation } = await import("@/lib/feedback");
-      const inviteResults = await Promise.allSettled(
-        completedBookings.map((booking) => trySendFeedbackInvitation(booking)),
-      );
-      inviteResults.forEach((result, index) => {
-        if (result.status === "rejected") {
-          console.warn("[FEEDBACK] batch invite failed for", completedBookings[index]?.referenceNumber, result.reason);
-        }
-      });
-
-      await logActivity({
-        userId: session.user.id,
-        action: "UPDATE",
-        entity: "Booking",
-        entityId: deliverableIds.join(","),
-        details: `Batch delivered ${deliverableIds.length} booking(s)`,
-      });
-
-      return NextResponse.json({ success: true, count: deliverableIds.length });
     }
 
     if (action === "cancel") {

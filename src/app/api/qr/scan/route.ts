@@ -411,19 +411,25 @@ export async function POST(req: Request) {
 
     const createdItems: { id: string; tagNumber: string; bookingId: string }[] = [];
 
-    if (status === "RECEIVED" && tagList.length > 0) {
+    // Completeness guard: marking as RECEIVED requires EVERY baggage piece to
+    // carry a physical tag (either pre-tagged via the booking page, or with tags
+    // in this request). Prevents "received" without baggage being assigned.
+    if (status === "RECEIVED") {
       const existingCount = await prisma.luggageItem.count({ where: { bookingId: booking.id } });
       const maxAllowed = booking.numberOfBags;
-      const remainingSlots = maxAllowed - existingCount;
-      if (remainingSlots <= 0) {
-        return NextResponse.json({ error: "All baggage slots already filled for this booking" }, { status: 400 });
-      }
-      if (tagList.length > remainingSlots) {
+      const totalAfter = existingCount + tagList.length;
+      if (totalAfter < maxAllowed) {
         return NextResponse.json(
-          { error: `Too many tags. Booking allows ${remainingSlots} more luggage item(s).` },
+          { error: `Marking as received requires every baggage piece to carry a tag — ${maxAllowed - totalAfter} tag number(s) still missing. Enter them above, tag the bags on the booking page, or adjust the bag count first.` },
           { status: 400 }
         );
       }
+      if (totalAfter > maxAllowed) {
+        return NextResponse.json({ error: `Too many tags. Booking allows ${maxAllowed} luggage item(s).` }, { status: 400 });
+      }
+    }
+
+    if (status === "RECEIVED" && tagList.length > 0) {
       if (new Set(tagList).size !== tagList.length) {
         return NextResponse.json({ error: "Duplicate tag numbers entered" }, { status: 400 });
       }
