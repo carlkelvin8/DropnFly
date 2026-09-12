@@ -14,11 +14,11 @@ const SESSION_COOKIES = [
   "__Secure-next-auth.session-token",
 ];
 
-async function hasValidSession(req: NextRequest): Promise<boolean> {
+async function getSessionToken(req: NextRequest) {
   const cookie = SESSION_COOKIES.map((name) => req.cookies.get(name)).find(Boolean);
-  if (!cookie) return false;
+  if (!cookie) return null;
   const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-  if (!secret) return false;
+  if (!secret) return null;
   try {
     const token = await getToken({
       req: { headers: req.headers },
@@ -27,10 +27,14 @@ async function hasValidSession(req: NextRequest): Promise<boolean> {
       secureCookie: cookie.name.startsWith("__Secure-"),
     });
     // The jwt callback marks deactivated/invalidated sessions via token.disabled.
-    return Boolean(token && !token.disabled);
+    return token && !token.disabled ? token : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+async function hasValidSession(req: NextRequest): Promise<boolean> {
+  return Boolean(await getSessionToken(req));
 }
 
 export default async function middleware(req: NextRequest) {
@@ -105,6 +109,17 @@ export default async function middleware(req: NextRequest) {
   const isPublicRoute = publicRoutes.some((route) =>
     path.startsWith(route)
   );
+
+  // Keep operations users out of the customer-facing map even when they open
+  // an old bookmark/history entry. The redirect happens before React renders,
+  // so Admin never sees the customer tracker UI or its customer-style Back link.
+  if (path.startsWith("/track/map/")) {
+    const token = await getSessionToken(req);
+    if (token && ["ADMIN", "STAFF"].includes(String(token.role))) {
+      const reference = path.slice("/track/map/".length);
+      return NextResponse.redirect(new URL(`/dashboard/logistics/map/${reference}`, req.url));
+    }
+  }
 
   if (isPublicRoute) {
     return passThrough();

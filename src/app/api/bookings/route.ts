@@ -102,9 +102,9 @@ export async function GET(req: Request) {
   const chatBookingIds = include === "chat" ? bookings.map((booking) => booking.id) : [];
   const [customerChatStats, unreadChatStats, staffChatStats] = include === "chat" && chatBookingIds.length > 0
     ? await Promise.all([
-        prisma.chatMessage.groupBy({ by: ["bookingId"], where: { bookingId: { in: chatBookingIds }, isFromCustomer: true }, _count: true, _max: { createdAt: true } }),
-        prisma.chatMessage.groupBy({ by: ["bookingId"], where: { bookingId: { in: chatBookingIds }, isFromCustomer: true, isRead: false }, _count: true }),
-        prisma.chatMessage.groupBy({ by: ["bookingId"], where: { bookingId: { in: chatBookingIds }, isFromCustomer: false }, _count: true, _max: { createdAt: true } }),
+        prisma.chatMessage.groupBy({ by: ["bookingId"], where: { bookingId: { in: chatBookingIds }, senderId: null }, _count: true, _max: { createdAt: true } }),
+        prisma.chatMessage.groupBy({ by: ["bookingId"], where: { bookingId: { in: chatBookingIds }, senderId: null, isRead: false }, _count: true }),
+        prisma.chatMessage.groupBy({ by: ["bookingId"], where: { bookingId: { in: chatBookingIds }, senderId: { not: null } }, _count: true, _max: { createdAt: true } }),
       ])
     : [[], [], []];
   const customerChatMap = new Map(customerChatStats.map((row) => [row.bookingId, row]));
@@ -151,7 +151,9 @@ export async function GET(req: Request) {
       dropoffRider,
       ...(include === "chat" ? {
         _count: b._count,
-        lastMessage: b.chatMessages?.[0] || null,
+        lastMessage: b.chatMessages?.[0]
+          ? { ...b.chatMessages[0], isFromCustomer: !b.chatMessages[0].senderId }
+          : null,
         unreadCustomerCount: unreadChatMap.get(b.id) || 0,
         customerMessageCount: customerChatMap.get(b.id)?._count || 0,
         staffMessageCount: staffChatMap.get(b.id)?._count || 0,

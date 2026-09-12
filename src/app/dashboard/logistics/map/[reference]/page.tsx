@@ -138,7 +138,11 @@ export default function AdminFullMapPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 rounded-2xl border border-blue-200 bg-blue-50/30 p-4 shadow-sm dark:border-blue-900 dark:bg-blue-950/10">
+      <div className="mx-auto max-w-6xl rounded-xl bg-blue-700 px-4 py-3 text-white shadow-sm">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-100">Admin Operations Portal</p>
+        <p className="mt-0.5 text-sm font-semibold">Geo Monitoring — internal employee location feed</p>
+      </div>
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => router.push("/dashboard/logistics")}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Logistics
