@@ -80,6 +80,33 @@ function employeeLabel(name?: string, vehicleType?: string | null, plate?: strin
   return [name || "Rider", vehicleType, plate].filter(Boolean).join(" · ") || "Rider";
 }
 
+// When the employee tracker arrives at the customer/destination pin, both would
+// stack into a single marker. Offset the destination pin ~40m south so the
+// orange vehicle (employee) and green person (customer) always render as two
+// SEPARATE trackers.
+const DEST_SHIFT_LAT = 0.00035;
+function splitDestinationPins(
+  phase: "pickup" | "dropoff",
+  empLat?: number | null,
+  empLng?: number | null,
+  pLat?: number | null,
+  pLng?: number | null,
+  dLat?: number | null,
+  dLng?: number | null
+): { pickupLat: number | null | undefined; pickupLng: number | null | undefined; dropoffLat: number | null | undefined; dropoffLng: number | null | undefined } {
+  let pickupLat = pLat;
+  let pickupLng = pLng;
+  let dropoffLat = dLat;
+  let dropoffLng = dLng;
+  const arriveLat = phase === "pickup" ? pLat : dLat;
+  const arriveLng = phase === "pickup" ? pLng : dLng;
+  if (empLat != null && empLng != null && arriveLat != null && arriveLng != null && haversine(empLat, empLng, arriveLat, arriveLng) * 1000 < 80) {
+    if (phase === "pickup" && pickupLat != null && pickupLng != null) pickupLat = pickupLat - DEST_SHIFT_LAT;
+    if (phase === "dropoff" && dropoffLat != null && dropoffLng != null) dropoffLat = dropoffLat - DEST_SHIFT_LAT;
+  }
+  return { pickupLat, pickupLng, dropoffLat, dropoffLng };
+}
+
 export default function LiveMapInner({
   referenceNumber,
   employeeLat,
@@ -214,9 +241,13 @@ export default function LiveMapInner({
     if (pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null) {
       close = haversine(pickupLat, pickupLng, dropoffLat, dropoffLng) < 1;
     }
-    if (pickupLat != null && pickupLng != null) {
+    if (pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null) {
+      close = haversine(pickupLat, pickupLng, dropoffLat, dropoffLng) < 1;
+    }
+    const { pickupLat: sPLat, pickupLng: sPLng, dropoffLat: sDLat, dropoffLng: sDLng } = splitDestinationPins(destinationPhase, employeeLat, employeeLng, pickupLat, pickupLng, dropoffLat, dropoffLng);
+    if (sPLat != null && sPLng != null) {
       if (!MAPBOX_TOKEN) {
-        const m = lib.marker([pickupLat, pickupLng], { icon: lib.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
+        const m = lib.marker([sPLat, sPLng], { icon: lib.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
         try { m.bindPopup(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup"); } catch {}
         extraMarkersRef.current.push(m);
       } else {
@@ -225,15 +256,15 @@ export default function LiveMapInner({
         el.className = "flex h-7 w-7 items-center justify-center rounded-full";
         el.title = pickupAddress || "Pickup";
         const m = new lib.Marker({ element: el, offset: close ? [0, -12] as [number, number] : undefined })
-          .setLngLat([pickupLng, pickupLat])
+          .setLngLat([sPLng, sPLat])
           .setPopup(new lib.Popup().setText(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup Location"))
           .addTo(mk);
         extraMarkersRef.current.push(m);
       }
     }
-    if (dropoffLat != null && dropoffLng != null) {
+    if (sDLat != null && sDLng != null) {
       if (!MAPBOX_TOKEN) {
-        const m = lib.marker([dropoffLat, dropoffLng], { icon: lib.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
+        const m = lib.marker([sDLat, sDLng], { icon: lib.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
         try { m.bindPopup(dropoffAddress || "Drop-off"); } catch {}
         extraMarkersRef.current.push(m);
       } else {
@@ -242,7 +273,7 @@ export default function LiveMapInner({
         el.className = "flex h-7 w-7 items-center justify-center rounded-full";
         el.title = dropoffAddress || "Drop-off";
         const m = new lib.Marker({ element: el, offset: close ? [0, 12] as [number, number] : undefined })
-          .setLngLat([dropoffLng, dropoffLat])
+          .setLngLat([sDLng, sDLat])
           .setPopup(new lib.Popup().setText(dropoffAddress || "Drop-off Location"))
           .addTo(mk);
         extraMarkersRef.current.push(m);
@@ -268,14 +299,10 @@ export default function LiveMapInner({
           attribution: "© OpenStreetMap",
           maxZoom: 19,
         }).addTo(leafletMap);
-        // add pickup/dropoff immediately
+        // add pickup/dropoff immediately — drawPoints() owns these pins so updates
+        // (employee movement, redraws) never create duplicates
         const addLeafletPins = () => {
-          if (pickupLat != null && pickupLng != null) {
-            L.marker([pickupLat, pickupLng], { icon: L.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap).bindPopup(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup");
-          }
-          if (dropoffLat != null && dropoffLng != null) {
-            L.marker([dropoffLat, dropoffLng], { icon: L.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap).bindPopup(dropoffAddress || "Drop-off");
-          }
+          drawPoints();
           if (pickupLat != null && dropoffLat != null && employeeLat == null) {
             leafletMap.fitBounds([[pickupLat, pickupLng!], [dropoffLat, dropoffLng!]], { padding: [40, 40], maxZoom: 15 });
           }
@@ -470,16 +497,17 @@ export default function LiveMapInner({
         attribution: "© OpenStreetMap",
         maxZoom: 19,
       }).addTo(leafletMap);
+      const { pickupLat: sPLat, pickupLng: sPLng, dropoffLat: sDLat, dropoffLng: sDLng } = splitDestinationPins(destinationPhase, employeeLat, employeeLng, pickupLat, pickupLng, dropoffLat, dropoffLng);
       const bounds: any[] = [];
-      if (pickupLat != null && pickupLng != null) {
-        const m = L.marker([pickupLat, pickupLng], { icon: L.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
-        m.bindPopup(pickupAddress || "Pickup");
-        bounds.push([pickupLat, pickupLng]);
+      if (sPLat != null && sPLng != null) {
+        const m = L.marker([sPLat, sPLng], { icon: L.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
+        m.bindPopup(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup");
+        bounds.push([sPLat, sPLng]);
       }
-      if (dropoffLat != null && dropoffLng != null) {
-        const m = L.marker([dropoffLat, dropoffLng], { icon: L.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
+      if (sDLat != null && sDLng != null) {
+        const m = L.marker([sDLat, sDLng], { icon: L.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
         m.bindPopup(dropoffAddress || "Drop-off");
-        bounds.push([dropoffLat, dropoffLng]);
+        bounds.push([sDLat, sDLng]);
       }
       if (employeeLat != null && employeeLng != null) {
         const m = L.marker([employeeLat, employeeLng], { icon: L.divIcon({ html: vehicleIconHTML(employeeVehicleType), className: "", iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(leafletMap);
@@ -651,6 +679,20 @@ export default function LiveMapInner({
           <p className="text-muted-foreground">➡ {dropoffAddress}</p>
         </div>
       )}
+      <div className="pointer-events-none absolute top-3 left-3 z-10 flex flex-col gap-1 rounded-lg bg-white/90 px-2.5 py-1.5 text-[10px] font-medium shadow backdrop-blur">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-3 w-3 rounded-full border border-white shadow-sm" style={{ background: "#f97316" }} />
+          Employee / Rider
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-3 w-3 rounded-full border border-white shadow-sm" style={{ background: "#22c55e" }} />
+          Customer pickup
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-3 w-3 rounded-full border border-white shadow-sm" style={{ background: "#ef4444" }} />
+          Drop-off
+        </span>
+      </div>
       <div ref={mapContainer} className="h-96 w-full rounded-lg border" />
     </div>
   );
