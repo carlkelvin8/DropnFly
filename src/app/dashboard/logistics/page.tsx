@@ -233,18 +233,17 @@ export default function LogisticsPage() {
       {showLocationUpdater && trackedTask && <LocationUpdater key={trackedTask.id} enabled bookingId={trackedTask.id} onStatusChange={handleLocationStatus} />}
       {startedForMe.length > 1 && !isAdmin && (
         <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-          <span className="font-medium">GPS for booking:</span>
+          <span className="font-medium whitespace-nowrap">GPS booking:</span>
           <select value={trackedTask?.id || ""} onChange={(e) => setSelectedTrackedId(e.target.value)} className="flex-1 rounded-md border bg-background px-2 py-1 text-xs">
             {startedForMe.map((t) => (
-              <option key={t.id} value={t.id}>{t.referenceNumber} — {t.pickupLocation} → {t.dropOffLocation}</option>
+              <option key={t.id} value={t.id}>{t.referenceNumber}</option>
             ))}
           </select>
-          <span className="text-[11px] text-muted-foreground">Map shows this booking&apos;s exact pin</span>
         </div>
       )}
       {locationStatus !== "idle" && (
-        <div className={`rounded-lg border px-3 py-2 text-sm ${locationStatus === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : locationStatus === "requesting" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-          {locationStatus === "active" ? `Live geolocation is active for ${trackedTask?.referenceNumber || "booking"} and updating the customer map.` : locationStatus === "requesting" ? "Requesting location access…" : "Live map needs browser location permission. Enable Location for this site and refresh."}
+        <div className={`rounded-lg border px-3 py-2 text-xs ${locationStatus === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : locationStatus === "requesting" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+          {locationStatus === "active" ? `Live GPS active — updating customer map (${trackedTask?.referenceNumber || "booking"}).` : locationStatus === "requesting" ? "Requesting location access…" : "Enable browser location permission for live tracking."}
         </div>
       )}
       {/* Employee live navigation — kept inside the dashboard so the employee tracker is
@@ -254,9 +253,8 @@ export default function LogisticsPage() {
         <Card className="overflow-hidden border-t-2 border-t-emerald-500 shadow-md">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <Navigation className="h-4 w-4 text-emerald-600" /> Active Task — Live Navigation
+              <Navigation className="h-4 w-4 text-emerald-600" /> Active Task—Live Navigation
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Your navigation guide. The customer&apos;s public tracker unlocks at the same time and shows your live dot.</p>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -290,7 +288,7 @@ export default function LogisticsPage() {
         <div>
           <h1 className="text-2xl font-bold">Logistics & Routes</h1>
           <p className="text-sm text-muted-foreground">
-            {isAdmin ? "Real-time monitoring of employees going to customers • Pin varies by NAIA terminal booked by customer" : "My assigned tasks — guide to customer NAIA terminal after you start pickup/drop-off"}
+            {isAdmin ? "Live monitoring of employee pickups and deliveries" : "My assigned pickup/delivery tasks"}
           </p>
         </div>
         {activeTab === "tasks" && (
@@ -303,7 +301,7 @@ export default function LogisticsPage() {
       {isAdmin && tasks.filter((t) => !t.rider).length > 0 && (
         <Card className="border-amber-300 bg-amber-50">
           <CardContent className="p-3 text-xs text-amber-900">
-            <span className="font-bold">{tasks.filter((t) => !t.rider).length} active booking{tasks.filter((t) => !t.rider).length !== 1 ? "s" : ""} without rider assignment</span> — hindi lalabas dati sa Logistics. Ngayon visible na dito. Assign a rider from <code className="rounded bg-white px-1">/dashboard/bookings/[id] → Assign Rider</code> para lumabas sa employee queue at live tracking.
+            {tasks.filter((t) => !t.rider).length} booking{tasks.filter((t) => !t.rider).length !== 1 ? "s" : ""} need a rider — assign from <code className="rounded bg-white px-1">Bookings → Assign Rider</code>.
           </CardContent>
         </Card>
       )}
@@ -331,18 +329,13 @@ export default function LogisticsPage() {
 
       {activeTab === "monitoring" && isAdmin ? (
         <div className="space-y-4">
-          <Card className="border-blue-200 bg-blue-50/30">
-            <CardContent className="p-3 text-xs text-muted-foreground">
-              <span className="font-medium text-blue-700">Admin Live Monitoring</span> — real-time tracking of employees going to customers. Pin location varies by NAIA terminal booked by the customer (Terminal 1–4). Becomes visible only after the employee taps <strong>Start Pickup</strong> / <strong>Start Delivery</strong> (sets <code>pickupStartedAt</code> and activates <code>LocationUpdater</code>). Employee&apos;s live dot is simultaneously the customer&apos;s pickup indicator.
-            </CardContent>
-          </Card>
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 Select Employee to Monitor
               </CardTitle>
-              <p className="text-xs text-muted-foreground">Green = tracking active & recent GPS (≤5 min) • Gray = idle or stale. Pin shown below is the NAIA terminal for that employee&apos;s started transaction.</p>
+              <p className="text-xs text-muted-foreground">Green = live GPS. Gray = idle.</p>
             </CardHeader>
             <CardContent>
               {employees.length === 0 ? (
@@ -418,8 +411,7 @@ export default function LogisticsPage() {
             )}
           </div>
         )}
-        {isAdmin && <p className="text-[11px] text-muted-foreground">Active Tasks are filtered to {taskDateFilter === "today" ? "today" : taskDateFilter === "custom" ? taskDate : "all dates"} (by pickup date). Use All/Custom to see previous and future taskings.</p>}
-      {filteredTasks.length === 0 ? (
+        {filteredTasks.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             <Package className="mx-auto h-8 w-8 mb-2 opacity-50" />
@@ -529,7 +521,7 @@ export default function LogisticsPage() {
                       </div>
                     )}
                     {!task.rider && (
-                      <p className="pt-2 text-xs font-medium text-amber-700">No {task.taskType} employee assigned. Assign one from the booking details before field work begins.</p>
+                      <p className="pt-2 text-xs font-medium text-amber-700">No {task.taskType} employee assigned yet.</p>
                     )}
                   </div>
 
