@@ -8,6 +8,7 @@ import { Toaster } from "sonner";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Navbar } from "@/components/layout/Navbar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { VersionBadge } from "@/components/layout/VersionBadge";
 
 function PasswordExpiryGuard({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
@@ -73,7 +74,7 @@ export default function DashboardLayout({
               <ErrorBoundary>{children}</ErrorBoundary>
             </main>
             <footer className="shrink-0 border-t bg-background px-4 py-3 text-center text-xs text-muted-foreground lg:px-6">
-              Dropnfly Operations Portal · Secure luggage storage and delivery management
+              Dropnfly Operations Portal · Secure luggage storage and delivery management · <VersionBadge />
             </footer>
           </div>
         </div>

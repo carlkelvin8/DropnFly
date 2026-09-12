@@ -23,9 +23,11 @@ import {
   AlertTriangle,
   BarChart3,
   Tag,
+  Tags,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "@/components/ThemeProvider";
+import { VersionBadge } from "@/components/layout/VersionBadge";
 import { useState } from "react";
 
 const ADMIN_ONLY_ITEMS = new Set([
@@ -34,6 +36,7 @@ const ADMIN_ONLY_ITEMS = new Set([
   "/dashboard/activity-logs",
   "/dashboard/analytics",
   "/dashboard/promo-codes",
+  "/dashboard/baggage-tags",
 ]);
 
 const STAFF_AND_ABOVE_ITEMS = new Set([
@@ -45,6 +48,7 @@ const allNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/bookings", label: "Bookings", icon: Package },
   { href: "/dashboard/scanner", label: "Scanner", icon: QrCode },
+  { href: "/dashboard/baggage-tags", label: "Baggage Tags", icon: Tags },
   { href: "/dashboard/logistics", label: "Logistics & Routes", icon: Truck },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/customers", label: "Customers", icon: Users },
@@ -135,6 +139,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       </nav>
 
       <div className="space-y-1 border-t p-4">
+        <VersionBadge />
         {lastSync && (
           <div className="mb-2 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />

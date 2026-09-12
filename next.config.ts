@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   output: "standalone",
   compress: true,
+  env: {
+    NEXT_PUBLIC_APP_BUILD: process.env.VERCEL_GIT_COMMIT_SHA ?? "local",
+  },
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [
