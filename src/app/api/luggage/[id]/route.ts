@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isBookingLocked } from "@/lib/booking-access";
 
+const LUGGAGE_FLOW = ["CHECKED_IN", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"];
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await auth();
@@ -12,14 +14,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const existing = await prisma.luggageItem.findUnique({
       where: { id },
-      select: { booking: { select: { status: true } } },
+      select: { status: true, booking: { select: { status: true } } },
     });
     if (!existing) return NextResponse.json({ error: "Luggage item not found" }, { status: 404 });
     if (isBookingLocked(existing.booking.status)) return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
     const body = await req.json();
     const data: Record<string, string | Date | null> = {};
 
-    if (body.status) data.status = body.status;
+    if (body.status) {
+      if (!LUGGAGE_FLOW.includes(body.status)) {
+        return NextResponse.json({ error: `Invalid luggage status: ${body.status}` }, { status: 400 });
+      }
+      const currentIdx = LUGGAGE_FLOW.indexOf(existing.status);
+      const newIdx = LUGGAGE_FLOW.indexOf(body.status);
+      if (currentIdx !== -1 && newIdx <= currentIdx) {
+        return NextResponse.json(
+          { error: `Cannot move luggage from ${existing.status} to ${body.status} — previous or same status is not allowed` },
+          { status: 400 }
+        );
+      }
+      data.status = body.status;
+    }
     if (body.location !== undefined) data.location = body.location;
     if (body.description !== undefined) data.description = body.description;
     if (body.flag !== undefined) data.flag = body.flag;

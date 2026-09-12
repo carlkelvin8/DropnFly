@@ -25,6 +25,14 @@ const STATUS_FLOW = [
   { value: "DELIVERED", label: "Delivered", icon: CheckCircle, color: "bg-emerald-500" },
 ];
 
+const LUGGAGE_FLOW = [
+  { value: "CHECKED_IN", label: "Checked In", icon: Tag, color: "bg-slate-500" },
+  { value: "RECEIVED", label: "Received", icon: Package, color: "bg-purple-500" },
+  { value: "IN_STORAGE", label: "In Storage", icon: Warehouse, color: "bg-indigo-500" },
+  { value: "OUT_FOR_DELIVERY", label: "Out for Delivery", icon: Truck, color: "bg-orange-500" },
+  { value: "DELIVERED", label: "Delivered", icon: CheckCircle, color: "bg-emerald-500" },
+];
+
 type VerificationType = "pickup" | "dropoff" | "status";
 
 interface LuggageItemSummary {
@@ -99,6 +107,11 @@ function cleanScanInput(ref: string): string {
   return trimmed.replace(/^([A-Z]+)-\1-/, "$1-");
 }
 
+function nextLuggageStep(status: string) {
+  const idx = LUGGAGE_FLOW.findIndex((s) => s.value === status);
+  return idx >= 0 && idx < LUGGAGE_FLOW.length - 1 ? LUGGAGE_FLOW[idx + 1] : null;
+}
+
 export default function QrScannerPage() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -115,6 +128,7 @@ export default function QrScannerPage() {
   const [customerScanMode, setCustomerScanMode] = useState(false);
   const [customerManualRef, setCustomerManualRef] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const intakeFileRef = useRef<HTMLInputElement>(null);
 
   const [flow, setFlow] = useState<"booking" | "luggage">("booking");
   const [intakeCamera, setIntakeCamera] = useState(false);
@@ -123,6 +137,7 @@ export default function QrScannerPage() {
   const [intakeLoading, setIntakeLoading] = useState(false);
   const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
   const [intakeProcessing, setIntakeProcessing] = useState(false);
+  const [intakeStatus, setIntakeStatus] = useState("");
   const [intakeQueue, setIntakeQueue] = useState<IntakeQueueBooking[]>([]);
   const [queueBooking, setQueueBooking] = useState<IntakeQueueBooking | null>(null);
   const [queuePhoto, setQueuePhoto] = useState<string | null>(null);
@@ -340,7 +355,9 @@ export default function QrScannerPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Lookup failed");
       setIntakeResult(json);
-      toast.success("Luggage found — verify and confirm intake");
+      const idx = LUGGAGE_FLOW.findIndex((s) => s.value === json.luggage.status);
+      setIntakeStatus(idx >= 0 && idx < LUGGAGE_FLOW.length - 1 ? LUGGAGE_FLOW[idx + 1].value : "");
+      toast.success("Luggage found — choose the next status and confirm");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Lookup failed");
     } finally {
@@ -350,6 +367,7 @@ export default function QrScannerPage() {
 
   async function handleIntakeConfirm() {
     if (!intakeResult) return;
+    const target = intakeStatus || "IN_STORAGE";
     setIntakeProcessing(true);
     try {
       const res = await fetch("/api/qr/scan", {
@@ -359,19 +377,22 @@ export default function QrScannerPage() {
           luggageScan: true,
           tagNumber: intakeResult.luggage.tagNumber,
           referenceNumber: intakeResult.booking.referenceNumber,
+          status: target,
           photo,
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Intake failed");
-      toast.success(`✅ Luggage ${intakeResult.luggage.tagNumber} stored`);
+      if (!res.ok) throw new Error(json.error || "Update failed");
+      const targetLabel = LUGGAGE_FLOW.find((s) => s.value === target)?.label || target;
+      toast.success(`✅ Luggage ${intakeResult.luggage.tagNumber} — ${targetLabel}`);
       setIntakeResult(null);
       setIntakeTag("");
       setIntakeRef("");
+      setIntakeStatus("");
       setPhoto(null);
       loadIntakeQueue();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Intake failed");
+      toast.error(e instanceof Error ? e.message : "Update failed");
     } finally {
       setIntakeProcessing(false);
     }
@@ -577,29 +598,74 @@ export default function QrScannerPage() {
                     </p>
                   </div>
 
-                  {!intakeResult.storageEligible ? (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                      ⚠️ This booking is not ready for storage. Complete luggage collection first.
-                    </div>
-                  ) : intakeResult.luggage.status === "IN_STORAGE" ? (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-                      ✓ This luggage is already in storage.
+                  {nextLuggageStep(intakeResult.luggage.status) ? (
+                    <div className="space-y-3">
+                      {(() => {
+                        const step = nextLuggageStep(intakeResult.luggage.status)!;
+                        const Icon = step.icon;
+                        const isSelected = intakeStatus === step.value;
+                        const photoRequired = step.value === "IN_STORAGE";
+                        return (
+                          <>
+                            <div>
+                              <p className="mb-2 text-xs font-medium text-muted-foreground">
+                                Update luggage status — {intakeResult.luggage.status.replace(/_/g, " ")} → <span className="font-semibold text-foreground">{step.label}</span>
+                              </p>
+                              <button
+                                onClick={() => setIntakeStatus(step.value)}
+                                className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-all ${isSelected ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50"}`}
+                              >
+                                <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${step.color} text-white`}>
+                                  <Icon className="h-4 w-4" />
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium">{step.label}</p>
+                                </div>
+                                {isSelected && <CheckCircle className="h-5 w-5 text-primary" />}
+                              </button>
+                            </div>
+                            {!intakeResult.storageEligible && step.value === "IN_STORAGE" && (
+                              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                                ⚠️ This booking is not ready for storage. Complete luggage collection first.
+                              </div>
+                            )}
+                            {photo ? (
+                              <div className="relative overflow-hidden rounded-xl border">
+                                <Image unoptimized width={800} height={200} src={photo} alt="Luggage proof" className="w-full h-32 object-cover" />
+                                <button type="button" onClick={() => setPhoto(null)} className="absolute top-2 right-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg">Remove</button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => intakeFileRef.current?.click()}
+                                className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/30 p-4 transition-colors hover:border-primary/50 hover:bg-primary/5"
+                              >
+                                <Camera className="h-6 w-6 text-muted-foreground" />
+                                <p className="text-xs text-muted-foreground">
+                                  Take a picture as proof{photoRequired ? " (required)" : ""}
+                                </p>
+                              </button>
+                            )}
+                            <input ref={intakeFileRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} className="hidden" />
+                            <Button
+                              className="w-full h-11 rounded-xl"
+                              size="lg"
+                              onClick={handleIntakeConfirm}
+                              disabled={intakeProcessing || !intakeStatus || (photoRequired && !photo)}
+                            >
+                              {intakeProcessing ? (
+                                <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...</>
+                              ) : (
+                                <><Icon className="mr-2 h-5 w-5" /> Confirm — {step.label}</>
+                              )}
+                            </Button>
+                          </>
+                        );
+                      })()}
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                    <label className="block rounded-lg border border-dashed p-3 text-sm"><span className="mb-2 block font-medium">Luggage verification photo (required)</span><input type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} />{photo && <span className="mt-2 block text-xs text-emerald-600">Photo ready</span>}</label>
-                    <Button
-                      className="w-full h-11 rounded-xl"
-                      size="lg"
-                      onClick={handleIntakeConfirm}
-                      disabled={intakeProcessing || !photo}
-                    >
-                      {intakeProcessing ? (
-                        <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...</>
-                      ) : (
-                        <><Warehouse className="mr-2 h-5 w-5" /> Confirm Storage Intake</>
-                      )}
-                    </Button>
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                      ✓ This luggage has reached its final status.
                     </div>
                   )}
                   {intakeResult.remaining > 0 && (
