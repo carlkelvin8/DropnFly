@@ -817,28 +817,6 @@ export default function QrScannerPage() {
         </CardContent>
       </Card>
 
-      {/* Verification Type Selector */}
-      <div className="grid grid-cols-3 gap-2">
-        {([
-          { type: "pickup" as const, label: "Collection", icon: Package, desc: "Receive from customer" },
-          { type: "dropoff" as const, label: "Delivery", icon: Truck, desc: "Hand to customer" },
-          { type: "status" as const, label: "Status", icon: MapPin, desc: "Update progress" },
-        ]).map((v) => (
-          <button
-            key={v.type}
-            onClick={() => setVerificationType(v.type)}
-            className={`rounded-xl border p-3 text-center transition-all ${
-              verificationType === v.type
-                ? "border-primary bg-primary/5 ring-1 ring-primary shadow-sm"
-                : "hover:bg-muted/50"
-            }`}
-          >
-            <v.icon className={`mx-auto h-5 w-5 ${verificationType === v.type ? "text-primary" : "text-muted-foreground"}`} />
-            <p className="mt-1 text-xs font-semibold">{v.label}</p>
-          </button>
-        ))}
-      </div>
-
       {/* Next Status */}
       {nextStatuses.length > 0 ? (
         <Card>
