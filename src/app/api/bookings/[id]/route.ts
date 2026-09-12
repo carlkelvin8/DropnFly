@@ -14,12 +14,13 @@ const VALID_STATUS = [
   "PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE",
   "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW",
 ] as const;
-const NEXT_STATUS: Partial<Record<BookingStatus, BookingStatus>> = {
-  PENDING: "CONFIRMED",
-  CONFIRMED: "RECEIVED",
+// Manual status changes are LIMITED to these two managed steps (In Storage /
+// Out for Delivery) to prevent status manipulation. RECEIVED is only set by the
+// on-site QR scan flow (Scanner page / rider arrival) and DELIVERED only when the
+// rider completes delivery with proof — neither can be forced through this endpoint.
+const MANUAL_NEXT: Partial<Record<BookingStatus, BookingStatus>> = {
   RECEIVED: "IN_STORAGE",
   IN_STORAGE: "OUT_FOR_DELIVERY",
-  OUT_FOR_DELIVERY: "DELIVERED",
 };
 
 export async function GET(
@@ -151,8 +152,16 @@ export async function PUT(
         return NextResponse.json({ error: "Invalid status" }, { status: 400 });
       }
       const isAdminOverride = session.user.role === "ADMIN" && ["CANCELLED", "NO_SHOW"].includes(body.status);
-      if (!isAdminOverride && body.status !== existingBooking.status && NEXT_STATUS[existingBooking.status] !== body.status) {
-        return NextResponse.json({ error: `Invalid status transition from ${existingBooking.status} to ${body.status}` }, { status: 409 });
+      if (!isAdminOverride && body.status !== existingBooking.status) {
+        if (MANUAL_NEXT[existingBooking.status] !== body.status) {
+          const reason =
+            body.status === "RECEIVED"
+              ? "Received is set automatically on the Scanner page when the customer QR is scanned and the baggage is received. It cannot be set manually here."
+              : body.status === "DELIVERED"
+                ? "Delivered is completed by the assigned rider with proof of delivery. It cannot be set manually here."
+                : `Invalid status transition from ${existingBooking.status} to ${body.status}`;
+          return NextResponse.json({ error: reason }, { status: 409 });
+        }
       }
       data.status = body.status;
     }

@@ -100,16 +100,16 @@ interface AvailableTag {
   isUsed: boolean;
 }
 
-const statusOptions = [
-  { value: "PENDING", label: "Pending" },
-  { value: "CONFIRMED", label: "Confirmed" },
-  { value: "RECEIVED", label: "Received" },
-  { value: "IN_STORAGE", label: "In Storage" },
-  { value: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
-  { value: "DELIVERED", label: "Delivered" },
-  { value: "CANCELLED", label: "Cancelled" },
-  { value: "NO_SHOW", label: "No Show" },
-];
+// Manual status updates are limited to these two managed steps.
+// Received/Delivered are automated (QR scan on-site / rider delivery proof).
+const MANUAL_STATUS_NEXT: Record<string, string> = {
+  RECEIVED: "IN_STORAGE",
+  IN_STORAGE: "OUT_FOR_DELIVERY",
+};
+const MANUAL_STATUS_LABELS: Record<string, string> = {
+  IN_STORAGE: "Move to In Storage",
+  OUT_FOR_DELIVERY: "Move to Out for Delivery",
+};
 
 const ADDITIONAL_SERVICES = [
   { id: "pickup", name: "Pick-up from Customer", price: 180, icon: "📦", description: "We pick up the luggage from the customer" },
@@ -1115,14 +1115,28 @@ export default function BookingDetailPage() {
               <select
                 id="status"
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                value={booking.status}
+                value=""
                 onChange={handleStatusChange}
-                disabled={saving || bookingLocked}
+                disabled={saving || bookingLocked || !MANUAL_STATUS_NEXT[booking.status]}
               >
-                {statusOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                <option value="" disabled>
+                  {MANUAL_STATUS_NEXT[booking.status]
+                    ? "Select a status to update..."
+                    : "No manual status update available"}
+                </option>
+                {Object.entries(MANUAL_STATUS_NEXT).map(([from, to]) => (
+                  <option key={to} value={to} disabled={booking.status !== from}>
+                    {MANUAL_STATUS_LABELS[to]}
+                  </option>
                 ))}
               </select>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Only <strong>In Storage</strong> and <strong>Out for Delivery</strong> can be updated
+                here. <strong>Received</strong> is set automatically on the Scanner page when the
+                customer QR is scanned and the baggage is received; <strong>Delivered</strong> is
+                set by the rider when delivery is completed with proof. This prevents incorrect
+                status changes.
+              </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
