@@ -1081,7 +1081,57 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
     if (!report) return;
     setPdfLoading(true);
     try {
-      // Build detailed KPIs + tables from live analytics so PDF is not plain text but mirrors the GDrive template (cover, KPIs, data tables, sections)
+      // Preferred: snapshot the exact on-screen report into the PDF (true WYSIWYG — same as generated output).
+      const node = document.getElementById("report-paper");
+      if (node) {
+        let captured = false;
+        try {
+          const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+            import("html2canvas-pro"),
+            import("jspdf"),
+          ]);
+          node.classList.add("pdf-export");
+          try {
+            const canvas = await html2canvas(node, {
+              scale: 2,
+              backgroundColor: "#ffffff",
+              useCORS: true,
+              logging: false,
+            });
+            const pdf = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const margin = 28;
+            const imgWidth = pageWidth - margin * 2;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            const usable = pageHeight - margin * 2;
+            let heightLeft = imgHeight;
+            let position = 0;
+            const img = canvas.toDataURL("image/jpeg", 0.95);
+            pdf.addImage(img, "JPEG", margin, margin, imgWidth, imgHeight);
+            heightLeft -= usable;
+            while (heightLeft > 0) {
+              position -= usable;
+              pdf.addPage();
+              pdf.addImage(img, "JPEG", margin, margin + position, imgWidth, imgHeight);
+              heightLeft -= usable;
+            }
+            captured = true;
+            const fromStr = period === "custom" ? (dateFrom || new Date().toISOString().slice(0, 10)) : new Date(Date.now() - (period === "week" ? 7 : period === "year" ? 365 : 30) * 86400000).toISOString().slice(0, 10);
+            const toStr = period === "custom" ? (dateTo || new Date().toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10);
+            const formattedType = reportType.charAt(0).toUpperCase() + reportType.slice(1);
+            pdf.save(`${formattedType}-Analytics-Report-${fromStr}-to-${toStr}.pdf`);
+          } finally {
+            node.classList.remove("pdf-export");
+          }
+        } catch {}
+        if (captured) {
+          toast.success("PDF report downloaded");
+          return;
+        }
+      }
+
+      // Fallback: server-side generated PDF.
       let kpis: { label: string; value: string }[] = [];
       const tables: { title: string; headers: string[]; rows: string[][] }[] = [];
       try {
@@ -1270,7 +1320,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
 
       {report && (
         <div className="mx-auto w-full max-w-[840px]">
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.28)] print:border-0 print:shadow-none dark:border-slate-700">
+          <div id="report-paper" className="overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-[0_12px_40px_-12px_rgba(15,23,42,0.28)] print:border-0 print:shadow-none dark:border-slate-700">
             {/* Toolbar — controls, not part of the document itself */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/70 px-6 py-3 dark:border-slate-700 dark:bg-slate-800/60">
               <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">

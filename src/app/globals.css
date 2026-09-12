@@ -135,3 +135,10 @@ body {
   color: var(--foreground);
   font-family: system-ui, -apple-system, sans-serif;
 }
+
+.pdf-export {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
