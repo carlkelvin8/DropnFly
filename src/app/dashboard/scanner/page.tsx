@@ -141,6 +141,7 @@ export default function QrScannerPage() {
   const [intakeQueue, setIntakeQueue] = useState<IntakeQueueBooking[]>([]);
   const [queueBooking, setQueueBooking] = useState<IntakeQueueBooking | null>(null);
   const [queuePhoto, setQueuePhoto] = useState<string | null>(null);
+  const [queueStatus, setQueueStatus] = useState("");
   const [queueSearch, setQueueSearch] = useState("");
 
   const loadIntakeQueue = useCallback(() => {
@@ -154,23 +155,26 @@ export default function QrScannerPage() {
 
   async function updateQueuedBooking() {
     if (!queueBooking) return;
-    if (queueBooking.status === "RECEIVED" && !queuePhoto) {
+    if (!queueStatus) {
+      toast.error("Choose the new luggage status");
+      return;
+    }
+    if (queueStatus === "IN_STORAGE" && !queuePhoto) {
       toast.error("Take a luggage verification photo before storage intake");
       return;
     }
     setIntakeProcessing(true);
-    const nextStatus = queueBooking.status === "RECEIVED" ? "IN_STORAGE" : "OUT_FOR_DELIVERY";
     try {
-      const body = queueBooking.status === "RECEIVED"
+      const body = queueStatus === "IN_STORAGE"
         ? { batchStore: true, referenceNumber: queueBooking.referenceNumber, photo: queuePhoto, note: `Batch storage intake from queue` }
-        : { referenceNumber: queueBooking.referenceNumber, status: nextStatus, photo: queuePhoto, note: `Queue update to ${nextStatus}` };
+        : { referenceNumber: queueBooking.referenceNumber, status: queueStatus, photo: queuePhoto, note: `Queue update to ${queueStatus}` };
       const res = await fetch("/api/qr/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Update failed");
-      toast.success(queueBooking.status === "RECEIVED"
+      toast.success(queueStatus === "IN_STORAGE"
         ? `Stored ${json.storedCount || "?"} luggage item(s) — booking now in storage`
-        : `Booking updated to ${nextStatus.replace(/_/g, " ")}`);
-      setQueueBooking(null); setQueuePhoto(null); loadIntakeQueue();
+        : `Booking updated to ${queueStatus.replace(/_/g, " ")}`);
+      setQueueBooking(null); setQueuePhoto(null); setQueueStatus(""); loadIntakeQueue();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Update failed"); }
     finally { setIntakeProcessing(false); }
   }
@@ -532,14 +536,14 @@ export default function QrScannerPage() {
             <Card>
               <CardHeader><CardTitle className="text-base">Waiting to be stored</CardTitle></CardHeader>
               <CardContent className="max-h-72 space-y-2 overflow-y-auto">
-                {intakeQueue.filter((b) => b.status === "RECEIVED" && (!queueSearch || `${b.referenceNumber} ${b.rider?.name || ""}`.toUpperCase().includes(queueSearch))).map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · Received</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); }}>Update</Button></div>)}
+                {intakeQueue.filter((b) => b.status === "RECEIVED" && (!queueSearch || `${b.referenceNumber} ${b.rider?.name || ""}`.toUpperCase().includes(queueSearch))).map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · Received</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); setQueueStatus("IN_STORAGE"); }}>Update</Button></div>)}
                 {intakeQueue.every((b) => b.status !== "RECEIVED") && <p className="py-4 text-center text-sm text-muted-foreground">No luggage waiting for storage</p>}
               </CardContent>
             </Card>
             <Card>
               <CardHeader><CardTitle className="text-base">Waiting to be delivered</CardTitle></CardHeader>
               <CardContent className="max-h-72 space-y-2 overflow-y-auto">
-                {intakeQueue.filter((b) => b.status === "IN_STORAGE" && (!queueSearch || `${b.referenceNumber} ${b.rider?.name || ""}`.toUpperCase().includes(queueSearch))).map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · In storage</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); }}>Update</Button></div>)}
+                {intakeQueue.filter((b) => b.status === "IN_STORAGE" && (!queueSearch || `${b.referenceNumber} ${b.rider?.name || ""}`.toUpperCase().includes(queueSearch))).map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · In storage</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); setQueueStatus("OUT_FOR_DELIVERY"); }}>Update</Button></div>)}
                 {intakeQueue.every((b) => b.status !== "IN_STORAGE") && <p className="py-4 text-center text-sm text-muted-foreground">No luggage waiting for delivery</p>}
               </CardContent>
             </Card>
@@ -715,11 +719,58 @@ export default function QrScannerPage() {
 
         {queueBooking && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
-            <Card className="w-full max-w-md"><CardHeader><CardTitle>Update {queueBooking.referenceNumber}</CardTitle></CardHeader><CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">{queueBooking.status === "RECEIVED" ? `Store all luggage for ${queueBooking.referenceNumber} and move to In Storage.` : `Move from ${queueBooking.status.replace(/_/g, " ")} to OUT FOR DELIVERY.`}</p>
-              {queueBooking.status === "RECEIVED" && <div><p className="mb-2 text-sm font-medium">Luggage verification photo (required)</p><input type="file" accept="image/*" capture="environment" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { setQueuePhoto(await imageFileToDataUrl(file)); } catch { toast.error("Could not read photo"); } }} />{queuePhoto && <p className="mt-2 text-xs text-emerald-600">Photo ready for verification</p>}</div>}
-              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => { setQueueBooking(null); setQueuePhoto(null); }}>Cancel</Button><Button disabled={intakeProcessing || (queueBooking.status === "RECEIVED" && !queuePhoto)} onClick={updateQueuedBooking}>{intakeProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Update"}</Button></div>
-            </CardContent></Card>
+            <Card className="w-full max-w-md">
+              <CardHeader>
+                <CardTitle>Update {queueBooking.referenceNumber}</CardTitle>
+                <p className="text-xs text-muted-foreground">Current status: {queueBooking.status.replace(/_/g, " ")}</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+                  Status updates are forward-only. Once updated, this booking cannot be returned to a previous status.
+                </div>
+                <div>
+                  <p className="mb-2 text-sm font-medium">Choose new luggage status</p>
+                  {LUGGAGE_FLOW.filter((status) => status.value === (queueBooking.status === "RECEIVED" ? "IN_STORAGE" : "OUT_FOR_DELIVERY")).map((status) => {
+                    const Icon = status.icon;
+                    return (
+                      <button
+                        key={status.value}
+                        type="button"
+                        onClick={() => setQueueStatus(status.value)}
+                        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-all ${queueStatus === status.value ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50"}`}
+                      >
+                        <span className={`flex h-9 w-9 items-center justify-center rounded-lg text-white ${status.color}`}><Icon className="h-4 w-4" /></span>
+                        <span className="flex-1 text-sm font-semibold">{status.label}</span>
+                        {queueStatus === status.value && <CheckCircle className="h-5 w-5 text-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div>
+                  <p className="mb-2 text-sm font-medium">Take a picture as proof {queueStatus === "IN_STORAGE" ? "(required)" : "(optional)"}</p>
+                  {queuePhoto ? (
+                    <div className="relative overflow-hidden rounded-xl border">
+                      <Image unoptimized width={800} height={220} src={queuePhoto} alt="Luggage verification proof" className="h-36 w-full object-cover" />
+                      <button type="button" onClick={() => setQueuePhoto(null)} className="absolute right-2 top-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow">Remove</button>
+                    </div>
+                  ) : (
+                    <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/30 p-5 transition-colors hover:border-primary/50 hover:bg-primary/5">
+                      <Camera className="h-6 w-6 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Open camera or choose a photo</span>
+                      <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { setQueuePhoto(await imageFileToDataUrl(file)); } catch { toast.error("Could not read photo"); } }} />
+                    </label>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => { setQueueBooking(null); setQueuePhoto(null); setQueueStatus(""); }}>Cancel</Button>
+                  <Button disabled={intakeProcessing || !queueStatus || (queueStatus === "IN_STORAGE" && !queuePhoto)} onClick={updateQueuedBooking}>
+                    {intakeProcessing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating…</> : "Confirm Update"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -740,7 +791,9 @@ export default function QrScannerPage() {
 
   // === SCAN RESULT: Shopee/Lazada verification workflow ===
   const currentIdx = STATUS_FLOW.findIndex((s) => s.value === scanResult.currentStatus);
-  const nextStatuses = STATUS_FLOW.filter((_, i) => i > currentIdx);
+  // Scanner updates are sequential and irreversible: expose only the immediate
+  // next step instead of showing later (or previous) statuses in the UI.
+  const nextStatuses = currentIdx >= 0 ? STATUS_FLOW.slice(currentIdx + 1, currentIdx + 2) : [];
   const isCollection = verificationType === "pickup";
   const existingTags = scanResult.luggageItems || [];
   const tagSlots = tagNumbers.length;

@@ -22,6 +22,9 @@ export async function GET(
   }
   if (!(await canAccessBooking(booking))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const session = await auth();
+  const staffViewer = Boolean(session?.user && (STAFF_ROLES as readonly string[]).includes(session.user.role));
+
   const messages = await prisma.chatMessage.findMany({
     where: { bookingId: booking.id },
     orderBy: { createdAt: "asc" },
@@ -29,11 +32,16 @@ export async function GET(
   });
 
   await prisma.chatMessage.updateMany({
-    where: { bookingId: booking.id, isFromCustomer: false, isRead: false },
+    where: { bookingId: booking.id, isFromCustomer: staffViewer, isRead: false },
     data: { isRead: true },
   });
 
-  return NextResponse.json(messages);
+  // Sender identity is authoritative. This repairs the presentation of legacy
+  // rows that were incorrectly saved with isFromCustomer=true by an employee.
+  return NextResponse.json(messages.map((message) => ({
+    ...message,
+    isFromCustomer: message.senderId ? false : true,
+  })));
 }
 
 export async function POST(

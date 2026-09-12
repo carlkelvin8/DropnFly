@@ -271,6 +271,9 @@ export default function TrackingDashboardPage() {
     .filter((task) => Boolean(task.pickupStartedAt))
     .sort((a, b) => new Date(b.pickupStartedAt as string).getTime() - new Date(a.pickupStartedAt as string).getTime())[0] || null;
 
+  const quickStartAction = (task: LogisticsTask) =>
+    task.availableActions.find((action) => action === "start-pickup" || action === "start-delivery");
+
   // Employee sees their own live dot on the guide map inside this page (kept
   // separate from the public customer tracker) by polling their booking location.
   const trackedReference = trackedTask?.referenceNumber;
@@ -432,7 +435,21 @@ export default function TrackingDashboardPage() {
                           </div>
                         ) : (
                           <div className="flex flex-wrap gap-2">
-                            <Button size="sm" onClick={() => setActiveTask(task.id)}><Play className="mr-1 h-3 w-3" /> Start Task</Button>
+                            {quickStartAction(task) ? (
+                              <Button
+                                size="sm"
+                                onClick={() => handleLogisticsAction(task.id, quickStartAction(task) as LogisticsAction)}
+                                disabled={processingAction}
+                                className="bg-emerald-600 text-white hover:bg-emerald-700"
+                              >
+                                <Play className="mr-1 h-3 w-3" />
+                                Start Tracking — {quickStartAction(task) === "start-delivery" ? "Drop-off" : "Pick-up"}
+                              </Button>
+                            ) : (
+                              <Button size="sm" onClick={() => setActiveTask(task.id)}>
+                                <Play className="mr-1 h-3 w-3" /> Task Actions
+                              </Button>
+                            )}
                             <Button size="sm" variant="outline" asChild><Link href={`/dashboard/bookings/${task.id}`}><PackageOpen className="mr-1 h-3 w-3" /> Details</Link></Button>
                           </div>
                         )}

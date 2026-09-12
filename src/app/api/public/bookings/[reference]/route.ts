@@ -35,10 +35,14 @@ export async function GET(
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
 
-  // Public tracking: anyone with reference can view basic booking for map
-  // canAccessBooking still enforced for sensitive operations, but map needs public read
-  let hasAccess = false;
-  try { hasAccess = await canAccessBooking(booking); } catch {}
+  // A reference number is an identifier, not authorization. Keep the map API
+  // behind the same verified-email/customer/staff access check as the status API.
+  // This also prevents an authenticated employee from opening another employee's
+  // customer tracker unless they are assigned to that booking.
+  if (!(await canAccessBooking(booking))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   return NextResponse.json(decimalsToNumbers({
     ...booking,
     customer: {
@@ -46,7 +50,5 @@ export async function GET(
       name: booking.customerNameSnapshot || booking.customer.name,
       email: booking.customerEmailSnapshot || booking.customer.email,
     },
-    // flag to let client know if full access granted
-    _hasAccess: hasAccess,
   }));
 }

@@ -72,6 +72,7 @@ export default function LogisticsPage() {
   const [userRole, setUserRole] = useState<string>("");
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [myLoc, setMyLoc] = useState<{ lat: number; lng: number } | null>(null);
+  const [myAccuracy, setMyAccuracy] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"tasks" | "monitoring">("tasks");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmpId, setSelectedEmpId] = useState<string>("");
@@ -84,13 +85,14 @@ export default function LogisticsPage() {
   const [locationStatus, setLocationStatus] = useState<"requesting" | "active" | "denied" | "error" | "idle">("idle");
   const handleLocationStatus = useCallback((status: "requesting" | "active" | "denied" | "error") => setLocationStatus(status), []);
   const [selectedTrackedId, setSelectedTrackedId] = useState<string | null>(null);
+  const [employeeTaskFilter, setEmployeeTaskFilter] = useState<"all" | "pickup" | "delivery">("all");
 
-  // isolate photo/note when switching active task
-  useEffect(() => {
+  function openTaskActions(taskId: string) {
     setPhotoProof(null);
     setActionNote("");
     setActiveAction(null);
-  }, [activeTask]);
+    setActiveTask(taskId);
+  }
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30000);
@@ -207,6 +209,14 @@ export default function LogisticsPage() {
   const quickStartAction = (task: Task) =>
     task.isAssignedToMe ? task.availableActions.find((a) => a === "start-pickup" || a === "start-delivery") : undefined;
 
+  const employeeTasks = roleTasks.filter((task) =>
+    employeeTaskFilter === "all" ? true : task.taskType === employeeTaskFilter
+  );
+  const employeePending = roleTasks.filter((task) => !task.pickupStartedAt).length;
+  const employeeInProgress = roleTasks.filter((task) => Boolean(task.pickupStartedAt)).length;
+  const employeePickup = roleTasks.filter((task) => task.taskType === "pickup").length;
+  const employeeDelivery = roleTasks.filter((task) => task.taskType === "delivery").length;
+
   // Employee sees their own live dot on the guide map inside this page (kept
   // separate from the public customer tracker) by polling their booking location.
   const activeReference = trackedTask?.referenceNumber;
@@ -220,6 +230,7 @@ export default function LogisticsPage() {
         const loc = await res.json();
         if (active && loc.currentLat != null && loc.currentLng != null) {
           setMyLoc({ lat: Number(loc.currentLat), lng: Number(loc.currentLng) });
+          setMyAccuracy(loc.accuracy == null ? null : Number(loc.accuracy));
         }
       } catch {}
     };
@@ -227,6 +238,197 @@ export default function LogisticsPage() {
     const id = setInterval(poll, 5000);
     return () => { active = false; clearInterval(id); };
   }, [activeReference, sessionUserId, isAdmin]);
+
+  if (!loading && !isAdmin) {
+    return (
+      <div className="mx-auto max-w-6xl space-y-5">
+        {showLocationUpdater && trackedTask && (
+          <LocationUpdater key={trackedTask.id} enabled bookingId={trackedTask.id} onStatusChange={handleLocationStatus} />
+        )}
+
+        <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <div className="border-b px-5 py-5 sm:px-6">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+                <Package className="h-5 w-5" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold">My Logistics Tasks</h1>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Assigned pick-up and drop-off tasks. Tap Start to share live tracking with the customer.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                { value: employeePending, label: "Pending", tone: "bg-sky-50 text-sky-900" },
+                { value: employeeInProgress, label: "In Progress", tone: "bg-amber-50 text-amber-900" },
+                { value: employeePickup, label: "Pick-up", tone: "bg-blue-50 text-blue-900" },
+                { value: roleTasks.length, label: "Total Tasks", tone: "bg-emerald-50 text-emerald-900" },
+              ].map((item) => (
+                <div key={item.label} className={`rounded-xl px-4 py-3 text-center ${item.tone}`}>
+                  <p className="text-2xl font-bold leading-none">{item.value}</p>
+                  <p className="mt-1.5 text-[11px] font-medium opacity-70">{item.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-6">
+            <div className="mb-4 flex flex-wrap gap-2">
+              {([
+                ["all", "All Tasks", roleTasks.length],
+                ["pickup", "To Pick-up", employeePickup],
+                ["delivery", "To Drop-off", employeeDelivery],
+              ] as const).map(([value, label, count]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setEmployeeTaskFilter(value)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    employeeTaskFilter === value
+                      ? "border-orange-500 bg-orange-500 text-white"
+                      : "bg-background text-muted-foreground hover:border-orange-300 hover:text-foreground"
+                  }`}
+                >
+                  {label} <span className="ml-1 opacity-80">{count}</span>
+                </button>
+              ))}
+            </div>
+
+            {locationStatus !== "idle" && (
+              <div className={`mb-4 rounded-xl border px-4 py-3 text-xs ${locationStatus === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : locationStatus === "requesting" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                {locationStatus === "active" ? `Live GPS is active for ${trackedTask?.referenceNumber || "this task"}.` : locationStatus === "requesting" ? "Requesting location permission…" : "Enable location permission to update the customer map."}
+              </div>
+            )}
+
+            {trackedTask && (
+              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  </span>
+                  <span className="font-semibold">Employee tracking active</span>
+                  <code className="rounded bg-white/70 px-2 py-0.5 text-xs">{trackedTask.referenceNumber}</code>
+                </div>
+                <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+                  <div><span className="text-emerald-700/70">Latitude</span><p className="font-mono font-semibold">{myLoc ? myLoc.lat.toFixed(6) : "Waiting for GPS…"}</p></div>
+                  <div><span className="text-emerald-700/70">Longitude</span><p className="font-mono font-semibold">{myLoc ? myLoc.lng.toFixed(6) : "Waiting for GPS…"}</p></div>
+                  <div><span className="text-emerald-700/70">Accuracy</span><p className="font-semibold">{myAccuracy == null ? "Waiting for GPS…" : `±${Math.round(myAccuracy)} meters`}</p></div>
+                </div>
+                <p className="mt-2 text-[11px] text-emerald-700">Keep this page open and Location permission enabled. Admin Geo Monitoring receives the same booking-scoped GPS ping.</p>
+              </div>
+            )}
+
+            {employeeTasks.length === 0 ? (
+              <div className="rounded-xl border border-dashed py-14 text-center text-muted-foreground">
+                <Package className="mx-auto mb-2 h-8 w-8 opacity-40" />
+                <p className="text-sm font-medium">No assigned tasks in this section</p>
+                <p className="mt-1 text-xs">New tasking will appear here after it is assigned to you.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {employeeTasks.map((task) => {
+                  const startAction = quickStartAction(task);
+                  const isStarted = Boolean(task.pickupStartedAt);
+                  return (
+                    <article key={task.id} className="rounded-xl border bg-background p-4 shadow-sm transition-shadow hover:shadow-md">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-100 font-bold text-sky-700">
+                              {task.customer.name.trim().charAt(0).toUpperCase() || "C"}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold">{task.customer.name}</p>
+                              <p className="text-[11px] text-muted-foreground">Assigned task · {formatDate(task.createdAt)}</p>
+                            </div>
+                            <Badge variant="outline" className="ml-auto text-[10px] capitalize sm:ml-2">
+                              {isStarted ? "In Progress" : "Pending"}
+                            </Badge>
+                            <Badge className={`text-[10px] ${task.taskType === "delivery" ? "bg-violet-100 text-violet-700" : "bg-blue-100 text-blue-700"}`}>
+                              {task.taskType === "delivery" ? "TO DROP-OFF" : "TO PICK-UP"}
+                            </Badge>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase text-muted-foreground">{task.taskType === "delivery" ? "Drop-off location" : "Pickup address"}</p>
+                              <p className="mt-1 flex items-start gap-1.5 font-medium"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-500" />{task.taskType === "delivery" ? task.dropOffLocation : task.pickupLocation}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase text-muted-foreground">Tracking code</p>
+                              <p className="mt-1 font-mono font-semibold">{task.referenceNumber}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase text-muted-foreground">Contact</p>
+                              <p className="mt-1 flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" />{task.customer.phone}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase text-muted-foreground">Vehicle</p>
+                              <p className="mt-1 flex items-center gap-1.5"><Bike className="h-3.5 w-3.5" />{task.rider?.vehicleType || "Assigned vehicle"}{task.rider?.plateNumber ? ` · ${task.rider.plateNumber}` : ""}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 flex-wrap gap-2 sm:w-40 sm:flex-col">
+                          {startAction ? (
+                            <Button size="sm" onClick={() => { setSelectedTrackedId(task.id); void handleAction(task.id, startAction); }} disabled={processingAction} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                              {processingAction ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Play className="mr-1 h-3.5 w-3.5" />}
+                              Start Tracking — {startAction === "start-delivery" ? "Drop-off" : "Pick-up"}
+                            </Button>
+                          ) : (
+                            <>
+                              {isStarted && (
+                                <Button size="sm" variant="outline" disabled className="border-emerald-200 bg-emerald-50 text-emerald-700 opacity-100">
+                                  <Activity className="mr-1 h-3.5 w-3.5" /> Tracking Active
+                                </Button>
+                              )}
+                              <Button size="sm" onClick={() => openTaskActions(task.id)}>
+                                <CheckCircle className="mr-1 h-3.5 w-3.5" /> Update Task
+                              </Button>
+                            </>
+                          )}
+                          <Button size="sm" variant="outline" asChild>
+                            <Link href={`/dashboard/bookings/${task.id}`}>View Details</Link>
+                          </Button>
+                        </div>
+                      </div>
+
+                      {activeTask === task.id && !startAction && (
+                        <div className="mt-4 space-y-3 rounded-xl border bg-muted/30 p-3">
+                          <div className="flex flex-wrap gap-2">
+                            {task.availableActions.map((action) => (
+                              <Button key={action} size="sm" variant={activeAction === action ? "default" : "outline"} onClick={() => setActiveAction(action)}>
+                                {LOGISTICS_ACTION_META[action].label}
+                              </Button>
+                            ))}
+                          </div>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}><Camera className="mr-1 h-3.5 w-3.5" />{photoProof ? "Change Photo" : "Add Photo"}</Button>
+                            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={async (e) => { const file = e.target.files?.[0]; if (file) { try { setPhotoProof(await imageFileToDataUrl(file)); } catch { toast.error("Could not read photo"); } } }} className="hidden" />
+                            <input value={actionNote} onChange={(e) => setActionNote(e.target.value)} placeholder="Note (optional)" className="h-9 flex-1 rounded-md border bg-background px-3 text-xs" />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" disabled={!activeAction || processingAction} onClick={() => activeAction && handleAction(task.id, activeAction)}>
+                              {processingAction && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}Confirm Update
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => { setActiveTask(null); setActiveAction(null); setPhotoProof(null); setActionNote(""); }}>Cancel</Button>
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -507,12 +709,12 @@ export default function LogisticsPage() {
                                 Start {quickStartAction(task) === "start-delivery" ? "Delivery" : "Pickup"}
                               </Button>
                             ) : (
-                              <Button size="sm" onClick={() => setActiveTask(task.id)}>
+                              <Button size="sm" onClick={() => openTaskActions(task.id)}>
                                 <Play className="mr-1 h-3 w-3" /> {task.isAssignedToMe ? "Task Actions" : "Manage Task"}
                               </Button>
                             )}
                             <Button size="sm" variant="outline" asChild>
-                              <Link href={`/track/${task.referenceNumber}`}>
+                              <Link href={`/dashboard/bookings/${task.id}`}>
                                 <Package className="mr-1 h-3 w-3" /> Details
                               </Link>
                             </Button>

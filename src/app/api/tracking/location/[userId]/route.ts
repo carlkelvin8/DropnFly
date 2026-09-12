@@ -53,7 +53,7 @@ export async function GET(
     const latest = await prisma.locationUpdate.findFirst({
       where: { bookingId, userId },
       orderBy: { createdAt: "desc" },
-      select: { latitude: true, longitude: true, createdAt: true },
+      select: { latitude: true, longitude: true, accuracy: true, createdAt: true },
     });
     // Fallback to user's last known generic location if no booking-scoped ping yet
     // so map still shows last dot + NAIA pin instead of blank.
@@ -63,6 +63,7 @@ export async function GET(
         name: user.name,
         currentLat: latest.latitude,
         currentLng: latest.longitude,
+        accuracy: latest.accuracy,
         lastLocationUpdate: latest.createdAt,
       });
     }
@@ -71,6 +72,7 @@ export async function GET(
       name: user.name,
       currentLat: user.currentLat,
       currentLng: user.currentLng,
+      accuracy: null,
       lastLocationUpdate: user.lastLocationUpdate,
     });
   }

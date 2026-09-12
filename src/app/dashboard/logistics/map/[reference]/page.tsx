@@ -53,6 +53,7 @@ export default function AdminFullMapPage() {
   const [liveLat, setLiveLat] = useState<number | null>(null);
   const [liveLng, setLiveLng] = useState<number | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [accuracy, setAccuracy] = useState<number | null>(null);
   const [recent, setRecent] = useState(false);
 
   const riderId = task?.rider?.id || null;
@@ -86,6 +87,7 @@ export default function AdminFullMapPage() {
         const data = await res.json();
         if ("currentLat" in data) setLiveLat(data.currentLat ?? null);
         if ("currentLng" in data) setLiveLng(data.currentLng ?? null);
+        if ("accuracy" in data) setAccuracy(data.accuracy ?? null);
         if ("lastLocationUpdate" in data) {
           setUpdatedAt(data.lastLocationUpdate);
           setRecent(!!data.lastLocationUpdate && Date.now() - new Date(data.lastLocationUpdate).getTime() < STALE_THRESHOLD_MS);
@@ -154,6 +156,11 @@ export default function AdminFullMapPage() {
           <Badge variant="outline" className={recent ? "gap-1 border-emerald-200 bg-emerald-50 text-emerald-700" : "gap-1 border-amber-200 bg-amber-50 text-amber-700"}>
             <span className={`h-2 w-2 rounded-full ${recent ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />{recent ? "LIVE" : "STALE"}
           </Badge>
+          {accuracy != null && (
+            <Badge variant="outline" className={accuracy <= 25 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}>
+              Accuracy ±{Math.round(accuracy)}m
+            </Badge>
+          )}
           <span className="text-[11px] text-muted-foreground">GPS {formatManilaTime(updatedAt)}</span>
         </span>
       </div>

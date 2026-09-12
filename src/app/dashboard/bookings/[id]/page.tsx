@@ -1293,8 +1293,8 @@ export default function BookingDetailPage() {
                 <Edit3 className="mr-2 h-4 w-4" /> Edit Booking
               </Button>
               <Button variant="outline" className="w-full justify-start" asChild>
-                <Link href={`/track/map/${booking.referenceNumber}`}>
-                  <Navigation className="mr-2 h-4 w-4" /> Live Map
+                <Link href={userRole === "ADMIN" || userRole === "STAFF" ? `/dashboard/logistics/map/${booking.referenceNumber}` : "/dashboard/logistics"}>
+                  <Navigation className="mr-2 h-4 w-4" /> {userRole === "ADMIN" || userRole === "STAFF" ? "Operations Live Map" : "Open My Logistics"}
                 </Link>
               </Button>
               <Button variant="outline" className="w-full justify-start" asChild>

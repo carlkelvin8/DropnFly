@@ -32,9 +32,10 @@ export async function POST(req: Request) {
     if (accuracy != null && (typeof accuracy !== "number" || !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100000)) {
       return NextResponse.json({ error: "Invalid accuracy" }, { status: 400 });
     }
-    // filter extremely inaccurate pings server-side as well (client already filters >100m)
-    if (accuracy != null && accuracy > 200) {
-      // store but mark? still store — but could be jitter; we allow but downstream history filters
+    // Match the client threshold. Do not persist a low-quality point that can
+    // make both the admin monitor and customer tracker jump to a false location.
+    if (accuracy != null && accuracy > 100) {
+      return NextResponse.json({ error: "GPS accuracy is too low; waiting for a better location fix" }, { status: 422 });
     }
 
     const booking = await prisma.booking.findFirst({

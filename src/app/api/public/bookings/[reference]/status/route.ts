@@ -58,16 +58,10 @@ export async function GET(
   // Security: do not expose the rider's live coordinates before the employee
   // has started the task. Tracking only becomes visible once pickupStartedAt is set.
   const trackable = Boolean(booking.pickupStartedAt);
-  const rider = assignment?.user
-    ? trackable
-      ? assignment.user
-      : {
-          ...assignment.user,
-          currentLat: null,
-          currentLng: null,
-          lastLocationUpdate: null,
-        }
-    : null;
+  // Do not serialize the employee at all before Start Pickup/Delivery. Hiding
+  // the card in React is not a security boundary; the API response must also
+  // withhold identity, vehicle and location fields.
+  const rider = trackable && assignment?.user ? assignment.user : null;
 
   return NextResponse.json({
     booking: decimalsToNumbers({

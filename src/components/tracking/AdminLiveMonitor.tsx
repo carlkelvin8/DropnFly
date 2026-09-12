@@ -51,6 +51,7 @@ export function AdminLiveMonitor({ employeeId, employeeName, tasks, initialLat, 
   const [liveLat, setLiveLat] = useState<number | null>(initialLat);
   const [liveLng, setLiveLng] = useState<number | null>(initialLng);
   const [updatedAt, setUpdatedAt] = useState<string | null>(lastUpdate);
+  const [accuracy, setAccuracy] = useState<number | null>(null);
   const [recent, setRecent] = useState<boolean>(() => !!lastUpdate && Date.now() - new Date(lastUpdate).getTime() < STALE_THRESHOLD_MS);
   const [pollError, setPollError] = useState<string | null>(null);
   const [selectedRef, setSelectedRef] = useState<string | null>(null);
@@ -77,6 +78,7 @@ export function AdminLiveMonitor({ employeeId, employeeName, tasks, initialLat, 
         if (cancelled) return;
         if ("currentLat" in data) setLiveLat(data.currentLat ?? null);
         if ("currentLng" in data) setLiveLng(data.currentLng ?? null);
+        if ("accuracy" in data) setAccuracy(data.accuracy ?? null);
         if ("lastLocationUpdate" in data) {
           setUpdatedAt(data.lastLocationUpdate);
           setRecent(!!data.lastLocationUpdate && Date.now() - new Date(data.lastLocationUpdate).getTime() < STALE_THRESHOLD_MS);
@@ -126,6 +128,11 @@ export function AdminLiveMonitor({ employeeId, employeeName, tasks, initialLat, 
         </Badge>
         <span className="text-xs text-muted-foreground">Monitoring <strong>{employeeName}</strong> → {activeTask.pickupLocation} → {activeTask.dropOffLocation}</span>
         <span className="ml-auto text-[11px] text-muted-foreground">Updated {formatManilaTime(updatedAt)} • pin varies per booking&apos;s NAIA terminal</span>
+        {accuracy != null && (
+          <Badge variant="outline" className={accuracy <= 25 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}>
+            GPS ±{Math.round(accuracy)}m
+          </Badge>
+        )}
         <Button size="sm" variant="outline" asChild><Link href={`/dashboard/logistics/map/${activeTask.referenceNumber}`}><Navigation className="mr-1 h-3 w-3" /> Open Full Map</Link></Button>
       </div>
       {tasks.length > 1 && (

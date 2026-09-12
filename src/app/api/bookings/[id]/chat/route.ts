@@ -42,7 +42,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     });
   }
 
-  return NextResponse.json(total === undefined ? messages : { messages, total });
+  const normalized = messages.map((message) => ({
+    ...message,
+    isFromCustomer: message.senderId ? false : true,
+  }));
+
+  return NextResponse.json(total === undefined ? normalized : { messages: normalized, total });
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
