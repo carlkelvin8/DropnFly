@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { normalizeReference } from "@/lib/utils";
 import { canAccessBooking } from "@/lib/booking-access";
+
+const STAFF_ROLES = ["ADMIN", "STAFF", "EMPLOYEE"] as const;
 
 export async function GET(
   _req: Request,
@@ -52,6 +55,21 @@ export async function POST(
   const { message } = await req.json();
   if (typeof message !== "string" || !message.trim() || message.length > 2000) {
     return NextResponse.json({ error: "Message must be between 1 and 2000 characters" }, { status: 400 });
+  }
+
+  // A logged-in staff/employee replying from this tracker chat must never be
+  // saved as the customer (avoids the opposite-role bubble bug).
+  const session = await auth();
+  if (session?.user && (STAFF_ROLES as readonly string[]).includes(session.user.role)) {
+    const msg = await prisma.chatMessage.create({
+      data: {
+        bookingId: booking.id,
+        senderId: session.user.id,
+        message: message.trim(),
+        isFromCustomer: false,
+      },
+    });
+    return NextResponse.json(msg, { status: 201 });
   }
 
   const msg = await prisma.chatMessage.create({

@@ -180,7 +180,7 @@ export default function LiveTrackingPage() {
       const res = await fetch(`/api/public/bookings/${params.reference}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, isFromCustomer: true }),
+        body: JSON.stringify({ message: text }),
       });
       if (res.ok) {
         const msg = await res.json();

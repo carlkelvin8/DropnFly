@@ -35,6 +35,7 @@ interface LiveMapProps {
   customerName?: string;
   riderView?: boolean;
   destinationPhase?: "pickup" | "dropoff";
+  containerClassName?: string;
 }
 
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -123,6 +124,7 @@ export default function LiveMapInner({
   customerName,
   riderView = false,
   destinationPhase = "dropoff",
+  containerClassName = "h-96",
 }: LiveMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<any>(null);
@@ -693,7 +695,7 @@ export default function LiveMapInner({
           Drop-off
         </span>
       </div>
-      <div ref={mapContainer} className="h-96 w-full rounded-lg border" />
+      <div ref={mapContainer} className={`w-full rounded-lg border ${containerClassName}`} />
     </div>
   );
 }

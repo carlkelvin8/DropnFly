@@ -126,7 +126,7 @@ export function AdminLiveMonitor({ employeeId, employeeName, tasks, initialLat, 
         </Badge>
         <span className="text-xs text-muted-foreground">Monitoring <strong>{employeeName}</strong> → {activeTask.pickupLocation} → {activeTask.dropOffLocation}</span>
         <span className="ml-auto text-[11px] text-muted-foreground">Updated {formatManilaTime(updatedAt)} • pin varies per booking&apos;s NAIA terminal</span>
-        <Button size="sm" variant="outline" asChild><Link href={`/track/map/${activeTask.referenceNumber}`}><Navigation className="mr-1 h-3 w-3" /> Open Full Map</Link></Button>
+        <Button size="sm" variant="outline" asChild><Link href={`/dashboard/logistics/map/${activeTask.referenceNumber}`}><Navigation className="mr-1 h-3 w-3" /> Open Full Map</Link></Button>
       </div>
       {tasks.length > 1 && (
         <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
