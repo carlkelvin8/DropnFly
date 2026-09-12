@@ -1082,7 +1082,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
     setPdfLoading(true);
     try {
       // Preferred: snapshot the exact on-screen report into the PDF (true WYSIWYG — same as generated output).
-      const node = document.getElementById("report-paper");
+      const node = document.getElementById("report-document") ?? document.getElementById("report-paper");
       if (node) {
         let captured = false;
         try {
@@ -1092,6 +1092,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
           ]);
           node.classList.add("pdf-export");
           try {
+            const rect = node.getBoundingClientRect();
             const canvas = await html2canvas(node, {
               scale: 2,
               backgroundColor: "#ffffff",
@@ -1103,19 +1104,80 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
             const pageHeight = pdf.internal.pageSize.getHeight();
             const margin = 28;
             const imgWidth = pageWidth - margin * 2;
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
             const usable = pageHeight - margin * 2;
-            let heightLeft = imgHeight;
-            let position = 0;
-            const img = canvas.toDataURL("image/jpeg", 0.95);
-            pdf.addImage(img, "JPEG", margin, margin, imgWidth, imgHeight);
-            heightLeft -= usable;
-            while (heightLeft > 0) {
-              position -= usable;
-              pdf.addPage();
-              pdf.addImage(img, "JPEG", margin, margin + position, imgWidth, imgHeight);
-              heightLeft -= usable;
+            const pxToPt = imgWidth / canvas.width;
+            const usablePx = usable / pxToPt;
+            const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+
+            // Map each logical block to its pixel range in the captured canvas so page
+            // breaks only ever land BETWEEN blocks — never through a row or paragraph.
+            const regions = Array.from(node.querySelectorAll<HTMLElement>("[data-pdf-block]"))
+              .map((el) => {
+                const r = el.getBoundingClientRect();
+                return {
+                  top: Math.max(0, (r.top - rect.top) * scaleY),
+                  bottom: Math.min(canvas.height, (r.bottom - rect.top) * scaleY),
+                };
+              })
+              .filter((r) => r.bottom - r.top > 0)
+              .sort((a, b) => a.top - b.top);
+
+            const slices: { start: number; end: number }[] = [];
+            if (regions.length === 0) {
+              for (let y = 0; y < canvas.height; y += usablePx) {
+                slices.push({ start: y, end: Math.min(canvas.height, y + usablePx) });
+              }
+            } else {
+              let start = 0;
+              let cursorBottom = 0;
+              let hasContent = false;
+              for (const r of regions) {
+                const blockH = r.bottom - r.top;
+                // A single block taller than a page gets split across pages.
+                if (blockH > usablePx) {
+                  if (hasContent) slices.push({ start, end: cursorBottom });
+                  let s = r.top;
+                  while (r.bottom - s > usablePx) {
+                    slices.push({ start: s, end: s + usablePx });
+                    s += usablePx;
+                  }
+                  start = s;
+                  cursorBottom = r.bottom;
+                  hasContent = r.bottom > s;
+                  continue;
+                }
+                if (hasContent && r.bottom - start > usablePx) {
+                  slices.push({ start, end: cursorBottom });
+                  start = r.top;
+                  cursorBottom = r.bottom;
+                } else {
+                  cursorBottom = Math.max(cursorBottom, r.bottom);
+                }
+                hasContent = true;
+              }
+              slices.push({ start, end: canvas.height });
             }
+
+            const sliceCanvas = document.createElement("canvas");
+            const sliceCtx = sliceCanvas.getContext("2d");
+            slices.forEach((sl, idx) => {
+              const sliceH = Math.max(1, Math.ceil(sl.end - sl.start));
+              if (idx > 0) pdf.addPage();
+              sliceCanvas.width = canvas.width;
+              sliceCanvas.height = sliceH;
+              if (sliceCtx) {
+                sliceCtx.clearRect(0, 0, sliceCanvas.width, sliceH);
+                sliceCtx.drawImage(canvas, 0, sl.start, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+              }
+              pdf.addImage(
+                sliceCanvas.toDataURL("image/jpeg", 0.92),
+                "JPEG",
+                margin,
+                margin,
+                imgWidth,
+                sliceH * pxToPt
+              );
+            });
             captured = true;
             const fromStr = period === "custom" ? (dateFrom || new Date().toISOString().slice(0, 10)) : new Date(Date.now() - (period === "week" ? 7 : period === "year" ? 365 : 30) * 86400000).toISOString().slice(0, 10);
             const toStr = period === "custom" ? (dateTo || new Date().toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10);
@@ -1337,9 +1399,9 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
             </div>
 
             {/* Document page */}
-            <div className="px-8 py-10 sm:px-14 sm:py-14">
+            <div id="report-document" className="px-8 py-10 sm:px-14 sm:py-14">
               {/* Letterhead */}
-              <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b-2 border-slate-900 pb-6 dark:border-slate-300">
+              <div data-pdf-block className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b-2 border-slate-900 pb-6 dark:border-slate-300">
                 <div>
                   <p className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">DropNfly Logistics Inc.</p>
                   <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
@@ -1354,7 +1416,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
               </div>
 
               {/* Title */}
-              <div className="pt-9 pb-8 text-center">
+              <div data-pdf-block className="pt-9 pb-8 text-center">
                 <span className="inline-flex items-center gap-1.5 rounded-sm border border-primary/30 bg-primary/5 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">
                   <selected.icon className="h-3 w-3" /> {selected.label}
                 </span>
@@ -1368,7 +1430,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
               </div>
 
               {/* Executive Summary */}
-              <div className="mb-9 rounded-md border border-slate-200 bg-slate-50 px-6 py-5 dark:border-slate-700 dark:bg-slate-800/40">
+              <div data-pdf-block className="mb-9 rounded-md border border-slate-200 bg-slate-50 px-6 py-5 dark:border-slate-700 dark:bg-slate-800/40">
                 <p className="mb-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Executive Summary</p>
                 <p className="text-[13.5px] leading-relaxed text-justify text-slate-700 dark:text-slate-300" style={{ textJustify: "inter-word" }}>
                   {report.summary}
@@ -1376,7 +1438,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
               </div>
 
               {/* Contents */}
-              <div className="mb-9">
+              <div data-pdf-block className="mb-9">
                 <p className="mb-3 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Contents</p>
                 <div className="grid gap-x-8 gap-y-2 rounded-md border border-slate-200 bg-slate-50/60 px-5 py-4 sm:grid-cols-2 dark:border-slate-700 dark:bg-slate-800/30">
                   {report.sections.map((section, i) => (
@@ -1391,7 +1453,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
               {/* Numbered sections */}
               <div className="space-y-9">
                 {report.sections.map((section, i) => (
-                  <section key={i} id={`report-section-${i}`} className="scroll-mt-24">
+                  <section key={i} id={`report-section-${i}`} data-pdf-block className="scroll-mt-24">
                     <div className="flex items-center gap-3">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 font-mono text-[11px] font-bold text-white dark:bg-slate-100 dark:text-slate-900">
                         {i + 1}
@@ -1408,7 +1470,7 @@ function AiReportsSection({ period, dateFrom, dateTo }: { period: string; dateFr
               </div>
 
               {/* Signature / footer */}
-              <div className="mt-10 border-t border-slate-200 pt-6 dark:border-slate-700">
+              <div data-pdf-block className="mt-10 border-t border-slate-200 pt-6 dark:border-slate-700">
                 <div className="grid gap-6 text-[11px] text-slate-600 sm:grid-cols-3 dark:text-slate-400">
                   <div>
                     <p className="mb-1 font-mono text-[9.5px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Prepared By</p>
