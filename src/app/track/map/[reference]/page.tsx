@@ -24,35 +24,34 @@ import {
   Car,
   Truck,
   MessageCircle,
-  Phone,
   Send,
-  PlayCircle,
+  Loader2,
 } from "lucide-react";
-import { toast } from "sonner";
 
-interface TrackingData {
-  booking: {
-    id: string;
-    referenceNumber: string;
-    pickupLocation: string;
-    dropOffLocation: string;
-    status: string;
-    checkIn: string;
-    pickupStartedAt: string | null;
-    customer: { name: string; phone: string };
-  };
-  assignments: {
-    user: {
-      id: string;
-      name: string;
-      currentLat: number | null;
-      currentLng: number | null;
-      lastLocationUpdate: string | null;
-      profilePic: string | null;
-      vehicleType: string | null;
-      plateNumber: string | null;
-    };
-  }[];
+interface Rider {
+  id: string;
+  name: string;
+  currentLat: number | null;
+  currentLng: number | null;
+  lastLocationUpdate: string | null;
+  profilePic: string | null;
+  vehicleType: string | null;
+  plateNumber: string | null;
+}
+
+interface BookingPublic {
+  id: string;
+  referenceNumber: string;
+  pickupLocation: string;
+  dropOffLocation: string;
+  status: string;
+  checkIn: string;
+  pickupStartedAt: string | null;
+  pickupLat: number | null;
+  pickupLng: number | null;
+  dropOffLat: number | null;
+  dropOffLng: number | null;
+  customer: { name: string; phone: string };
 }
 
 function VehicleIcon({ type }: { type: string | null }) {
@@ -75,8 +74,12 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
 
 export default function LiveTrackingPage() {
   const params = useParams();
-  const [data, setData] = useState<TrackingData | null>(null);
+  const [booking, setBooking] = useState<BookingPublic | null>(null);
+  const [rider, setRider] = useState<Rider | null>(null);
   const [employeeLoc, setEmployeeLoc] = useState<{ lat: number; lng: number } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{ id: string; message: string; isFromCustomer: boolean; createdAt: string; sender?: { name: string; role?: string } | null }[]>([]);
   const [chatInput, setChatInput] = useState("");
@@ -84,70 +87,50 @@ export default function LiveTrackingPage() {
   const chatBoxRef = useRef<HTMLDivElement>(null);
   const chatStickToBottomRef = useRef(true);
   const lastChatMessageIdRef = useRef<string | null>(null);
-  const [isRiderView, setIsRiderView] = useState(false);
-  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/auth/session")
-      .then((r) => r.json())
-      .then((s) => { if (s?.user) { setIsRiderView(true); setSessionUserId(s.user.id || null); } })
-      .catch(() => {});
-  }, []);
-
-  const [loadError, setLoadError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    setLoadError(null);
-    fetch(`/api/public/bookings/${encodeURIComponent(String(params.reference))}`, { cache: "no-store" })
-      .then((r) => {
-        if (!r.ok) throw new Error(r.status === 404 ? "Booking not found" : "Failed to load booking");
-        return r.json();
-      })
-      .then(async (booking) => {
-        // Use public rider endpoint for anonymous tracking (private assignments needs auth and would 401)
-        let assignments: { user: { id: string; name: string; currentLat: number | null; currentLng: number | null; lastLocationUpdate: string | null; profilePic: string | null; vehicleType: string | null; plateNumber: string | null } }[] = [];
-        try {
-          const pubRiderRes = await fetch(`/api/public/bookings/${encodeURIComponent(String(params.reference))}/rider`, { cache: "no-store" });
-          if (pubRiderRes.ok) {
-            const j = await pubRiderRes.json();
-            if (j.rider) assignments = [{ user: j.rider }];
-            else {
-              // no rider assigned yet — keep empty, map still shows NAIA pins
-              assignments = [];
-            }
-          }
-          // try private assignments as supplement if logged in (never throw)
-          try {
-            const assignmentsRes = await fetch(`/api/bookings/${booking.id}/assignments`, { cache: "no-store" });
-            if (assignmentsRes.ok) {
-              const priv = await assignmentsRes.json();
-              if (Array.isArray(priv) && priv.length > assignments.length) assignments = priv;
-            }
-          } catch {}
-        } catch {}
-        if (cancelled) return;
-        setData({ booking, assignments });
+    (async () => {
+      setLoadError(null);
+      setLoading(true);
+      setBooking(null);
+      setRider(null);
+      setEmployeeLoc(null);
+      try {
+        const bookingRes = await fetch(`/api/public/bookings/${encodeURIComponent(String(params.reference))}`, { cache: "no-store" });
+        if (!bookingRes.ok) throw new Error(bookingRes.status === 404 ? "Booking not found" : "Failed to load booking");
+        const b = await bookingRes.json();
 
-        if (assignments.length > 0) {
-          const emp = assignments[0].user;
-          if (emp.currentLat != null && emp.currentLng != null) {
-            setEmployeeLoc({ lat: emp.currentLat, lng: emp.currentLng });
-          }
+        // Rider is only revealed after the employee started the leg (server-gated).
+        const riderRes = await fetch(`/api/public/bookings/${encodeURIComponent(String(params.reference))}/rider`, { cache: "no-store" });
+        let r: Rider | null = null;
+        if (riderRes.ok) {
+          const j = await riderRes.json();
+          if (j.rider) r = j.rider;
         }
-      })
-      .catch((e) => {
+        if (cancelled) return;
+        setBooking(b);
+        setRider(r);
+        if (r && r.currentLat != null && r.currentLng != null) {
+          setEmployeeLoc({ lat: r.currentLat, lng: r.currentLng });
+        }
+      } catch (e) {
         if (!cancelled) setLoadError(e instanceof Error ? e.message : "Failed to load tracking data");
-      });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, [params.reference]);
 
+  const hasStarted = Boolean(booking?.pickupStartedAt);
+
+  // Poll the rider's live location only after the employee started the leg.
   useEffect(() => {
-    if (!data?.assignments?.[0]) return;
-    const userId = data.assignments[0].user.id;
+    if (!hasStarted || !rider?.id) return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/tracking/location/${userId}?reference=${encodeURIComponent(String(params.reference))}`);
+        const res = await fetch(`/api/tracking/location/${rider.id}?reference=${encodeURIComponent(String(params.reference))}`);
         if (!res.ok) return;
         const loc = await res.json();
         if (loc.currentLat != null && loc.currentLng != null) {
@@ -156,7 +139,7 @@ export default function LiveTrackingPage() {
       } catch {}
     }, 5000);
     return () => clearInterval(interval);
-  }, [data, params.reference]);
+  }, [hasStarted, rider?.id, params.reference]);
 
   useEffect(() => {
     if (!chatOpen) return;
@@ -197,7 +180,7 @@ export default function LiveTrackingPage() {
       const res = await fetch(`/api/public/bookings/${params.reference}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, isFromCustomer: !isRiderView }),
+        body: JSON.stringify({ message: text, isFromCustomer: true }),
       });
       if (res.ok) {
         const msg = await res.json();
@@ -207,27 +190,25 @@ export default function LiveTrackingPage() {
     setChatLoading(false);
   }
 
-  // Destination: prefer exact lat/lng if booking has them, fallback to NAIA terminal
-  const pickupTerminalForMap = data?.booking ? data.booking.pickupLocation.split(" - ")[0].trim() : "";
-  const dropoffTerminalForMap = data?.booking ? data.booking.dropOffLocation.split(" - ")[0].trim() : "";
-  const bAny = data?.booking as unknown as Record<string, unknown>;
-  const pickupCoordsForMap = bAny?.pickupLat != null && bAny?.pickupLng != null
-    ? { lat: bAny.pickupLat as number, lng: bAny.pickupLng as number }
+  // Destination pins: exact lat/lng when present, else NAIA terminal.
+  const pickupTerminalForMap = booking ? booking.pickupLocation.split(" - ")[0].trim() : "";
+  const dropoffTerminalForMap = booking ? booking.dropOffLocation.split(" - ")[0].trim() : "";
+  const pickupCoordsForMap = booking?.pickupLat != null && booking?.pickupLng != null
+    ? { lat: booking.pickupLat, lng: booking.pickupLng }
     : pickupTerminalForMap ? NAIA_TERMINAL_COORDS[pickupTerminalForMap] : null;
-  const dropoffCoordsForMap = bAny?.dropOffLat != null && bAny?.dropOffLng != null
-    ? { lat: bAny.dropOffLat as number, lng: bAny.dropOffLng as number }
+  const dropoffCoordsForMap = booking?.dropOffLat != null && booking?.dropOffLng != null
+    ? { lat: booking.dropOffLat, lng: booking.dropOffLng }
     : dropoffTerminalForMap ? NAIA_TERMINAL_COORDS[dropoffTerminalForMap] : null;
 
   let distance: number | null = null;
   let eta: string | null = null;
-  if (employeeLoc && data?.booking) {
-    const isDeliveryPhase = data.booking.status === "OUT_FOR_DELIVERY" || data.booking.status === "DELIVERED";
+  if (hasStarted && employeeLoc && booking) {
+    const isDeliveryPhase = booking.status === "OUT_FOR_DELIVERY" || booking.status === "DELIVERED";
     const dest = isDeliveryPhase ? dropoffCoordsForMap : pickupCoordsForMap;
     if (dest) {
       const base = haversine(employeeLoc.lat, employeeLoc.lng, dest.lat, dest.lng);
       const d = base * 1.35;
       distance = d;
-      // Manila traffic factor
       const minsOfDay = (() => { try { const p = new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila", hour:"2-digit", minute:"2-digit", hourCycle:"h23"}).formatToParts(new Date()); const hh=Number(p.find(x=>x.type==="hour")?.value||"12"); if((hh>=7&&hh<=9)||(hh>=17&&hh<=20)) return 0.7; if(hh>=22||hh<=5) return 1.25; return 1.0; } catch { return 1.0; } })();
       const mins = Math.round((d / (30 * minsOfDay)) * 60);
       if (mins <= 1) eta = "1 min"; else if (mins < 60) eta = `${mins} mins`; else { const h=Math.floor(mins/60); const m=mins%60; eta=m?`${h}h ${m}m`:`${h}h`; }
@@ -240,48 +221,25 @@ export default function LiveTrackingPage() {
         <Card className="max-w-md w-full">
           <CardContent className="p-6 text-center space-y-3">
             <p className="font-medium text-red-600">{loadError}</p>
-            <p className="text-sm text-muted-foreground">Check reference or open <Link href={`/track/${params.reference}`} className="underline">/track/{String(params.reference)}</Link> then click Live Map.</p>
+            <p className="text-sm text-muted-foreground">Check your tracking number or open <Link href={`/track/${params.reference}`} className="underline">/track/{String(params.reference)}</Link>.</p>
             <Button asChild variant="outline"><Link href="/track">Back to Tracking</Link></Button>
           </CardContent>
         </Card>
       </div>
     );
   }
-  if (!data) {
+  if (loading && !booking) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-muted-foreground">Loading tracking data...</p>
       </div>
     );
   }
+  if (!booking) return null;
 
-  const employee = data.assignments?.[0]?.user;
-  const statusLabel = data.booking.status === "OUT_FOR_DELIVERY" ? "Out for Delivery"
-    : data.booking.status === "IN_STORAGE" ? "In Storage"
-    : data.booking.status.replace("_", " ");
-
-  const imAssignedRider = Boolean(sessionUserId && employee && employee.id === sessionUserId);
-  const hasStarted = Boolean(data.booking.pickupStartedAt);
-  const startAction = data.booking.status === "OUT_FOR_DELIVERY" ? "start-delivery" : "start-pickup";
-
-  async function startTask() {
-    const bookingId = data?.booking?.id;
-    if (!bookingId) return;
-    setStarting(true);
-    try {
-      const res = await fetch(`/api/logistics/tasks/${bookingId}/action`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: startAction }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Failed to start");
-      setData((prev) => prev ? { ...prev, booking: { ...prev.booking, pickupStartedAt: new Date().toISOString() } } : prev);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to start");
-    }
-    setStarting(false);
-  }
+  const statusLabel = booking.status === "OUT_FOR_DELIVERY" ? "Out for Delivery"
+    : booking.status === "IN_STORAGE" ? "In Storage"
+    : booking.status.replace("_", " ");
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
@@ -291,7 +249,7 @@ export default function LiveTrackingPage() {
             <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Dropnfly</span>
           </Link>
           <Button variant="ghost" asChild>
-            <Link href={isRiderView ? "/dashboard/logistics" : `/track/${params.reference}`} className="flex items-center gap-1">
+            <Link href={`/track/${params.reference}`} className="flex items-center gap-1">
               <ChevronLeft className="h-4 w-4" /> Back
             </Link>
           </Button>
@@ -307,7 +265,7 @@ export default function LiveTrackingPage() {
             <h1 className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-xl font-bold text-transparent">
               Live Tracking
             </h1>
-            <p className="font-mono text-sm text-blue-700">{data.booking.referenceNumber}</p>
+            <p className="font-mono text-sm text-blue-700">{booking.referenceNumber}</p>
           </div>
           {eta && (
             <Badge variant="secondary" className="ml-auto text-xs gap-1">
@@ -317,192 +275,141 @@ export default function LiveTrackingPage() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          <div className="overflow-hidden rounded-xl border shadow-lg lg:col-span-2">
-      <LiveMap
-              referenceNumber={data.booking.referenceNumber}
-              employeeLat={hasStarted ? (employeeLoc?.lat ?? null) : null}
-              employeeLng={hasStarted ? (employeeLoc?.lng ?? null) : null}
-              employeeName={employee?.name}
-              employeeVehicleType={employee?.vehicleType ?? null}
-              employeePlate={employee?.plateNumber ?? null}
-              pickupLat={pickupCoordsForMap?.lat}
-              pickupLng={pickupCoordsForMap?.lng}
-              dropoffLat={dropoffCoordsForMap?.lat}
-              dropoffLng={dropoffCoordsForMap?.lng}
-              pickupAddress={data.booking.pickupLocation}
-              dropoffAddress={data.booking.dropOffLocation}
-              customerName={data.booking.customer.name}
-              riderView={isRiderView}
-              destinationPhase={data.booking.status === "OUT_FOR_DELIVERY" || data.booking.status === "DELIVERED" ? "dropoff" : "pickup"}
-            />
-          </div>
-
-          <div className="space-y-4">
-            {isRiderView ? (
-              <Card className="border-t-4 border-blue-500 shadow-md">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <User className="h-4 w-4 text-blue-600" /> Customer Details
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
+          <div className="lg:col-span-2">
+            {!hasStarted ? (
+              <Card className="overflow-hidden border-t-4 border-amber-400 shadow-lg">
+                <CardContent className="p-6">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-                      {data.booking.customer.name.charAt(0)}
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                      <Clock className="h-5 w-5 text-amber-600 animate-pulse" />
                     </div>
                     <div>
-                      <p className="font-semibold">{data.booking.customer.name}</p>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Phone className="h-3 w-3" /> {data.booking.customer.phone}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="rounded-lg border bg-muted/30 p-2">
-                      <span className="text-muted-foreground">Pickup</span>
-                      <p className="font-medium">{data.booking.pickupLocation}</p>
-                    </div>
-                    <div className="rounded-lg border bg-muted/30 p-2">
-                      <span className="text-muted-foreground">Drop-off</span>
-                      <p className="font-medium">{data.booking.dropOffLocation}</p>
-                    </div>
-                  </div>
-                  {imAssignedRider && !hasStarted ? (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                      <p className="text-xs text-amber-800 font-medium">
-                        This task has not been started yet. Tap Start to begin {startAction === "start-delivery" ? "delivery" : "pickup"} and enable live tracking for the customer.
+                      <p className="font-semibold text-amber-800">Waiting for your rider to start</p>
+                      <p className="text-xs text-muted-foreground">
+                        Live tracking will appear here once the employee assigned to your booking begins your {booking.status === "OUT_FOR_DELIVERY" || booking.status === "DELIVERED" ? "delivery" : "pickup"}.
                       </p>
-                      <Button
-                        size="sm"
-                        className="mt-2 w-full bg-blue-600 text-white hover:bg-blue-700"
-                        onClick={startTask}
-                        disabled={starting}
-                      >
-                        <PlayCircle className="mr-1.5 h-4 w-4" /> {starting ? "Starting..." : "Start Pickup / Delivery"}
-                      </Button>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-lg border bg-muted/30 p-2">
-                        <span className="text-muted-foreground">Distance</span>
-                        <p className="font-bold">{distance ? `${distance.toFixed(1)} km` : "—"}</p>
-                      </div>
-                      <div className="rounded-lg border bg-muted/30 p-2">
-                        <span className="text-muted-foreground">Est. Arrival</span>
-                        <p className="font-bold">{eta || "—"}</p>
-                      </div>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-[10px] text-muted-foreground uppercase">Pickup</p>
+                      <p className="text-sm font-medium">{booking.pickupLocation}</p>
                     </div>
-                  )}
-                  <Badge>{statusLabel}</Badge>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-[10px] text-muted-foreground uppercase">Drop-off</p>
+                      <p className="text-sm font-medium">{booking.dropOffLocation}</p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             ) : (
-              <>
-                <Card className="border-t-4 border-green-500 shadow-md">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-sm">
-                      <User className="h-4 w-4 text-green-600" /> Rider Details
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {employee ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-md overflow-hidden border-2 border-green-200">
-                            {employee.profilePic ? (
-                              <Image unoptimized width={48} height={48} src={employee.profilePic} alt={employee.name} className="h-12 w-12 rounded-full object-cover" />
-                            ) : (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src="/logo.svg" alt="DropnFly logo" className="h-8 w-8 object-contain" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-semibold">{employee.name}</p>
-                            {hasStarted ? (
-                              employeeLoc ? (
-                                <Badge variant="success" className="shadow-sm text-[10px]">
-                                  <div className="mr-1 h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" /> {data.booking.status === "OUT_FOR_DELIVERY" ? "Delivering" : "On the way"}
-                                </Badge>
-                              ) : (
-                                <Badge variant="warning" className="text-[10px]">Starting up GPS</Badge>
-                              )
-                            ) : (
-                              <Badge variant="secondary" className="text-[10px]">Waiting to start</Badge>
-                            )}
-                          </div>
-                        </div>
-                        {!hasStarted && (
-                          <p className="rounded-lg bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
-                            Your rider is assigned but has not started yet. Live tracking will appear here once they begin {data.booking.status === "OUT_FOR_DELIVERY" ? "delivery" : "pickup"}.
-                          </p>
-                        )}
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          {employee.vehicleType && (
-                            <div className="rounded-lg border bg-muted/30 p-2">
-                              <span className="text-muted-foreground">Vehicle</span>
-                              <p className="flex items-center gap-1 font-medium">
-                                <VehicleIcon type={employee.vehicleType} /> {employee.vehicleType}
-                              </p>
-                            </div>
-                          )}
-                          {employee.plateNumber && (
-                            <div className="rounded-lg border bg-muted/30 p-2">
-                              <span className="text-muted-foreground">Plate #</span>
-                              <p className="font-mono font-bold text-blue-600">{employee.plateNumber}</p>
-                            </div>
-                          )}
-                          {hasStarted && (
-                            <>
-                              <div className="rounded-lg border bg-muted/30 p-2">
-                                <span className="text-muted-foreground">Distance</span>
-                                <p className="font-bold">{distance ? `${distance.toFixed(1)} km` : "—"}</p>
-                              </div>
-                              <div className="rounded-lg border bg-muted/30 p-2">
-                                <span className="text-muted-foreground">ETA</span>
-                                <p className="font-bold">{eta || "—"}</p>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                        {hasStarted && (
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <MapPin className="h-3 w-3" />
-                            {data.booking.pickupLocation}
-                          </div>
-                        )}
-                        {hasStarted && employee.lastLocationUpdate && (
-                          <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                            <Clock className="h-3 w-3" />
-                            Updated {new Date(employee.lastLocationUpdate).toLocaleTimeString()}
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No rider assigned yet</p>
-                    )}
-                  </CardContent>
-                </Card>
+              <div className="overflow-hidden rounded-xl border shadow-lg">
+                <LiveMap
+                  referenceNumber={booking.referenceNumber}
+                  employeeLat={employeeLoc?.lat ?? null}
+                  employeeLng={employeeLoc?.lng ?? null}
+                  employeeName={rider?.name}
+                  employeeVehicleType={rider?.vehicleType ?? null}
+                  employeePlate={rider?.plateNumber ?? null}
+                  pickupLat={pickupCoordsForMap?.lat}
+                  pickupLng={pickupCoordsForMap?.lng}
+                  dropoffLat={dropoffCoordsForMap?.lat}
+                  dropoffLng={dropoffCoordsForMap?.lng}
+                  pickupAddress={booking.pickupLocation}
+                  dropoffAddress={booking.dropOffLocation}
+                  customerName={booking.customer.name}
+                  destinationPhase={booking.status === "OUT_FOR_DELIVERY" || booking.status === "DELIVERED" ? "dropoff" : "pickup"}
+                />
+              </div>
+            )}
+          </div>
 
-                <Card className="border-t-4 border-indigo-500 shadow-md">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-sm">
-                      <MapPin className="h-4 w-4 text-indigo-500" /> Route
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    <div className="rounded-lg border bg-gray-50/50 p-2.5">
-                      <p className="text-[10px] text-muted-foreground">FROM</p>
-                      <p className="font-medium text-xs">{data.booking.pickupLocation}</p>
+          <div className="space-y-4">
+            {!hasStarted ? (
+              <Card className="border-t-4 border-indigo-500 shadow-md">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <MapPin className="h-4 w-4 text-indigo-500" /> Route
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="rounded-lg border bg-gray-50/50 p-2.5">
+                    <p className="text-[10px] text-muted-foreground">FROM</p>
+                    <p className="font-medium text-xs">{booking.pickupLocation}</p>
+                  </div>
+                  <div className="flex justify-center text-muted-foreground">↓</div>
+                  <div className="rounded-lg border bg-gray-50/50 p-2.5">
+                    <p className="text-[10px] text-muted-foreground">TO</p>
+                    <p className="font-medium text-xs">{booking.dropOffLocation}</p>
+                  </div>
+                  <Badge variant="outline" className="text-[10px]">{statusLabel}</Badge>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-t-4 border-green-500 shadow-md">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <User className="h-4 w-4 text-green-600" /> Your Rider
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {rider ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-md overflow-hidden border-2 border-green-200">
+                          {rider.profilePic ? (
+                            <Image unoptimized width={48} height={48} src={rider.profilePic} alt={rider.name} className="h-12 w-12 rounded-full object-cover" />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src="/logo.svg" alt="DropnFly logo" className="h-8 w-8 object-contain" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-semibold">{rider.name}</p>
+                          {employeeLoc ? (
+                            <Badge variant="success" className="shadow-sm text-[10px]">
+                              <div className="mr-1 h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" /> {booking.status === "OUT_FOR_DELIVERY" ? "Delivering" : "On the way"}
+                            </Badge>
+                          ) : (
+                            <Badge variant="warning" className="text-[10px]">Starting up GPS</Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {rider.vehicleType && (
+                          <div className="rounded-lg border bg-muted/30 p-2">
+                            <span className="text-muted-foreground">Vehicle</span>
+                            <p className="flex items-center gap-1 font-medium">
+                              <VehicleIcon type={rider.vehicleType} /> {rider.vehicleType}
+                            </p>
+                          </div>
+                        )}
+                        {rider.plateNumber && (
+                          <div className="rounded-lg border bg-muted/30 p-2">
+                            <span className="text-muted-foreground">Plate #</span>
+                            <p className="font-mono font-bold text-blue-600">{rider.plateNumber}</p>
+                          </div>
+                        )}
+                        <div className="rounded-lg border bg-muted/30 p-2">
+                          <span className="text-muted-foreground">Distance</span>
+                          <p className="font-bold">{distance ? `${distance.toFixed(1)} km` : "—"}</p>
+                        </div>
+                        <div className="rounded-lg border bg-muted/30 p-2">
+                          <span className="text-muted-foreground">ETA</span>
+                          <p className="font-bold">{eta || "—"}</p>
+                        </div>
+                      </div>
+                      {rider.lastLocationUpdate && (
+                        <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Clock className="h-3 w-3" /> Updated {new Date(rider.lastLocationUpdate).toLocaleTimeString()}
+                        </p>
+                      )}
                     </div>
-                    <div className="flex justify-center text-muted-foreground">↓</div>
-                    <div className="rounded-lg border bg-gray-50/50 p-2.5">
-                      <p className="text-[10px] text-muted-foreground">TO</p>
-                      <p className="font-medium text-xs">{data.booking.dropOffLocation}</p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px]">{statusLabel}</Badge>
-                  </CardContent>
-                </Card>
-              </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Loading rider details...</p>
+                  )}
+                </CardContent>
+              </Card>
             )}
 
             <Card className={`border shadow-md ${chatOpen ? "border-blue-300" : ""}`}>
@@ -545,7 +452,7 @@ export default function LiveTrackingPage() {
                       className="flex h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs shadow-sm"
                     />
                     <Button size="sm" onClick={sendChat} disabled={chatLoading || !chatInput.trim()}>
-                      <Send className="h-3 w-3" />
+                      {chatLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                     </Button>
                   </div>
                 </CardContent>

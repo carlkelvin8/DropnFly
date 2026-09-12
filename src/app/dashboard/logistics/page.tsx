@@ -15,6 +15,7 @@ import { formatDate, roleLabel } from "@/lib/utils";
 import { toast } from "sonner";
 import { LocationUpdater } from "@/components/tracking/LocationUpdater";
 import { AdminLiveMonitor } from "@/components/tracking/AdminLiveMonitor";
+import { LiveMap } from "@/components/tracking/LiveMap";
 import { Pagination } from "@/components/ui/pagination";
 import { imageFileToDataUrl } from "@/lib/client-image";
 import { LOGISTICS_ACTION_META, type LogisticsAction } from "@/lib/logistics-workflow";
@@ -69,6 +70,8 @@ export default function LogisticsPage() {
   const [actionNote, setActionNote] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [userRole, setUserRole] = useState<string>("");
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [myLoc, setMyLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [activeTab, setActiveTab] = useState<"tasks" | "monitoring">("tasks");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmpId, setSelectedEmpId] = useState<string>("");
@@ -119,6 +122,7 @@ export default function LogisticsPage() {
     ]).then(([tasksData, sessionData]) => {
       setTasks(Array.isArray(tasksData) ? tasksData : []);
       setUserRole(sessionData?.user?.role || "");
+      setSessionUserId(sessionData?.user?.id || null);
     }).catch((e) => {
       console.error("[Logistics] load failed:", e);
       toast.error(e instanceof Error ? e.message : "Failed to load tasks");
@@ -199,6 +203,31 @@ export default function LogisticsPage() {
 
   const showLocationUpdater = Boolean(trackedTask) && !isAdmin;
 
+  // One-tap Start button: shown on assigned task cards while tracking has not begun.
+  const quickStartAction = (task: Task) =>
+    task.isAssignedToMe ? task.availableActions.find((a) => a === "start-pickup" || a === "start-delivery") : undefined;
+
+  // Employee sees their own live dot on the guide map inside this page (kept
+  // separate from the public customer tracker) by polling their booking location.
+  const activeReference = trackedTask?.referenceNumber;
+  useEffect(() => {
+    if (!activeReference || !sessionUserId || isAdmin) return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/tracking/location/${sessionUserId}?reference=${encodeURIComponent(activeReference)}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const loc = await res.json();
+        if (active && loc.currentLat != null && loc.currentLng != null) {
+          setMyLoc({ lat: Number(loc.currentLat), lng: Number(loc.currentLng) });
+        }
+      } catch {}
+    };
+    void poll();
+    const id = setInterval(poll, 5000);
+    return () => { active = false; clearInterval(id); };
+  }, [activeReference, sessionUserId, isAdmin]);
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       {showLocationUpdater && trackedTask && <LocationUpdater key={trackedTask.id} enabled bookingId={trackedTask.id} onStatusChange={handleLocationStatus} />}
@@ -218,37 +247,42 @@ export default function LogisticsPage() {
           {locationStatus === "active" ? `Live geolocation is active for ${trackedTask?.referenceNumber || "booking"} and updating the customer map.` : locationStatus === "requesting" ? "Requesting location access…" : "Live map needs browser location permission. Enable Location for this site and refresh."}
         </div>
       )}
-      {/* Employee Guide — visible only after Start Pickup/Drop-off, shows NAIA pin as navigation guide */}
-      {roleTasks.filter((t) => t.isAssignedToMe && !!t.pickupStartedAt).length > 0 && (
-        <Card className="border-t-2 border-t-emerald-500 shadow-md">
+      {/* Employee live navigation — kept inside the dashboard so the employee tracker is
+          separate from the public customer tracker. Only appears when this employee has
+          an assigned task that was started (Start Pickup / Start Delivery). */}
+      {trackedTask && !isAdmin && (
+        <Card className="overflow-hidden border-t-2 border-t-emerald-500 shadow-md">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <Navigation className="h-4 w-4 text-emerald-600" /> Employee Guide — Navigate to Customer
+              <Navigation className="h-4 w-4 text-emerald-600" /> Active Task — Live Navigation
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Your guide to the customer&apos;s NAIA terminal. This is your navigation cue — the same live dot is simultaneously monitored by Admin and visible to the Customer as a pickup/drop-off indicator.</p>
+            <p className="text-xs text-muted-foreground">Your navigation guide. The customer&apos;s public tracker unlocks at the same time and shows your live dot.</p>
           </CardHeader>
           <CardContent className="space-y-3">
-            {roleTasks.filter((t) => t.isAssignedToMe && !!t.pickupStartedAt).map((task) => {
-              const terminal = task.pickupLocation.split(" - ")[0].trim();
-              const isDelivery = task.taskType === "delivery";
-              return (
-                <div key={task.id} className="rounded-lg border bg-muted/20 p-3">
-                  <div className="flex items-center justify-between">
-                    <code className="rounded bg-white px-2 py-0.5 text-xs font-mono font-bold">{task.referenceNumber}</code>
-                    <Badge variant="outline" className="text-[10px]">{isDelivery ? "Delivering" : "Picking Up"} — Guide Active</Badge>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 text-sm">
-                    <MapPin className="h-4 w-4 text-emerald-600" />
-                    <span>{isDelivery ? "Deliver to" : "Pick up at"} <strong>{terminal}</strong> — {isDelivery ? task.dropOffLocation : task.pickupLocation}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">Follow the NAIA pin on your live map. Admin is monitoring this movement in real-time; customer sees your live dot + profile (photo, {task.rider?.vehicleType || "vehicle"}, {task.rider?.plateNumber || "plate"}) as confirmation you&apos;ve started.</p>
-                  <div className="mt-3 flex gap-2">
-                    <Button size="sm" asChild><Link href={`/track/map/${task.referenceNumber}`}><Navigation className="mr-1 h-3 w-3" /> Open Live Map (Guide)</Link></Button>
-                    <Button size="sm" variant="outline" asChild><Link href={`/track/${task.referenceNumber}`}><Package className="mr-1 h-3 w-3" /> Customer View</Link></Button>
-                  </div>
-                </div>
-              );
-            })}
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="rounded bg-muted px-2 py-0.5 text-xs font-mono font-bold">{trackedTask.referenceNumber}</code>
+              <Badge variant="outline" className="text-[10px]">{trackedTask.taskType === "delivery" ? "Delivering" : "Picking Up"} — Guide Active</Badge>
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <MapPin className="h-3 w-3" /> {trackedTask.pickupLocation} → {trackedTask.dropOffLocation}
+              </span>
+            </div>
+            <LiveMap
+              referenceNumber={trackedTask.referenceNumber}
+              employeeLat={myLoc?.lat ?? null}
+              employeeLng={myLoc?.lng ?? null}
+              employeeName={trackedTask.rider?.name ?? undefined}
+              employeeVehicleType={trackedTask.rider?.vehicleType ?? null}
+              employeePlate={trackedTask.rider?.plateNumber ?? null}
+              pickupLat={trackedTask.pickupLat ?? undefined}
+              pickupLng={trackedTask.pickupLng ?? undefined}
+              dropoffLat={trackedTask.dropOffLat ?? undefined}
+              dropoffLng={trackedTask.dropOffLng ?? undefined}
+              pickupAddress={trackedTask.pickupLocation}
+              dropoffAddress={trackedTask.dropOffLocation}
+              customerName={trackedTask.customer.name}
+              riderView
+              destinationPhase={trackedTask.taskType === "delivery" ? "dropoff" : "pickup"}
+            />
           </CardContent>
         </Card>
       )}
@@ -474,15 +508,17 @@ export default function LogisticsPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="flex gap-2">
-                            <Button size="sm" onClick={() => setActiveTask(task.id)}>
-                              <Play className="mr-1 h-3 w-3" /> {task.isAssignedToMe ? "Start Task" : "Manage Task"}
-                            </Button>
-                            <Button size="sm" variant="outline" asChild>
-                              <Link href={`/track/map/${task.referenceNumber}`}>
-                                <Navigation className="mr-1 h-3 w-3" /> View Map
-                              </Link>
-                            </Button>
+                          <div className="flex flex-wrap gap-2">
+                            {quickStartAction(task) ? (
+                              <Button size="sm" onClick={() => handleAction(task.id, quickStartAction(task) as string)} disabled={processingAction} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                                <Play className="mr-1 h-3 w-3" />
+                                Start {quickStartAction(task) === "start-delivery" ? "Delivery" : "Pickup"}
+                              </Button>
+                            ) : (
+                              <Button size="sm" onClick={() => setActiveTask(task.id)}>
+                                <Play className="mr-1 h-3 w-3" /> {task.isAssignedToMe ? "Task Actions" : "Manage Task"}
+                              </Button>
+                            )}
                             <Button size="sm" variant="outline" asChild>
                               <Link href={`/track/${task.referenceNumber}`}>
                                 <Package className="mr-1 h-3 w-3" /> Details

@@ -296,6 +296,8 @@ export default function TrackResultPage() {
 
   const config = statusConfig[booking.status] || statusConfig.PENDING;
   const currentStep = config.step;
+  // Security: rider identity + live tracking only appear once the employee started the leg.
+  const showRider = Boolean(rider && booking.pickupStartedAt);
 
   return (
     <div className="min-h-screen bg-blue-50/50 pt-16">
@@ -314,8 +316,25 @@ export default function TrackResultPage() {
           </p>
         </div>
 
-        {/* Rider Section */}
-        {rider && (
+        {/* Tracking inactive — before the employee starts, no rider info is exposed */}
+        {!showRider && !["PENDING", "CANCELLED", "DELIVERED"].includes(booking.status) && (
+          <Card className="mb-6 border-t-4 border-amber-400 shadow-lg">
+            <CardContent className="flex items-start gap-3 p-4">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                <Clock className="h-4 w-4 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Tracking not started yet</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Live tracking will appear here once your rider starts {booking.status === "OUT_FOR_DELIVERY" ? "delivery" : "pickup"}. No rider details are shown until then.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Rider Section — only revealed once the employee started (live tracking active) */}
+        {rider && showRider && (
           <Card className="mb-6 border-t-4 border-green-500 shadow-lg">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-sm">
@@ -324,13 +343,6 @@ export default function TrackResultPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {!booking.pickupStartedAt && ["CONFIRMED", "RECEIVED", "PENDING"].includes(booking.status) && (
-                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-xs text-amber-800">
-                    Your rider {rider.name} is assigned and will begin {booking.status === "OUT_FOR_DELIVERY" ? "delivery" : "pickup"} shortly. Live location appears here once they start.
-                  </p>
-                </div>
-              )}
               <div className="flex items-center gap-4">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-md overflow-hidden border-2 border-green-200">
                   {rider.profilePic ? (
@@ -760,7 +772,7 @@ export default function TrackResultPage() {
             })()}
 
             <div className="mt-6 flex flex-wrap justify-center gap-3 border-t pt-4">
-              {rider && (
+              {rider && showRider && (
                 <Button asChild className="bg-orange-500 text-white shadow-lg transition-all hover:bg-orange-600 hover:shadow-xl">
                   <Link href={`/track/map/${params.reference}`}>
                     <Navigation className="mr-2 h-4 w-4" />
