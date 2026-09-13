@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 interface Message { id: string; message: string; isFromCustomer: boolean; createdAt: string; sender?: { name: string } | null }
@@ -10,6 +10,13 @@ export function EmployeeMapTools({ reference, customer, phone, latitude, longitu
   reference: string; customer: string; phone?: string; latitude: number | null; longitude: number | null; destination: { lat: number; lng: number } | null;
 }) {
   const [open, setOpen] = useState(false);
+  const chatDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = chatDialog.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    else if (!open && dialog.open) dialog.close();
+  }, [open]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -62,10 +69,11 @@ export function EmployeeMapTools({ reference, customer, phone, latitude, longitu
     <details><summary className="cursor-pointer text-sm font-medium">Turn-by-turn directions {currentRoute && `· ${(currentRoute.distance / 1000).toFixed(1)} km · ${Math.ceil(currentRoute.duration / 60)} min estimated`}</summary>
       {currentRoute ? <ol className="mt-3 max-h-64 space-y-2 overflow-auto text-sm">{currentRoute.legs.flatMap(leg => leg.steps).map((step, index) => <li key={index}>{index + 1}. {step.maneuver.instruction} · {Math.round(step.distance)} m</li>)}</ol> : <p className="mt-2 text-xs text-muted-foreground">Directions require live GPS, destination coordinates, and a configured Mapbox token. Use Open Navigation as an alternative. ETA is an estimate, not guaranteed.</p>}
     </details>
-    {open && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onKeyDown={event => { if (event.key === "Escape") setOpen(false); }}><section role="dialog" aria-modal="true" aria-label="Customer chat" className="w-full max-w-lg space-y-4 rounded-xl bg-background p-4 shadow-xl"><div className="flex items-center justify-between"><h2 className="font-semibold">{customer} · {reference}</h2><Button variant="ghost" onClick={() => setOpen(false)}>Close</Button></div>
-      <div className="max-h-[50vh] space-y-2 overflow-y-auto">{messages.length === 0 && <p className="text-sm text-muted-foreground">No messages yet.</p>}{messages.map(message => <div key={message.id} className={`flex ${message.isFromCustomer ? "justify-start" : "justify-end"}`}><div className={`max-w-[85%] rounded-xl p-3 text-sm ${message.isFromCustomer ? "bg-muted" : "bg-orange-100 text-orange-950"}`}><p>{message.message}</p><p className="mt-1 text-[10px]">{message.isFromCustomer ? customer : message.sender?.name || "Employee"} · {new Date(message.createdAt).toLocaleTimeString()}</p></div></div>)}</div>
+    <dialog ref={chatDialog} aria-label="Customer chat" onCancel={() => setOpen(false)} onClose={() => setOpen(false)} className="fixed inset-0 m-auto w-[calc(100%_-_2rem)] max-w-lg max-h-[calc(100dvh_-_2rem)] overflow-hidden rounded-xl border bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50">
+      <section className="flex max-h-[calc(100dvh_-_2rem)] flex-col gap-4 p-4"><div className="flex shrink-0 items-center justify-between gap-3"><h2 className="min-w-0 break-words font-semibold">{customer} · {reference}</h2><Button className="shrink-0" variant="ghost" onClick={() => setOpen(false)}>Close</Button></div>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">{messages.length === 0 && <p className="text-sm text-muted-foreground">No messages yet.</p>}{messages.map(message => <div key={message.id} className={`flex ${message.isFromCustomer ? "justify-start" : "justify-end"}`}><div className={`max-w-[85%] break-words rounded-xl p-3 text-sm ${message.isFromCustomer ? "bg-muted" : "bg-orange-100 text-orange-950"}`}><p>{message.message}</p><p className="mt-1 text-[10px]">{message.isFromCustomer ? customer : message.sender?.name || "Employee"} · {new Date(message.createdAt).toLocaleTimeString()}</p></div></div>)}</div>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      <form className="flex gap-2" onSubmit={event => { event.preventDefault(); void send(); }}><input aria-label="Message customer" maxLength={2000} value={draft} onChange={event => setDraft(event.target.value)} className="min-w-0 flex-1 rounded-lg border p-2" placeholder="Type a message…" /><Button disabled={sending || !draft.trim()} type="submit">Send</Button></form>
-    </section></div>}
+      <form className="flex shrink-0 gap-2" onSubmit={event => { event.preventDefault(); void send(); }}><input aria-label="Message customer" maxLength={2000} value={draft} onChange={event => setDraft(event.target.value)} className="min-w-0 flex-1 rounded-lg border p-2" placeholder="Type a message…" /><Button disabled={sending || !draft.trim()} type="submit">Send</Button></form>
+    </section></dialog>
   </div>;
 }
