@@ -430,9 +430,9 @@ export default function LiveTrackingPage() {
                       <p className="text-xs text-muted-foreground text-center py-2">No messages yet</p>
                     )}
                     {chatMessages.map((msg) => (
-                      <div key={msg.id} className={`flex ${msg.isFromCustomer ? "justify-start" : "justify-end"}`}>
+                      <div key={msg.id} className={`flex ${msg.isFromCustomer ? "justify-end" : "justify-start"}`}>
                         <div className={`rounded-lg px-2.5 py-1.5 max-w-[80%] text-xs ${
-                          msg.isFromCustomer ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"
+                          msg.isFromCustomer ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
                         }`}>
                           <p>{msg.message}</p>
                           <p className="text-[9px] opacity-60 mt-0.5">

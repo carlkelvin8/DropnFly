@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { normalizeReference } from "@/lib/utils";
-import { canAccessBooking } from "@/lib/booking-access";
+import { canAccessBooking, canCustomerAccessBooking } from "@/lib/booking-access";
+import { canReadBooking } from "@/lib/staff-access";
 
 const STAFF_ROLES = ["ADMIN", "STAFF", "EMPLOYEE"] as const;
 
@@ -23,7 +24,10 @@ export async function GET(
   if (!(await canAccessBooking(booking))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const session = await auth();
-  const staffViewer = Boolean(session?.user && (STAFF_ROLES as readonly string[]).includes(session.user.role));
+  const staffViewer = new URL(_req.url).searchParams.get("viewer") === "staff";
+  if (staffViewer && !(session?.user && (STAFF_ROLES as readonly string[]).includes(session.user.role))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  if (staffViewer && session?.user && !(await canReadBooking(session.user, booking.id))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!staffViewer && !(await canCustomerAccessBooking(booking))) return NextResponse.json({ error: "Open this chat using customer booking access, or use the employee map." }, { status: 403 });
 
   const messages = await prisma.chatMessage.findMany({
     where: { bookingId: booking.id },
@@ -32,7 +36,7 @@ export async function GET(
   });
 
   await prisma.chatMessage.updateMany({
-    where: { bookingId: booking.id, isFromCustomer: staffViewer, isRead: false },
+    where: { bookingId: booking.id, senderId: staffViewer ? null : { not: null }, isRead: false },
     data: { isRead: true },
   });
 
@@ -68,7 +72,10 @@ export async function POST(
   // A logged-in staff/employee replying from this tracker chat must never be
   // saved as the customer (avoids the opposite-role bubble bug).
   const session = await auth();
-  if (session?.user && (STAFF_ROLES as readonly string[]).includes(session.user.role)) {
+  const staffViewer = new URL(req.url).searchParams.get("viewer") === "staff";
+  if (staffViewer && !(session?.user && (STAFF_ROLES as readonly string[]).includes(session.user.role))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  if (staffViewer && session?.user && !(await canReadBooking(session.user, booking.id))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (staffViewer && session?.user) {
     const msg = await prisma.chatMessage.create({
       data: {
         bookingId: booking.id,
@@ -80,6 +87,7 @@ export async function POST(
     return NextResponse.json(msg, { status: 201 });
   }
 
+  if (!(await canCustomerAccessBooking(booking))) return NextResponse.json({ error: "Customer booking access required" }, { status: 403 });
   const msg = await prisma.chatMessage.create({
     data: {
       bookingId: booking.id,

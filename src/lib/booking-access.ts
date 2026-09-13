@@ -55,9 +55,8 @@ export async function grantBookingAccess(bookingId: string, customerId: string) 
   });
 }
 
-export async function canAccessBooking(booking: { id: string; customerId: string }) {
-  const [staff, customer] = await Promise.all([auth(), getCustomerSession()]);
-  if (staff?.user && (hasStaffRole(staff.user, ["ADMIN", "STAFF"]) || await canReadBooking(staff.user, booking.id))) return true;
+export async function canCustomerAccessBooking(booking: { id: string; customerId: string }) {
+  const customer = await getCustomerSession();
   if (customer?.id === booking.customerId) return true;
 
   const token = (await cookies()).get(COOKIE_NAME)?.value;
@@ -69,4 +68,10 @@ export async function canAccessBooking(booking: { id: string; customerId: string
   } catch {
     return false;
   }
+}
+
+export async function canAccessBooking(booking: { id: string; customerId: string }) {
+  const staff = await auth();
+  if (staff?.user && (hasStaffRole(staff.user, ["ADMIN", "STAFF"]) || await canReadBooking(staff.user, booking.id))) return true;
+  return canCustomerAccessBooking(booking);
 }

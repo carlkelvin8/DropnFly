@@ -79,7 +79,7 @@ export default function LogisticsPage() {
   const [now, setNow] = useState(() => Date.now());
   const [taskSearch, setTaskSearch] = useState("");
   const [taskTypeFilter, setTaskTypeFilter] = useState("all");
-  const [taskDateFilter, setTaskDateFilter] = useState<"today" | "all" | "custom">("today");
+  const [taskDateFilter, setTaskDateFilter] = useState<"today" | "all" | "custom">("all");
   const [taskDate, setTaskDate] = useState(() => manilaDateStr(new Date()));
   const [taskPage, setTaskPage] = useState(1);
   const [locationStatus, setLocationStatus] = useState<"requesting" | "active" | "denied" | "error" | "idle">("idle");
@@ -90,7 +90,7 @@ export default function LogisticsPage() {
   function openTaskActions(taskId: string) {
     setPhotoProof(null);
     setActionNote("");
-    setActiveAction(null);
+    setActiveAction(tasks.find(task => task.id === taskId)?.availableActions[0] || null);
     setActiveTask(taskId);
   }
 
@@ -310,7 +310,7 @@ export default function LogisticsPage() {
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                     <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
                   </span>
-                  <span className="font-semibold">Employee tracking active</span>
+                  <span className="font-semibold">{locationStatus === "active" ? "GPS sharing active" : "Task started — waiting for GPS"}</span>
                   <code className="rounded bg-white/70 px-2 py-0.5 text-xs">{trackedTask.referenceNumber}</code>
                 </div>
                 <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
@@ -387,18 +387,20 @@ export default function LogisticsPage() {
                                 </Button>
                               )}
                               <Button size="sm" onClick={() => openTaskActions(task.id)}>
-                                <CheckCircle className="mr-1 h-3.5 w-3.5" /> Update Task
+                                <CheckCircle className="mr-1 h-3.5 w-3.5" /> {task.availableActions[0] ? LOGISTICS_ACTION_META[task.availableActions[0]].label : "Update Task"}
                               </Button>
                             </>
                           )}
                           <Button size="sm" variant="outline" asChild>
                             <Link href={`/dashboard/bookings/${task.id}`}>View Details</Link>
                           </Button>
+                          {isStarted && <Button size="sm" variant="outline" asChild><Link href={`/dashboard/logistics/map/${task.referenceNumber}`}>View Map & Chat</Link></Button>}
                         </div>
                       </div>
 
                       {activeTask === task.id && !startAction && (
                         <div className="mt-4 space-y-3 rounded-xl border bg-muted/30 p-3">
+                          <p className="text-xs text-muted-foreground">{task.taskType === "delivery" ? "1. Arrive at Location → 2. Complete Delivery. GPS sharing ends after completion." : "1. Arrive at Location → 2. Complete Pickup. GPS sharing ends after completion."}</p>
                           <div className="flex flex-wrap gap-2">
                             {task.availableActions.map((action) => (
                               <Button key={action} size="sm" variant={activeAction === action ? "default" : "outline"} onClick={() => setActiveAction(action)}>

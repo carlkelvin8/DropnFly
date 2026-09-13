@@ -55,8 +55,7 @@ export async function GET(
       orderBy: { createdAt: "desc" },
       select: { latitude: true, longitude: true, accuracy: true, createdAt: true },
     });
-    // Fallback to user's last known generic location if no booking-scoped ping yet
-    // so map still shows last dot + NAIA pin instead of blank.
+    // Never present another booking's generic position as this task's live GPS.
     if (latest) {
       return NextResponse.json({
         id: user.id,
@@ -70,10 +69,10 @@ export async function GET(
     return NextResponse.json({
       id: user.id,
       name: user.name,
-      currentLat: user.currentLat,
-      currentLng: user.currentLng,
+      currentLat: null,
+      currentLng: null,
       accuracy: null,
-      lastLocationUpdate: user.lastLocationUpdate,
+      lastLocationUpdate: null,
     });
   }
 

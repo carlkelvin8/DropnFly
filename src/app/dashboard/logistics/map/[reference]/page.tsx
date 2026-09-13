@@ -5,13 +5,16 @@ import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LiveMap } from "@/components/tracking/LiveMap";
+import { LocationUpdater } from "@/components/tracking/LocationUpdater";
+import { EmployeeMapTools } from "@/components/tracking/EmployeeMapTools";
 import { ArrowLeft, Navigation, MapPin, Users, Activity } from "lucide-react";
 import { NAIA_TERMINAL_COORDS } from "@/components/booking/constants";
 
 interface Task {
   id: string;
   referenceNumber: string;
-  customer: { name: string };
+  customer: { name: string; phone?: string };
+  isAssignedToMe: boolean;
   pickupLocation: string;
   pickupLat: number | null;
   pickupLng: number | null;
@@ -48,6 +51,7 @@ export default function AdminFullMapPage() {
   const router = useRouter();
   const [task, setTask] = useState<Task | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isEmployee, setIsEmployee] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [liveLat, setLiveLat] = useState<number | null>(null);
@@ -70,10 +74,27 @@ export default function AdminFullMapPage() {
       const found = tasks.find((t) => t.referenceNumber.toUpperCase() === reference.toUpperCase()) || null;
       setTask(found);
       setIsAdmin(["ADMIN", "STAFF"].includes(sessionData?.user?.role));
+      setIsEmployee(sessionData?.user?.role === "EMPLOYEE" && Boolean(found?.isAssignedToMe));
       setNotFound(!found);
     }).finally(() => setLoading(false));
     return () => { active = false; };
   }, [reference]);
+
+  useEffect(() => {
+    if (!isEmployee) return;
+    const abort = new AbortController();
+    const timer = setInterval(async () => {
+      try {
+        const response = await fetch("/api/logistics/tasks", { cache: "no-store", signal: abort.signal });
+        if (!response.ok) return;
+        const data = await response.json();
+        const tasks: Task[] = Array.isArray(data) ? data : data.tasks || [];
+        const current = tasks.find(item => item.referenceNumber.toUpperCase() === reference.toUpperCase() && item.isAssignedToMe);
+        if (!abort.signal.aborted) { setTask(current || null); setNotFound(!current); }
+      } catch { /* retain current state during transient connection failures */ }
+    }, 5000);
+    return () => { abort.abort(); clearInterval(timer); };
+  }, [reference, isEmployee]);
 
   // Live polling of the assigned rider's location (same feed the Admin Live Monitor uses)
   useEffect(() => {
@@ -119,10 +140,10 @@ export default function AdminFullMapPage() {
     );
   }
 
-  if (!isAdmin) {
+  if (!isAdmin && !isEmployee) {
     return (
       <div className="mx-auto max-w-lg space-y-4 pt-10">
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Only admins can view the live Full Map.</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Only admins or the assigned employee can view this map.</div>
         <Button variant="outline" onClick={() => router.push("/dashboard/logistics")}><ArrowLeft className="mr-2 h-4 w-4" /> Back to Logistics</Button>
       </div>
     );
@@ -140,8 +161,8 @@ export default function AdminFullMapPage() {
   return (
     <div className="space-y-4 rounded-2xl border border-blue-200 bg-blue-50/30 p-4 shadow-sm dark:border-blue-900 dark:bg-blue-950/10">
       <div className="mx-auto max-w-6xl rounded-xl bg-blue-700 px-4 py-3 text-white shadow-sm">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-100">Admin Operations Portal</p>
-        <p className="mt-0.5 text-sm font-semibold">Geo Monitoring — internal employee location feed</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-100">{isAdmin ? "Admin Operations Portal" : "Employee Navigation"}</p>
+        <p className="mt-0.5 text-sm font-semibold">{isAdmin ? "Geo Monitoring — internal employee location feed" : "Navigating to Customer — keep this page open for GPS sharing"}</p>
       </div>
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => router.push("/dashboard/logistics")}>
@@ -170,8 +191,10 @@ export default function AdminFullMapPage() {
       </div>
 
       <div className="mx-auto max-w-6xl rounded-xl border bg-background p-2 shadow-sm">
+        {isEmployee && started && <LocationUpdater enabled bookingId={task.id} />}
         <LiveMap
           referenceNumber={task.referenceNumber}
+          riderView={isEmployee}
           employeeLat={liveLat}
           employeeLng={liveLng}
           employeeName={task.rider?.name ?? undefined}
@@ -184,9 +207,11 @@ export default function AdminFullMapPage() {
           pickupAddress={task.pickupLocation}
           dropoffAddress={task.dropOffLocation}
           destinationPhase={task.status === "OUT_FOR_DELIVERY" ? "dropoff" : "pickup"}
-          containerClassName="h-[calc(100vh-12rem)] min-h-[420px]"
+          containerClassName={isEmployee ? "h-[55vh] min-h-[320px]" : "h-[calc(100vh-12rem)] min-h-[420px]"}
         />
       </div>
+      {isEmployee && <EmployeeMapTools reference={task.referenceNumber} customer={task.customer.name} phone={task.customer.phone} latitude={liveLat} longitude={liveLng} destination={task.taskType === "delivery" ? dropoff : pickup} />}
+      {isEmployee && <div className="rounded-xl border p-3 text-sm"><p>Arrive at Location → Complete {task.taskType === "delivery" ? "Delivery" : "Pickup"}. Complete both steps to end GPS sharing.</p><Button className="mt-2" onClick={() => router.push("/dashboard/logistics")}>Update Task / Complete Delivery</Button></div>}
 
       <div className="mx-auto flex max-w-6xl flex-wrap gap-4 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
