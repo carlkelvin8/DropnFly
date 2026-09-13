@@ -35,6 +35,19 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "No settings supplied" }, { status: 400 });
     }
 
+    if (body.fleet_data !== undefined) {
+      let fleet: { count?: unknown }[];
+      try { fleet = JSON.parse(String(body.fleet_data)); }
+      catch { return NextResponse.json({ error: "Invalid fleet JSON." }, { status: 400 }); }
+      if (!Array.isArray(fleet) || fleet.some((vehicle) => !vehicle || !Number.isInteger(Number(vehicle.count)) || Number(vehicle.count) < 1)) {
+        return NextResponse.json({ error: "Fleet must contain registered vehicles with positive whole-number quantities." }, { status: 400 });
+      }
+    }
+    // Hourly scheduling is a business invariant, not a per-phase preference.
+    for (const key of ["pickup_slot_duration", "delivery_slot_duration"]) {
+      if (body[key] !== undefined) body[key] = "60";
+    }
+
     // Sanitize entries: keys must be non-empty strings, values coerced to string (allow empty)
     const entries = Object.entries(body).filter(([k, v]) => typeof k === "string" && k.trim().length > 0 && k.length <= 100 && v !== undefined && v !== null);
     if (entries.length === 0) {

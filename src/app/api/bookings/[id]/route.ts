@@ -9,6 +9,7 @@ import { awardDeliveryPoints } from "@/lib/loyalty";
 import { decimalsToNumbers } from "@/lib/serialize";
 import { isBookingLocked } from "@/lib/booking-access";
 import { getSystemSettings, setting } from "@/lib/settings";
+import { assertScheduleCapacity, BookingSlotError } from "@/lib/booking-slot-capacity";
 
 const VALID_STATUS = [
   "PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE",
@@ -166,10 +167,14 @@ export async function PUT(
       data.status = body.status;
     }
 
-    const booking = await prisma.booking.update({
-      where: { id },
-      data: data as { status?: BookingStatus; [key: string]: unknown },
-    });
+    const booking = await prisma.$transaction(async (tx) => {
+      const changedDates = [
+        ...(data.checkIn && (data.checkIn as Date).getTime() !== existingBooking.checkIn.getTime() ? [data.checkIn as Date] : []),
+        ...(data.checkOut && (data.checkOut as Date).getTime() !== existingBooking.checkOut?.getTime() ? [data.checkOut as Date] : []),
+      ];
+      if (changedDates.length) await assertScheduleCapacity(tx, changedDates, id);
+      return tx.booking.update({ where: { id }, data: data as { status?: BookingStatus; [key: string]: unknown } });
+    }, { maxWait: 15000, timeout: 15000 });
 
     if (!body.status) {
       await logActivity({
@@ -241,7 +246,8 @@ export async function PUT(
     }
 
     return NextResponse.json(decimalsToNumbers(booking));
-  } catch {
+  } catch (error) {
+    if (error instanceof BookingSlotError) return NextResponse.json({ error: error.message }, { status: 409 });
     return NextResponse.json(
       { error: "Failed to update booking" },
       { status: 500 }

@@ -508,31 +508,15 @@ export default function SettingsPage() {
                       <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Fleet Capacity (shared for pickup &amp; delivery)</Label>
                       <div className="mt-1 flex items-end justify-between gap-3">
                         <div>
-                          <p className="text-2xl font-bold font-mono">{hasFleet ? fleetTotal : (settings.max_concurrent_pickups || "1")} <span className="text-sm font-normal text-muted-foreground">vehicle{Number(hasFleet ? fleetTotal : settings.max_concurrent_pickups) !== 1 ? "s" : ""} available</span></p>
+                          <p className="text-2xl font-bold font-mono">{fleetTotal} <span className="text-sm font-normal text-muted-foreground">vehicle{fleetTotal !== 1 ? "s" : ""} available</span></p>
                           <p className="mt-1 text-[10px] text-muted-foreground">
-                            {hasFleet ? "Derived from Fleet inventory — pickup and delivery share the same vehicles. Manage in Fleet tab." : "No fleet inventory yet — using legacy fallback (pickups/deliveries). Add vehicles in Fleet tab for accurate capacity."}
+                            {hasFleet ? "Derived from Fleet inventory — pickup and delivery share the same vehicles. Manage in Fleet tab." : "No fleet registered — bookings are unavailable until vehicles are added in the Fleet tab."}
                           </p>
                         </div>
                         <Button type="button" variant="outline" size="sm" onClick={() => setActiveTab("fleet")}>
                           <Truck className="mr-1.5 h-3.5 w-3.5" /> Manage Fleet
                         </Button>
                       </div>
-                      {!hasFleet && (
-                        <div className="mt-3 grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <Label htmlFor="max_concurrent_pickups_legacy" className="text-xs">Max Simultaneous Pickups (fallback)</Label>
-                            <Input id="max_concurrent_pickups_legacy" type="number" min="1" className="w-28 font-mono"
-                              value={settings.max_concurrent_pickups || "3"}
-                              onChange={(e) => handleChange("max_concurrent_pickups", e.target.value)} />
-                          </div>
-                          <div className="space-y-1">
-                            <Label htmlFor="max_concurrent_deliveries_legacy" className="text-xs">Max Simultaneous Deliveries (fallback)</Label>
-                            <Input id="max_concurrent_deliveries_legacy" type="number" min="1" className="w-28 font-mono"
-                              value={settings.max_concurrent_deliveries || "3"}
-                              onChange={(e) => handleChange("max_concurrent_deliveries", e.target.value)} />
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </>
                 );
@@ -540,14 +524,12 @@ export default function SettingsPage() {
               <div className="space-y-1.5">
                 <Label htmlFor="pickup_slot_duration">Pickup Slot Duration (min)</Label>
                 <Input id="pickup_slot_duration" type="number" min="15" step="15" className="w-28 font-mono"
-                  value={settings.pickup_slot_duration || "60"}
-                  onChange={(e) => handleChange("pickup_slot_duration", e.target.value)} />
+                  value="60" readOnly />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="delivery_slot_duration">Delivery Slot Duration (min)</Label>
                 <Input id="delivery_slot_duration" type="number" min="15" step="15" className="w-28 font-mono"
-                  value={settings.delivery_slot_duration || "60"}
-                  onChange={(e) => handleChange("delivery_slot_duration", e.target.value)} />
+                  value="60" readOnly />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="operating_start">Operating Start Time</Label>

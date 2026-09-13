@@ -1,31 +1,30 @@
+export const FLEET_SLOT_MINUTES = 60;
+
+export function nearestAvailableSlots<T extends { start: string; available: boolean }>(slots: T[], requested: string, limit = 2): T[] {
+  const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+  return slots.filter((slot) => slot.available)
+    .sort((a, b) => Math.abs(minutes(a.start) - minutes(requested)) - Math.abs(minutes(b.start) - minutes(requested)) || minutes(a.start) - minutes(b.start))
+    .slice(0, limit);
+}
+
 export function fleetCapacity(settings: Record<string, string>): number {
   const rawFleet = settings.fleet_data;
   if (rawFleet !== undefined && rawFleet !== "") {
     try {
       const vehicles = JSON.parse(rawFleet) as { count?: unknown }[];
       if (Array.isArray(vehicles)) {
-        // Empty fleet means "not configured" — fall through to legacy concurrency
-        // so stale defaults "[]" don't block all bookings with 0 capacity.
-        if (vehicles.length === 0) {
-          // intentional fall-through
-        } else {
-          const total = vehicles.reduce((sum, vehicle) => {
-            const count = Number(vehicle?.count);
-            return sum + (Number.isFinite(count) && count > 0 ? Math.floor(count) : 0);
-          }, 0);
-          // If every entry has 0/invalid count, treat as not configured to avoid
-          // silently blocking every slot with capacity 0.
-          if (total > 0) return total;
-        }
+        return vehicles.reduce((sum, vehicle) => {
+          const count = Number(vehicle?.count);
+          return sum + (Number.isInteger(count) && count > 0 ? count : 0);
+        }, 0);
       }
     } catch {
-      // Fall through to legacy concurrency settings for malformed old data.
+      return 0;
     }
   }
 
-  const pickups = Math.max(1, parseInt(settings.max_concurrent_pickups || "1") || 1);
-  const deliveries = Math.max(1, parseInt(settings.max_concurrent_deliveries || "1") || 1);
-  return Math.min(pickups, deliveries);
+  // No registered fleet must not manufacture bookable capacity.
+  return 0;
 }
 
 export function movementsOverlappingSlot(

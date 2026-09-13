@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { nearestAvailableSlots } from "@/lib/fleet-capacity";
+
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -54,6 +57,20 @@ export function PickupStep({
   deliverySlots, deliverySlotsLoading, deliveryMaxConcurrent, deliverySlot, setDeliverySlot,
   storageDays, error, onNext, onPrev,
 }: PickupStepProps) {
+  const [fullRequest, setFullRequest] = useState<{ type: "pickup" | "delivery"; date: string; time: string } | null>(null);
+  const alternatives = (type: "pickup" | "delivery", date: string, slots: TimeSlot[], select: (value: string) => void) => {
+    if (!fullRequest || fullRequest.type !== type || fullRequest.date !== date) return null;
+    const nearest = nearestAvailableSlots(slots, fullRequest.time);
+    return (
+      <div role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+        <p className="font-semibold">{fullRequest.time} — TIME SLOT FULL. Choose a nearest available hourly slot:</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {nearest.map((slot) => <Button key={slot.start} type="button" size="sm" variant="outline" onClick={() => { select(slot.start); setFullRequest(null); }}>{slot.start}</Button>)}
+          {nearest.length === 0 && <span>No available time slots. Please choose another date.</span>}
+        </div>
+      </div>
+    );
+  };
   return (
     <div key="step2" style={{ animation: "step-in 0.25s ease-out" }}>
       <style>{`@keyframes step-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`}</style>
@@ -133,9 +150,9 @@ export function PickupStep({
                   <button
                     key={slot.start}
                     type="button"
-                    disabled={!slot.available}
+                    disabled={slot.unavailableReason === "past"}
                     title={!slot.available ? (slot.unavailableReason === "full" ? `Fully booked — ${slot.booked} of ${pickupMaxConcurrent} vehicle(s) already occupied at ${slot.start}` : "Past") : `${slot.start}–${slot.end} available`}
-                    onClick={() => setPickupSlot(slot.start)}
+                    onClick={() => { if (slot.available) { setPickupSlot(slot.start); setFullRequest(null); } else { setPickupSlot(""); setFullRequest({ type: "pickup", date: pickupDate, time: slot.start }); } }}
                     className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${
                       pickupSlot === slot.start
                         ? "border-blue-600 bg-orange-500 text-white shadow-md"
@@ -154,6 +171,7 @@ export function PickupStep({
             </>
           )}
           {pickupSlot && <p className="mt-2 text-xs text-green-600">Selected: {pickupSlot}</p>}
+          {alternatives("pickup", pickupDate, pickupSlots, setPickupSlot)}
         </div>
       )}
 
@@ -231,9 +249,9 @@ export function PickupStep({
                   <button
                     key={slot.start}
                     type="button"
-                    disabled={!slot.available}
+                    disabled={slot.unavailableReason === "past"}
                     title={!slot.available ? (slot.unavailableReason === "full" ? `Fully booked — ${slot.booked} of ${deliveryMaxConcurrent} vehicle(s) already occupied at ${slot.start}` : "Past") : `${slot.start}–${slot.end} available`}
-                    onClick={() => setDeliverySlot(slot.start)}
+                    onClick={() => { if (slot.available) { setDeliverySlot(slot.start); setFullRequest(null); } else { setDeliverySlot(""); setFullRequest({ type: "delivery", date: deliveryDate, time: slot.start }); } }}
                     className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${
                       deliverySlot === slot.start
                         ? "border-indigo-600 bg-indigo-600 text-white shadow-md"
@@ -252,6 +270,7 @@ export function PickupStep({
             </>
           )}
           {deliverySlot && <p className="mt-2 text-xs text-green-600">Selected: {deliverySlot}</p>}
+          {alternatives("delivery", deliveryDate, deliverySlots, setDeliverySlot)}
         </div>
       )}
 

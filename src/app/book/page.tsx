@@ -190,16 +190,17 @@ export default function BookPage() {
     return () => { window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onVisibility); };
   }, [fetchPublicSettings]);
 
-  const fetchSlots = useCallback(async (date: string, type: "pickup" | "delivery"): Promise<{ slots: TimeSlot[]; maxConcurrent: number }> => {
+  const fetchSlots = useCallback(async (date: string, type: "pickup" | "delivery", signal?: AbortSignal): Promise<{ slots: TimeSlot[]; maxConcurrent: number }> => {
     if (!date) return { slots: [], maxConcurrent: 1 };
     try {
       const res = await fetch(`/api/public/time-slots?date=${date}&type=${type}`, {
         cache: "no-store",
+        signal,
         headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
       });
       if (!res.ok) return { slots: [], maxConcurrent: 1 };
       const data = await res.json();
-      return { slots: data.slots || [], maxConcurrent: Number(data.maxConcurrent) || 1 };
+      return { slots: data.slots || [], maxConcurrent: Number(data.maxConcurrent) || 0 };
     } catch { return { slots: [], maxConcurrent: 1 }; }
   }, []);
 
@@ -210,22 +211,28 @@ export default function BookPage() {
 
   useEffect(() => {
     if (!pickupDate) return;
-    fetchSlots(pickupDate, "pickup").then((r) => {
+    const abort = new AbortController();
+    fetchSlots(pickupDate, "pickup", abort.signal).then((r) => {
+      if (abort.signal.aborted) return;
       setPickupSlots(r.slots);
       setPickupMaxConcurrent(r.maxConcurrent);
       setPickupSlot((selected) => selected && !r.slots.some((slot) => slot.start === selected && slot.available) ? "" : selected);
       setPickupSlotsLoading(false);
     });
+    return () => abort.abort();
   }, [pickupDate, fetchSlots, slotRefreshTick]);
 
   useEffect(() => {
     if (!deliveryDate) return;
-    fetchSlots(deliveryDate, "delivery").then((r) => {
+    const abort = new AbortController();
+    fetchSlots(deliveryDate, "delivery", abort.signal).then((r) => {
+      if (abort.signal.aborted) return;
       setDeliverySlots(r.slots);
       setDeliveryMaxConcurrent(r.maxConcurrent);
       setDeliverySlot((selected) => selected && !r.slots.some((slot) => slot.start === selected && slot.available) ? "" : selected);
       setDeliverySlotsLoading(false);
     });
+    return () => abort.abort();
   }, [deliveryDate, fetchSlots, slotRefreshTick]);
 
   function getPickupLocationText() {
@@ -299,6 +306,10 @@ export default function BookPage() {
     }
 
     if (!res.ok) {
+      if (res.status === 409) {
+        setSlotRefreshTick((tick) => tick + 1);
+        setStep(2);
+      }
       try { const err = await res.json(); setError(err.error || "Something went wrong"); }
       catch { setError("Something went wrong"); }
       setLoading(false);

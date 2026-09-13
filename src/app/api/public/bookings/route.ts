@@ -10,7 +10,7 @@ import { grantBookingAccess } from "@/lib/booking-access";
 import { manilaDateStr, manilaMinutesOfDay, manilaDayRange } from "@/lib/manila-time";
 import type { Prisma, Booking } from "@/generated/prisma/client";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
-import { fleetCapacity, movementsOverlappingSlot } from "@/lib/fleet-capacity";
+import { fleetCapacity, movementsOverlappingSlot, FLEET_SLOT_MINUTES } from "@/lib/fleet-capacity";
 
 class StorageCapacityError extends Error {}
 
@@ -153,7 +153,7 @@ export async function POST(req: Request) {
     }
 
     // Enforce time-slot capacity and admin operating hours/days (senior: reflect settings immediately)
-    const slotQuery = async (date: Date, type: "pickup" | "delivery", db: Pick<Prisma.TransactionClient, "booking"> | typeof prisma = prisma): Promise<void> => {
+    const slotQuery = async (date: Date, type: "pickup" | "delivery", db: Pick<Prisma.TransactionClient, "booking" | "systemSetting"> | typeof prisma = prisma): Promise<void> => {
       const defaults: Record<string, string> = {
         max_concurrent_pickups: "1",
         max_concurrent_deliveries: "1",
@@ -163,9 +163,9 @@ export async function POST(req: Request) {
         operating_end: "23:59",
         store_operating_days: "0,1,2,3,4,5,6",
       };
-      const isPickup = type === "pickup";
-      const maxConcurrent = fleetCapacity(settings);
-      const durationMin = Math.max(15, parseInt(setting(settings, isPickup ? "pickup_slot_duration" : "delivery_slot_duration", defaults[isPickup ? "pickup_slot_duration" : "delivery_slot_duration"])) || 60);
+      const fleetSettings = await db.systemSetting.findMany({ where: { key: "fleet_data" } });
+      const maxConcurrent = fleetCapacity(Object.fromEntries(fleetSettings.map((row) => [row.key, row.value])));
+      const durationMin = FLEET_SLOT_MINUTES;
       // Respect admin operating days
       const { manilaWeekday } = await import("@/lib/manila-time");
       const weekday = String(manilaWeekday(date));
@@ -185,28 +185,29 @@ export async function POST(req: Request) {
       if (endMin === 1439) endMin = 1440;
       if (endMin === 0 && (operatingEnd === "24:00" || operatingEnd === "00:00")) endMin = 1440;
       const slotStartMinutes = manilaMinutesOfDay(date);
-      if (slotStartMinutes < startMin || slotStartMinutes + durationMin > endMin) {
+      if (slotStartMinutes < startMin || slotStartMinutes + durationMin > endMin || (slotStartMinutes - startMin) % FLEET_SLOT_MINUTES !== 0 || date.getUTCSeconds() !== 0 || date.getUTCMilliseconds() !== 0) {
         throw new Error(`Selected ${type} time is outside operating hours (${operatingStart}–${operatingEnd}). Please choose another time.`);
       }
       const { start: dayStart, end: dayEnd } = manilaDayRange(date);
+      const windowStart = new Date(dayStart.getTime() - FLEET_SLOT_MINUTES * 60000);
       const existing = await db.booking.findMany({
         where: {
-          status: { notIn: ["CANCELLED", "DELIVERED"] },
+          status: { notIn: ["CANCELLED", "DELIVERED", "NO_SHOW"] },
           OR: [
-            { checkIn: { gte: dayStart, lt: dayEnd } },
-            { checkOut: { gte: dayStart, lt: dayEnd } },
+            { checkIn: { gte: windowStart, lt: dayEnd } },
+            { checkOut: { gte: windowStart, lt: dayEnd } },
           ],
         },
         select: { checkIn: true, checkOut: true },
       });
-      const pickupDuration = Math.max(15, parseInt(setting(settings, "pickup_slot_duration", "60")) || 60);
-      const deliveryDuration = Math.max(15, parseInt(setting(settings, "delivery_slot_duration", "60")) || 60);
+      const pickupDuration = FLEET_SLOT_MINUTES;
+      const deliveryDuration = FLEET_SLOT_MINUTES;
       const movements = existing.flatMap((booking) => [
-        ...(booking.checkIn >= dayStart && booking.checkIn < dayEnd
-          ? [{ startMinutes: manilaMinutesOfDay(booking.checkIn), durationMinutes: pickupDuration }]
+        ...(booking.checkIn >= windowStart && booking.checkIn < dayEnd
+          ? [{ startMinutes: (booking.checkIn.getTime() - dayStart.getTime()) / 60000, durationMinutes: pickupDuration }]
           : []),
-        ...(booking.checkOut && booking.checkOut >= dayStart && booking.checkOut < dayEnd
-          ? [{ startMinutes: manilaMinutesOfDay(booking.checkOut), durationMinutes: deliveryDuration }]
+        ...(booking.checkOut && booking.checkOut >= windowStart && booking.checkOut < dayEnd
+          ? [{ startMinutes: (booking.checkOut.getTime() - dayStart.getTime()) / 60000, durationMinutes: deliveryDuration }]
           : []),
       ]);
       const count = movementsOverlappingSlot(slotStartMinutes, durationMin, movements);
