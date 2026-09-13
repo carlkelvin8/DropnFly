@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LiveMap } from "@/components/tracking/LiveMap";
+import { mergeChatMessages } from "@/lib/chat-messages";
 import { NAIA_TERMINAL_COORDS } from "@/components/booking/constants";
 import {
   ChevronLeft,
@@ -84,9 +85,9 @@ export default function LiveTrackingPage() {
   const [chatMessages, setChatMessages] = useState<{ id: string; message: string; isFromCustomer: boolean; createdAt: string; sender?: { name: string; role?: string } | null }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const chatBoxRef = useRef<HTMLDivElement>(null);
   const chatStickToBottomRef = useRef(true);
-  const lastChatMessageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,22 +143,31 @@ export default function LiveTrackingPage() {
   }, [hasStarted, rider?.id, params.reference]);
 
   useEffect(() => {
-    if (!chatOpen) return;
     let active = true;
-    const loadMessages = () => fetch(`/api/public/bookings/${params.reference}/chat`, { cache: "no-store" })
-      .then((res) => res.ok ? res.json() : [])
-      .then((msgs) => {
-        if (!active || !Array.isArray(msgs)) return;
-        const lastId = msgs.length ? String(msgs[msgs.length - 1].id) : "";
-        if (lastId === lastChatMessageIdRef.current) return;
-        lastChatMessageIdRef.current = lastId;
-        setChatMessages(msgs);
-      })
-      .catch(() => {});
+    let pending = false;
+    const abort = new AbortController();
+    const loadMessages = async () => {
+      if (pending || !active) return;
+      pending = true;
+      try {
+        const res = await fetch(`/api/public/bookings/${params.reference}/chat`, { cache: "no-store", signal: abort.signal });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Could not load messages. Retrying automatically…");
+        }
+        const messages = await res.json();
+        if (!Array.isArray(messages)) throw new Error("Invalid chat response");
+        if (active) { setChatMessages(previous => mergeChatMessages(previous, messages)); setChatError(null); }
+      } catch (error) { if (active) setChatError(error instanceof Error ? error.message : "Chat connection failed. Retrying…"); }
+      finally { pending = false; }
+    };
     void loadMessages();
     const poll = window.setInterval(loadMessages, 2000);
-    return () => { active = false; window.clearInterval(poll); };
-  }, [chatOpen, params.reference]);
+    const refresh = () => { if (document.visibilityState === "visible") void loadMessages(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { active = false; abort.abort(); window.clearInterval(poll); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [params.reference]);
 
   useEffect(() => {
     const el = chatBoxRef.current;
@@ -174,7 +184,6 @@ export default function LiveTrackingPage() {
   async function sendChat() {
     const text = chatInput.trim();
     if (!text || chatLoading) return;
-    setChatInput("");
     setChatLoading(true);
     try {
       const res = await fetch(`/api/public/bookings/${params.reference}/chat`, {
@@ -184,9 +193,14 @@ export default function LiveTrackingPage() {
       });
       if (res.ok) {
         const msg = await res.json();
-        setChatMessages((prev) => [...prev, msg]);
+        chatStickToBottomRef.current = true;
+        setChatMessages((prev) => mergeChatMessages(prev, [msg]));
+        setChatInput(""); setChatError(null);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Message not sent. Please retry.");
       }
-    } catch {}
+    } catch (error) { setChatError(error instanceof Error ? error.message : "Message not sent. Please retry."); }
     setChatLoading(false);
   }
 
@@ -443,6 +457,7 @@ export default function LiveTrackingPage() {
                     ))}
                     <div />
                   </div>
+                  {chatError && <p role="alert" className="mb-2 text-xs text-red-600">{chatError}</p>}
                   <div className="flex gap-2">
                     <input
                       value={chatInput}

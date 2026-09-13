@@ -45,7 +45,7 @@ export async function GET(
   return NextResponse.json(messages.map((message) => ({
     ...message,
     isFromCustomer: message.senderId ? false : true,
-  })));
+  })), { headers: { "Cache-Control": "private, no-store, max-age=0" } });
 }
 
 export async function POST(
