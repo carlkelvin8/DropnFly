@@ -31,6 +31,7 @@ import { VersionBadge } from "@/components/layout/VersionBadge";
 import { useState } from "react";
 
 const ADMIN_ONLY_ITEMS = new Set([
+  "/dashboard/assistant",
   "/dashboard/settings",
   "/dashboard/employees",
   "/dashboard/activity-logs",
@@ -53,6 +54,7 @@ const allNavItems = [
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/customers", label: "Customers", icon: Users },
   { href: "/dashboard/chat", label: "Chat", icon: MessageCircle },
+  { href: "/dashboard/assistant", label: "AI Assistant", icon: MessageCircle },
   { href: "/dashboard/support", label: "General Support", icon: HeadphonesIcon },
   { href: "/dashboard/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/dashboard/promo-codes", label: "Promo Codes", icon: Tag },
