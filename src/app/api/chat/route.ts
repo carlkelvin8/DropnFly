@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
 // Booking references look like PREFIX-YYMMDD-XXXXXX (e.g., DROPFLY-250815-K7M3XQ).
 // The random suffix never contains 0 or 1 (see src/lib/reference.ts).
@@ -37,6 +38,19 @@ CONVERSATION RULES:
 - Booking references follow the format PREFIX-YYMMDD-XXXXXX (e.g., DROPFLY-250815-K7M3XQ). If a customer shares one, direct them to /track/<reference> for live status and tracking.
 - For account-specific, disputed, or complex inquiries, tell users to tap “Talk to an agent” in this chat. Do not claim to have accessed a booking or live database record.`;
 
+function faqFallback(message: unknown): string {
+  const raw = String(message || "");
+  const text = raw.toLowerCase();
+  const reference = raw.toUpperCase().match(BOOKING_REFERENCE_PATTERN)?.[0];
+  if (reference) return `You can track booking ${reference} at /track/${reference} to view its latest status, photos, timeline, and available live map.`;
+  if (text.includes("book")) return "Open /book to create a booking. The form shows the current luggage, service, schedule, and price options before confirmation.";
+  if (text.includes("track") || text.includes("where")) return "Open /track and enter your booking reference. You can view the current status, verification photos, timeline, and live rider map once the assigned employee starts the task.";
+  if (text.includes("price") || text.includes("cost")) return "Pricing depends on luggage size, storage duration, and pickup or delivery services. The booking form calculates the exact total before confirmation.";
+  if (text.includes("tag") || text.includes("qr")) return "Your booking confirmation includes a reference and QR code. Staff assigns and verifies the physical baggage tag during the luggage handoff workflow.";
+  if (text.includes("human") || text.includes("agent") || text.includes("staff")) return "Tap “Talk to an agent” to start a live support conversation; no booking is required.";
+  return "I can help with booking, baggage tags, storage, pickup or delivery, and tracking. For account-specific help, tap “Talk to an agent.”";
+}
+
 export async function POST(req: Request) {
   const key = requestKey(req);
   const { allowed, retryAfter } = await rateLimit(`chat:${key}`, 10, 60 * 1000);
@@ -49,16 +63,7 @@ export async function POST(req: Request) {
 
   if (!GEMINI_API_KEY) {
     const { message = "" } = await req.json();
-    const text = String(message).toLowerCase();
-    let reply = "I can help with booking, baggage tags, storage, pickup or delivery, and tracking. For account-specific help, tap “Talk to an agent.”";
-    const reference = String(message).toUpperCase().match(BOOKING_REFERENCE_PATTERN)?.[0];
-    if (reference) reply = `Thanks! I found your booking reference ${reference}. You can track it anytime at /track/${reference} — the live map and status timeline work even in demo mode.`;
-    else if (text.includes("book")) reply = "Open /book to create a booking. The form shows the current luggage, service, schedule, and price options before confirmation.";
-    else if (text.includes("track") || text.includes("where")) reply = "Open /track and enter your booking reference. You can view the current status, verification photos, timeline, and live rider map once the assigned employee starts the task.";
-    else if (text.includes("price") || text.includes("cost")) reply = "Pricing depends on luggage size, storage duration, and pickup or delivery services. The booking form calculates the exact total before confirmation.";
-    else if (text.includes("tag") || text.includes("qr")) reply = "Your booking confirmation includes a reference and QR code. Staff assigns and verifies the physical baggage tag during the luggage handoff workflow.";
-    else if (text.includes("human") || text.includes("agent") || text.includes("staff")) reply = "Tap “Talk to an agent” to start a live support conversation; no booking is required.";
-    return NextResponse.json({ reply, mode: "demo" });
+    return NextResponse.json({ reply: faqFallback(message), mode: "faq" });
   }
 
   try {
@@ -84,7 +89,7 @@ export async function POST(req: Request) {
     ];
 
     const res = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`,
       {
         method: "POST",
         headers: {
@@ -102,24 +107,16 @@ export async function POST(req: Request) {
     );
 
     if (!res.ok) {
-      const err = await res.text();
-      if (process.env.NODE_ENV === "development") {
-        console.error("Gemini API error:", res.status, err);
-      }
-      return NextResponse.json(
-        { error: "Failed to generate response. Please try again." },
-        { status: 500 }
-      );
+      console.error("Gemini API error:", res.status, res.statusText, "model:", GEMINI_MODEL);
+      return NextResponse.json({ reply: faqFallback(message), mode: "faq-fallback" });
     }
 
     const data = await res.json();
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || faqFallback(message);
 
     return NextResponse.json({ reply });
-  } catch {
-    return NextResponse.json(
-      { error: "An unexpected error occurred. Please try again." },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error("Gemini chatbot request failed:", error instanceof Error ? error.message : "unknown error");
+    return NextResponse.json({ reply: "I’m temporarily unable to reach the AI service. You can still ask about booking, tracking, pricing, or tap “Talk to an agent” for help.", mode: "faq-fallback" });
   }
 }

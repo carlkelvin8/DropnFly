@@ -209,12 +209,10 @@ export default function LiveTrackingPage() {
   const dropoffTerminalForMap = booking ? booking.dropOffLocation.split(" - ")[0].trim() : "";
   // An explicitly saved pin is the source of truth. Terminal coordinates are
   // only a fallback for older bookings that do not have an exact pin yet.
-  const pickupCoordsForMap = booking?.pickupLat != null && booking?.pickupLng != null
-    ? { lat: booking.pickupLat, lng: booking.pickupLng }
-    : pickupTerminalForMap ? NAIA_TERMINAL_COORDS[pickupTerminalForMap] : null;
-  const dropoffCoordsForMap = booking?.dropOffLat != null && booking?.dropOffLng != null
-    ? { lat: booking.dropOffLat, lng: booking.dropOffLng }
-    : dropoffTerminalForMap ? NAIA_TERMINAL_COORDS[dropoffTerminalForMap] : null;
+  const pickupCoordsForMap = (pickupTerminalForMap ? NAIA_TERMINAL_COORDS[pickupTerminalForMap] : null)
+    ?? (booking?.pickupLat != null && booking?.pickupLng != null ? { lat: booking.pickupLat, lng: booking.pickupLng } : null);
+  const dropoffCoordsForMap = (dropoffTerminalForMap ? NAIA_TERMINAL_COORDS[dropoffTerminalForMap] : null)
+    ?? (booking?.dropOffLat != null && booking?.dropOffLng != null ? { lat: booking.dropOffLat, lng: booking.dropOffLng } : null);
 
   let distance: number | null = null;
   let eta: string | null = null;
