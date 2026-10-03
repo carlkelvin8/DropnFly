@@ -5,7 +5,7 @@ const DEFAULT_TERMS = `1. Service Description
 Dropnfly provides luggage storage and delivery services at NAIA Terminals 1-4. By using our service, you agree to these terms.
 
 2. Booking & Payment
-A minimum of 50% down payment is required to reserve a slot. The remaining balance is collectible upon pickup or delivery.
+Bookings start with a zero payment balance. Any payment or refund arrangement is recorded separately based on the agreement between Dropnfly and the customer.
 
 3. Prohibited Items
 Customers must not include illegal items, hazardous materials, perishables, firearms, or valuables (cash, jewelry, electronics) in stored luggage. Dropnfly is not liable for prohibited or valuable items.
@@ -78,7 +78,6 @@ export async function GET() {
         max_bags_per_booking: parseInt(map.max_bags_per_booking || "0"),
         max_storage_days: parseInt(map.max_storage_days || "0"),
         max_advance_booking_days: parseInt(map.max_advance_booking_days || "0"),
-        min_dp_percentage: parseInt(map.min_dp_percentage || "0"),
         min_storage_days: parseInt(map.min_storage_days || "1"),
       },
       footer: {
@@ -101,7 +100,7 @@ export async function GET() {
       features: { online_booking_enabled: true, walk_in_mode_enabled: false, customer_reviews_enabled: true, discount_codes_enabled: true },
       luggage_prices: { "extra-small": 50, small: 150, standard: 175, large: 250 },
       pricing: { pickup_fee: 180, delivery_fee: 180, excess_bag_fee: 100, excess_bag_threshold: 3 },
-      booking_limits: { max_bags_per_booking: 0, max_storage_days: 0, max_advance_booking_days: 0, min_dp_percentage: 0, min_storage_days: 1 },
+      booking_limits: { max_bags_per_booking: 0, max_storage_days: 0, max_advance_booking_days: 0, min_storage_days: 1 },
       footer: { phone: "+63 (2) 1234 5678", email: "hello@dropnfly.ph", facebook: "", instagram: "", twitter: "", operating_days: "0,1,2,3,4,5,6", operating_start: "00:00", operating_end: "23:59" },
     }, { headers: { "Cache-Control": "no-store, must-revalidate" } });
   }

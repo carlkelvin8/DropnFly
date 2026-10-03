@@ -91,6 +91,15 @@ interface IntakeQueueBooking {
   status: string;
   checkIn: string;
   rider: { name: string } | null;
+  luggageItems: LuggageItemSummary[];
+}
+
+function matchesIntakeSearch(booking: IntakeQueueBooking, search: string) {
+  if (!search) return true;
+  const baggageNumbers = booking.luggageItems.map((item) => item.tagNumber).join(" ");
+  return `${booking.referenceNumber} ${baggageNumbers} ${booking.rider?.name || ""}`
+    .toUpperCase()
+    .includes(search);
 }
 
 function cleanScanInput(ref: string): string {
@@ -531,19 +540,19 @@ export default function QrScannerPage() {
           <>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input value={queueSearch} onChange={(e) => setQueueSearch(e.target.value.toUpperCase())} placeholder="Filter intake by booking reference or rider" className="h-10 w-full rounded-lg border bg-background pl-9 pr-3 text-sm" />
+              <input value={queueSearch} onChange={(e) => setQueueSearch(e.target.value.toUpperCase())} placeholder="Filter by booking, baggage number, or rider" className="h-10 w-full rounded-lg border bg-background pl-9 pr-3 text-sm" />
             </div>
             <Card>
               <CardHeader><CardTitle className="text-base">Waiting to be stored</CardTitle></CardHeader>
               <CardContent className="max-h-72 space-y-2 overflow-y-auto">
-                {intakeQueue.filter((b) => b.status === "RECEIVED" && (!queueSearch || `${b.referenceNumber} ${b.rider?.name || ""}`.toUpperCase().includes(queueSearch))).map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · Received</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); setQueueStatus("IN_STORAGE"); }}>Update</Button></div>)}
+                {intakeQueue.filter((b) => b.status === "RECEIVED" && matchesIntakeSearch(b, queueSearch)).map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · Received</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); setQueueStatus("IN_STORAGE"); }}>Update</Button></div>)}
                 {intakeQueue.every((b) => b.status !== "RECEIVED") && <p className="py-4 text-center text-sm text-muted-foreground">No luggage waiting for storage</p>}
               </CardContent>
             </Card>
             <Card>
               <CardHeader><CardTitle className="text-base">Waiting to be delivered</CardTitle></CardHeader>
               <CardContent className="max-h-72 space-y-2 overflow-y-auto">
-                {intakeQueue.filter((b) => b.status === "IN_STORAGE" && (!queueSearch || `${b.referenceNumber} ${b.rider?.name || ""}`.toUpperCase().includes(queueSearch))).map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · In storage</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); setQueueStatus("OUT_FOR_DELIVERY"); }}>Update</Button></div>)}
+                {intakeQueue.filter((b) => b.status === "IN_STORAGE" && matchesIntakeSearch(b, queueSearch)).map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · In storage</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); setQueueStatus("OUT_FOR_DELIVERY"); }}>Update</Button></div>)}
                 {intakeQueue.every((b) => b.status !== "IN_STORAGE") && <p className="py-4 text-center text-sm text-muted-foreground">No luggage waiting for delivery</p>}
               </CardContent>
             </Card>

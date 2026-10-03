@@ -23,7 +23,6 @@ import {
   AlertTriangle,
   BarChart3,
   Tag,
-  Tags,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "@/components/ThemeProvider";
@@ -37,7 +36,6 @@ const ADMIN_ONLY_ITEMS = new Set([
   "/dashboard/activity-logs",
   "/dashboard/analytics",
   "/dashboard/promo-codes",
-  "/dashboard/baggage-tags",
 ]);
 
 const STAFF_AND_ABOVE_ITEMS = new Set([
@@ -49,7 +47,6 @@ const allNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/bookings", label: "Bookings", icon: Package },
   { href: "/dashboard/scanner", label: "Scanner", icon: QrCode },
-  { href: "/dashboard/baggage-tags", label: "Baggage Tags", icon: Tags },
   { href: "/dashboard/logistics", label: "Logistics & Routes", icon: Truck },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/customers", label: "Customers", icon: Users },

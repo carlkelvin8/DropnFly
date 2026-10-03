@@ -37,10 +37,8 @@ import {
   Bike,
   Car,
   FileText,
-  Tags,
   Settings as SettingsIcon,
 } from "lucide-react";
-import { BaggageTagsSection } from "@/components/settings/BaggageTagsSection";
 
 const SETTING_DEFAULTS: Record<string, string> = {
   luggage_extra_small_price: "50",
@@ -52,7 +50,6 @@ const SETTING_DEFAULTS: Record<string, string> = {
   pickup_fee: "0",
   delivery_fee: "0",
   currency: "PHP",
-  min_dp_percentage: "50",
   max_simultaneous_bags: "50",
   max_concurrent_pickups: "3",
   max_concurrent_deliveries: "3",
@@ -68,7 +65,6 @@ const SETTING_DEFAULTS: Record<string, string> = {
   smtp_host: "",
   smtp_port: "587",
   smtp_from: "noreply@dropnfly.ph",
-  qr_code_prefix: "DNF",
   qr_image_size: "300",
   online_booking_enabled: "true",
   walk_in_mode_enabled: "false",
@@ -96,7 +92,7 @@ const SETTING_DEFAULTS: Record<string, string> = {
   auto_flag_hours_no_scan: "48",
   auto_flag_days_in_storage: "14",
   auto_flag_hours_overdue_return: "24",
-  terms_and_conditions: `1. Service Description\nDropnfly provides luggage storage and delivery services at NAIA Terminals 1-4. By using our service, you agree to these terms.\n\n2. Booking & Payment\nA minimum of 50% down payment is required to reserve a slot. The remaining balance is collectible upon pickup or delivery.\n\n3. Prohibited Items\nCustomers must not include illegal items, hazardous materials, perishables, firearms, or valuables (cash, jewelry, electronics) in stored luggage. Dropnfly is not liable for prohibited or valuable items.\n\n4. Storage Duration\nLuggage is stored from the scheduled pickup time until the scheduled delivery time. Extended storage may incur additional fees.\n\n5. Liability\nDropnfly's liability is limited to the declared value of the stored items. We recommend against storing irreplaceable or high-value items.\n\n6. Cancellation\nCancellation policies vary. Contact customer support for assistance with cancellations and refunds.\n\n7. Rider Assignment\nDropnfly assigns riders for pickup and delivery. Rider details (name, photo, vehicle, plate number) are shared with the customer.`,
+  terms_and_conditions: `1. Service Description\nDropnfly provides luggage storage and delivery services at NAIA Terminals 1-4. By using our service, you agree to these terms.\n\n2. Booking & Payment\nBookings start with a zero payment balance. Any payment or refund arrangement is recorded separately based on the agreement between Dropnfly and the customer.\n\n3. Prohibited Items\nCustomers must not include illegal items, hazardous materials, perishables, firearms, or valuables (cash, jewelry, electronics) in stored luggage. Dropnfly is not liable for prohibited or valuable items.\n\n4. Storage Duration\nLuggage is stored from the scheduled pickup time until the scheduled delivery time. Extended storage may incur additional fees.\n\n5. Liability\nDropnfly's liability is limited to the declared value of the stored items. We recommend against storing irreplaceable or high-value items.\n\n6. Cancellation\nCancellation policies vary. Contact customer support for assistance with cancellations and refunds.\n\n7. Rider Assignment\nDropnfly assigns riders only for pickup or delivery services included in the booking. Rider details (name, photo, vehicle, plate number) are shared with the customer.`,
   privacy_policy: `1. Information We Collect\nWe collect personal information (name, email, phone, country/city of origin) and booking details (pickup/delivery locations, dates, times, luggage information) to provide our services.\n\n2. How We Use Your Information\nYour information is used to process bookings, assign riders, send confirmations, provide tracking, and improve our services.\n\n3. Data Sharing\nWe share necessary information with our riders (name, pickup location) for service delivery. We do not sell your personal data to third parties.\n\n4. Location Data\nWe may collect location data to facilitate rider pickup. This data is used only for service purposes and not stored longer than necessary.\n\n5. Data Security\nWe implement reasonable security measures to protect your personal information. However, no method of transmission over the Internet is 100% secure.\n\n6. Contact\nFor privacy-related inquiries, contact our support team.`,
 };
 
@@ -129,7 +125,6 @@ const TABS = [
   { id: "footer", label: "Footer", icon: Footprints, color: "text-indigo-500" },
   { id: "qr", label: "QR & Codes", icon: QrCode, color: "text-teal-500" },
   { id: "fleet", label: "Fleet", icon: Truck, color: "text-yellow-600" },
-  { id: "tags", label: "Baggage Tags", icon: Tags, color: "text-purple-500" },
   { id: "email", label: "Email Sender", icon: Mail, color: "text-sky-500" },
   { id: "terms", label: "Terms & Privacy", icon: FileText, color: "text-blue-500" },
   { id: "maintenance", label: "Maintenance", icon: Wrench, color: "text-red-500" },
@@ -139,12 +134,12 @@ const SECTION_KEYS: Record<string, string[]> = {
   rates: ["luggage_extra_small_price", "luggage_small_price", "luggage_standard_price", "luggage_large_price", "excess_bag_fee", "excess_bag_threshold"],
   fees: ["pickup_fee", "delivery_fee"],
   capacity: ["max_simultaneous_bags", "max_bags_per_booking", "max_concurrent_pickups", "max_concurrent_deliveries", "pickup_slot_duration", "delivery_slot_duration", "operating_start", "operating_end"],
-  finance: ["currency", "min_dp_percentage"],
+  finance: ["currency"],
   notifications: ["email_notifications_enabled", "rider_assignment_email", "booking_confirmation_email", "qr_scan_notification", "smtp_host", "smtp_port", "smtp_from"],
-  booking: ["tx_prefix", "max_advance_booking_days", "min_storage_days", "max_storage_days", "free_cancellation_window_hours", "store_operating_days", "auto_flag_hours_no_scan", "auto_flag_days_in_storage", "auto_flag_hours_overdue_return"],
+  booking: ["max_advance_booking_days", "min_storage_days", "max_storage_days", "free_cancellation_window_hours", "store_operating_days", "auto_flag_hours_no_scan", "auto_flag_days_in_storage", "auto_flag_hours_overdue_return"],
   features: ["online_booking_enabled", "walk_in_mode_enabled", "customer_reviews_enabled", "discount_codes_enabled"],
   footer: ["footer_phone", "footer_email", "footer_facebook", "footer_instagram", "footer_twitter", "store_operating_start", "store_operating_end"],
-  qr: ["qr_code_prefix", "qr_image_size"],
+  qr: ["tx_prefix", "qr_image_size"],
   fleet: ["fleet_data", "max_concurrent_pickups", "max_concurrent_deliveries"],
   email: ["email_sender_name", "email_reply_to", "email_company_name"],
   terms: ["terms_and_conditions", "privacy_policy"],
@@ -165,7 +160,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (status === "loading") return;
-    if (!isAdmin) { setLoading(false); return; }
+    if (!isAdmin) return;
     fetch("/api/settings")
       .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
       .then((data) => {
@@ -560,7 +555,7 @@ export default function SettingsPage() {
             <CardTitle className="flex items-center gap-2 text-base">
               <Globe className="h-4 w-4 text-violet-500" /> Currency & Payment
             </CardTitle>
-            <CardDescription>Configure currency and minimum down payment requirements</CardDescription>
+            <CardDescription>Configure the currency used for recorded charges, payments, and refunds</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -573,14 +568,8 @@ export default function SettingsPage() {
                   ]} className="w-full" />
                 <p className="text-[10px] text-muted-foreground">Prices and PayMongo settlements currently operate in Philippine pesos.</p>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="min_dp_percentage">Minimum Down Payment (%)</Label>
-                <div className="flex items-center gap-2">
-                  <Input id="min_dp_percentage" type="number" min="0" max="100" step="5" className="w-28 font-mono"
-                    value={settings.min_dp_percentage || "50"}
-                    onChange={(e) => handleChange("min_dp_percentage", e.target.value)} />
-                  <span className="text-xs text-muted-foreground">% of total to reserve a booking</span>
-                </div>
+              <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+                New bookings are reservation-first and start with zero collected payment. Staff records any agreed payment separately.
               </div>
             </div>
             <SectionFooter
@@ -686,15 +675,6 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="tx_prefix">Transaction Code Prefix</Label>
-                <div className="flex items-center gap-2">
-                  <Input id="tx_prefix" className="w-24 font-mono uppercase"
-                    value={settings.tx_prefix || "DNF"}
-                    onChange={(e) => handleChange("tx_prefix", e.target.value.toUpperCase())} />
-                  <span className="text-xs text-muted-foreground">Used in booking reference numbers (e.g. DNF-XXXXXX)</span>
-                </div>
-              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="max_advance_booking_days">Max Advance Booking (days)</Label>
                 <Input id="max_advance_booking_days" type="number" min="1" max="365" className="w-28 font-mono"
@@ -895,12 +875,12 @@ export default function SettingsPage() {
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="qr_code_prefix">QR Code Prefix</Label>
+                <Label htmlFor="tx_prefix">Booking &amp; QR Reference Prefix</Label>
                 <div className="flex items-center gap-2">
-                  <Input id="qr_code_prefix" className="w-28 font-mono uppercase"
-                    value={settings.qr_code_prefix || "DNF"}
-                    onChange={(e) => handleChange("qr_code_prefix", e.target.value.toUpperCase())} />
-                  <span className="text-xs text-muted-foreground">Prepended to QR code data (e.g. DNF-REF123)</span>
+                  <Input id="tx_prefix" className="w-28 font-mono uppercase"
+                    value={settings.tx_prefix || "DNF"}
+                    onChange={(e) => handleChange("tx_prefix", e.target.value.toUpperCase())} />
+                  <span className="text-xs text-muted-foreground">Single prefix for booking references and their QR codes</span>
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -1067,7 +1047,6 @@ export default function SettingsPage() {
           onSave={() => handleSaveSection("fleet")}
         />
       )}
-      {activeTab === "tags" && <BaggageTagsSection />}
     </div>
   );
 }

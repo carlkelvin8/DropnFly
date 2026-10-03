@@ -54,6 +54,7 @@ interface Booking {
   status: string;
   createdAt: string;
   pickupStartedAt: string | null;
+  scanEvents: { id: string; status: string; photo: string | null; scannedAt: string }[];
   assignments: { id: string; phase: string; vehicleId: string | null; vehicleType: string | null; vehiclePlate: string | null; user: { id: string; name: string; email: string; vehicleType?: string | null; plateNumber?: string | null } }[];
   payments?: { id: string; amount: number; method: string; status: string; paidAt: string | null }[];
   promoCode?: { code: string } | null;
@@ -133,6 +134,25 @@ function readableLuggageDetails(value: string | null): string {
   }
 }
 
+function splitTerminalAndAirline(value: string): { terminal: string; airline: string } {
+  const terminal = NAIA_TERMINALS.find((item) => value.startsWith(item.value))?.value || value;
+  const airline = terminal !== value && value.startsWith(`${terminal} - `)
+    ? value.slice(terminal.length + 3).trim()
+    : "";
+  return { terminal, airline };
+}
+
+function toManilaDateTimeLocal(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Manila",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(date).replace(" ", "T");
+}
+
 export default function BookingDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -155,6 +175,7 @@ export default function BookingDetailPage() {
   const [editPickupAirline, setEditPickupAirline] = useState("");
 
   const [editDropOffTerminal, setEditDropOffTerminal] = useState("");
+  const [editDropOffAirline, setEditDropOffAirline] = useState("");
   const [editSessionName, setEditSessionName] = useState<string | null>(null);
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
   const [serviceNote, setServiceNote] = useState("");
@@ -174,6 +195,7 @@ export default function BookingDetailPage() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [availableTags, setAvailableTags] = useState<AvailableTag[]>([]);
   const [selectedTagNumbers, setSelectedTagNumbers] = useState<Set<string>>(new Set());
+  const [replaceItemId, setReplaceItemId] = useState<string | null>(null);
   const [requestingTags, setRequestingTags] = useState(false);
   const [flaggableItem, setFlaggableItem] = useState<string | null>(null);
   const [sectionFilter, setSectionFilter] = useState<string>("all");
@@ -238,51 +260,24 @@ export default function BookingDetailPage() {
       .catch(() => setUserRole(null));
   }, []);
 
+  const bookingId = booking?.id;
   useEffect(() => {
-    if (!booking || showEditModal) return;
-    // pre-fill edit fields from booking when not editing
-    const pick = booking.pickupLocation || "";
-    if (pick.includes(" - ")) {
-      const [t, ...rest] = pick.split(" - ");
-      setEditPickupTerminal(t.trim());
-      setEditPickupAirline(rest.join(" - ").trim());
-    } else {
-      // try to detect terminal substring
-      const found = NAIA_TERMINALS.find((tt) => pick.includes(tt.value));
-      setEditPickupTerminal(found ? found.value : pick);
-      setEditPickupAirline("");
-    }
-    setEditDropOffTerminal(booking.dropOffLocation || "");
-  }, [booking, showEditModal]);
-
-  useEffect(() => {
-    if (showEditModal && booking) {
-      const pick = booking.pickupLocation || "";
-      if (pick.includes(" - ")) {
-        const [t, ...rest] = pick.split(" - ");
-        setEditPickupTerminal(t.trim());
-        setEditPickupAirline(rest.join(" - ").trim());
-      } else {
-        const found = NAIA_TERMINALS.find((tt) => pick.includes(tt.value));
-        setEditPickupTerminal(found ? found.value : pick);
-        setEditPickupAirline("");
-      }
-      setEditDropOffTerminal(booking.dropOffLocation || "");
-    }
-  }, [showEditModal, booking]);
-
-  useEffect(() => {
-    if (!booking) return;
-    fetch(`/api/bookings/${booking.id}/log`)
+    if (!bookingId) return;
+    fetch(`/api/bookings/${bookingId}/log`)
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setLogs(d); })
       .catch(() => {});
-  }, [booking?.id]);
+  }, [bookingId]);
 
-  const totalPaid = (booking?.payments || [])
+  const grossPaid = (booking?.payments || [])
     .filter((p) => p.status === "PAID")
     .reduce((s, p) => s + p.amount, 0);
-  const balance = booking ? booking.totalPrice - totalPaid : 0;
+  const totalRefunded = (booking?.payments || [])
+    .filter((p) => p.status === "REFUNDED" && p.amount < 0)
+    .reduce((s, p) => s + Math.abs(p.amount), 0);
+  const netCollected = grossPaid - totalRefunded;
+  const totalPaid = grossPaid;
+  const balance = booking ? booking.totalPrice - grossPaid : 0;
   const paymentStatus = !booking ? "unpaid" :
     totalPaid >= booking.totalPrice && booking.totalPrice > 0 ? "full" :
     totalPaid > 0 ? "dp" : "unpaid";
@@ -314,6 +309,17 @@ export default function BookingDetailPage() {
         setSettleAmount(bookingData && bookingData.totalPrice - paid > 0 ? bookingData.totalPrice - paid : 0);
       })
       .catch(() => toast.error("Failed to reload booking"));
+  }
+
+  function openEditBooking() {
+    if (!booking) return;
+    const pickup = splitTerminalAndAirline(booking.pickupLocation || "");
+    const dropoff = splitTerminalAndAirline(booking.dropOffLocation || "");
+    setEditPickupTerminal(pickup.terminal);
+    setEditPickupAirline(pickup.airline);
+    setEditDropOffTerminal(dropoff.terminal);
+    setEditDropOffAirline(dropoff.airline);
+    setShowEditModal(true);
   }
 
   async function handleAddLuggage() {
@@ -360,23 +366,6 @@ export default function BookingDetailPage() {
       setShowAddBagModal(false);
     } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to add luggage"); }
     setAddingLuggage(false);
-  }
-
-  async function handleUpdateLuggageStatus(itemId: string, status: string) {
-    try {
-      const res = await fetch(`/api/luggage/${itemId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.error || "Failed to update luggage status");
-      }
-      const updated = await res.json();
-      setLuggageItems((prev) => prev.map((i) => i.id === itemId ? { ...i, ...updated } : i));
-      toast.success(`Luggage status updated to ${status.replace("_", " ")}`);
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to update luggage status"); }
   }
 
   async function handleReviewExtension(extId: string, status: string) {
@@ -582,7 +571,9 @@ export default function BookingDetailPage() {
     const formData = new FormData(e.currentTarget);
     const body: Record<string, unknown> = {};
     for (const [key, val] of formData.entries()) {
-      if (key === "checkIn" || key === "checkOut") body[key] = val;
+      if (key === "checkIn" || key === "checkOut") {
+        body[key] = val ? `${val}:00+08:00` : val;
+      }
       else if (key === "numberOfBags") continue;
       else if (key === "pickupTerminal" || key === "pickupAirline" || key === "dropOffTerminal") continue;
       else body[key] = val;
@@ -590,7 +581,9 @@ export default function BookingDetailPage() {
     const pickupLocation = editPickupAirline
       ? `${editPickupTerminal} - ${editPickupAirline}`
       : editPickupTerminal;
-    const dropOffLocation = editDropOffTerminal || booking?.dropOffLocation || "";
+    const dropOffLocation = editDropOffAirline
+      ? `${editDropOffTerminal} - ${editDropOffAirline}`
+      : editDropOffTerminal || booking?.dropOffLocation || "";
     if (pickupLocation) body.pickupLocation = pickupLocation;
     if (dropOffLocation) body.dropOffLocation = dropOffLocation;
     // Add change note with actor
@@ -604,11 +597,14 @@ export default function BookingDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error("Failed to update");
+      if (!res.ok) {
+        const result = await res.json().catch(() => null);
+        throw new Error(result?.error || "Failed to update");
+      }
       reloadBooking();
       setShowEditModal(false);
       toast.success("Booking updated");
-    } catch { toast.error("Failed to update booking"); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to update booking"); }
     setEditSaving(false);
   }
 
@@ -719,8 +715,9 @@ export default function BookingDetailPage() {
   async function handleRequestTags() {
     if (selectedTagNumbers.size < 1) return toast.error("Select at least one available tag");
     const maxBags = booking?.numberOfBags || 3;
-    if (luggageItems.length >= maxBags) return toast.error(`Maximum ${maxBags} baggage tag(s) per booking`);
-    if (luggageItems.length + selectedTagNumbers.size > maxBags) {
+    if (replaceItemId && selectedTagNumbers.size !== 1) return toast.error("Select one new baggage number");
+    if (!replaceItemId && luggageItems.length >= maxBags) return toast.error(`Maximum ${maxBags} baggage tag(s) per booking`);
+    if (!replaceItemId && luggageItems.length + selectedTagNumbers.size > maxBags) {
       return toast.error(`Can only assign ${maxBags - luggageItems.length} more tag(s). Maximum is ${maxBags}.`);
     }
     setRequestingTags(true);
@@ -728,14 +725,15 @@ export default function BookingDetailPage() {
       const res = await fetch("/api/baggage-tags/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: params.id, tagNumbers: [...selectedTagNumbers] }),
+        body: JSON.stringify({ bookingId: params.id, tagNumbers: [...selectedTagNumbers], replaceItemId }),
       });
       if (res.ok) {
         const items = await res.json();
         setLuggageItems((prev) => [...prev, ...items]);
-        toast.success(`Assigned ${items.length} baggage tag(s)`);
+        toast.success(replaceItemId ? "Baggage number change sent for admin approval" : `Assigned ${items.length} baggage tag(s)`);
         setAvailableTags((prev) => prev.map((tag) => selectedTagNumbers.has(tag.tagNumber) ? { ...tag, isUsed: true } : tag));
         setSelectedTagNumbers(new Set());
+        setReplaceItemId(null);
       } else {
         const err = await res.json();
         toast.error(err.error || "Failed to request tags");
@@ -752,10 +750,13 @@ export default function BookingDetailPage() {
         body: JSON.stringify({ itemIds: [itemId], action }),
       });
       if (res.ok) {
-        const updatedStatus = action === "APPROVED" ? "CHECKED_IN" : "CANCELLED";
-        setLuggageItems((prev) => prev.map((i) => i.id === itemId ? { ...i, status: updatedStatus } : i));
+        const refreshed = await fetch(`/api/bookings/${params.id}/luggage`).then((response) => response.json());
+        if (Array.isArray(refreshed)) setLuggageItems(refreshed);
         toast.success(`Tag ${action === "APPROVED" ? "approved" : "rejected"}`);
-      } else toast.error("Failed to process tag");
+      } else {
+        const result = await res.json().catch(() => null);
+        toast.error(result?.error || "Failed to process baggage-number request");
+      }
     } catch { toast.error("Failed to process tag"); }
   }
 
@@ -1068,12 +1069,12 @@ export default function BookingDetailPage() {
               {showRefundForm && (
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3 mt-2 space-y-3">
                   <p className="text-xs text-red-700">
-                    Total paid: <strong>{formatCurrency(totalPaid)}</strong>
-                    {balance > 0 && <span> · Refundable amount may not exceed total paid</span>}
+                    Net collected: <strong>{formatCurrency(netCollected)}</strong>
+                    <span> · Enter the amount agreed with the customer</span>
                   </p>
                   <div className="flex gap-2">
                     <input
-                      type="number" step="0.01" min="0" max={totalPaid}
+                      type="number" step="0.01" min="0.01"
                       value={refundAmount} onChange={(e) => setRefundAmount(parseFloat(e.target.value) || 0)}
                       placeholder="Amount" required
                       className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
@@ -1174,43 +1175,17 @@ export default function BookingDetailPage() {
                         : "",
                     };
                   }));
-                // Also include employee personal vehicles as fallback option
-                const personalVehicles = assignableEmployees
-                  .filter((e) => e.vehicleType && e.plateNumber && !fleetVehicles.some((fv) => fv.plateDisplay === e.plateNumber))
-                  .map((e) => {
-                    const plate = e.plateNumber as string;
-                    const conflictList = conflictsFor(plate);
-                    const isOwn = assignedPlates.has(plate);
-                    const isOccupied = isOwn || conflictList.length > 0;
-                    return {
-                      uniqueKey: `personal-${e.id}`,
-                      type: e.vehicleType as string,
-                      plateDisplay: plate,
-                      color: "",
-                      icon: "bike" as const,
-                      isOccupied,
-                      conflictText: isOwn
-                        ? "In use on this booking's other leg"
-                        : conflictList.length > 0
-                          ? `Occupied by ${conflictList.length > 1 ? `${conflictList.length} booking(s)` : `${conflictList[0].referenceNumber} ${fmtConflict(conflictList[0].checkIn)} ${conflictList[0].phase.toLowerCase()}`}`
-                          : "",
-                      conflictTitle: conflictList.length > 0
-                        ? conflictList.map((c) => `${c.referenceNumber} • ${fmtConflict(c.checkIn)} • ${c.phase.toLowerCase()} • ${c.customerName}`).join("; ")
-                        : "",
-                      isPersonal: true,
-                      ownerName: e.name,
-                    };
-                  });
-                const allVehicles = [...fleetVehicles, ...personalVehicles];
+                const serviceName = phase === "PICKUP" ? "Pick-up from Customer" : "Deliver to Customer";
+                const phaseAvailed = availedServices.has(serviceName);
                 return (
-                  <form key={phase} onSubmit={handleAssign} className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                  <form key={phase} onSubmit={handleAssign} className={`space-y-3 rounded-lg border p-3 ${phaseAvailed ? "bg-muted/20" : "bg-muted/50 opacity-70"}`}>
                     <input type="hidden" name="phase" value={phase} />
                     <input type="hidden" name="vehicleType" defaultValue={currentAssignment?.vehicleType || ""} />
                     <input type="hidden" name="vehiclePlate" defaultValue={currentAssignment?.vehiclePlate || ""} />
                     <div>
                       <Label>{phaseLabel} Employee</Label>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {currentAssignment ? `Currently: ${currentAssignment.user.name}` : "Select rider for this leg"}
+                        {!phaseAvailed ? `${serviceName} was not included in this booking` : currentAssignment ? `Currently: ${currentAssignment.user.name}` : "Select rider for this leg"}
                       </p>
                     </div>
                     <select
@@ -1218,6 +1193,7 @@ export default function BookingDetailPage() {
                       defaultValue={currentAssignment?.user.id || ""}
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                       required
+                      disabled={!phaseAvailed}
                     >
                       <option value="">Select employee...</option>
                       {assignableEmployees.map((emp) => (
@@ -1229,7 +1205,7 @@ export default function BookingDetailPage() {
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {currentAssignment?.vehiclePlate
                           ? `Assigned: ${currentAssignment.vehicleType || "Vehicle"} ${currentAssignment.vehiclePlate}`
-                          : "Choose from fleet or employee personal vehicle"}
+                          : "Choose from registered fleet vehicles"}
                       </p>
                     </div>
                     <select
@@ -1247,10 +1223,6 @@ export default function BookingDetailPage() {
                           const found = fleetVehicles.find((fv) => fv.id === vId);
                           if (vtInput) vtInput.value = found?.type || "";
                           if (vpInput) vpInput.value = found?.plateDisplay || "";
-                        } else if (val.startsWith("personal:")) {
-                          const parts = val.replace("personal:", "").split("::");
-                          if (vtInput) vtInput.value = parts[0] || "";
-                          if (vpInput) vpInput.value = parts[1] || "";
                         } else {
                           if (vtInput) vtInput.value = "";
                           if (vpInput) vpInput.value = "";
@@ -1267,21 +1239,12 @@ export default function BookingDetailPage() {
                           ))}
                         </optgroup>
                       )}
-                      {personalVehicles.length > 0 && (
-                        <optgroup label="Employee Personal Vehicles">
-                          {personalVehicles.map((v) => (
-                            <option key={v.uniqueKey} value={`personal:${v.type}::${v.plateDisplay}`} disabled={v.isOccupied} title={v.conflictTitle}>
-                              {v.type} {v.plateDisplay} ({v.ownerName}){v.isOccupied ? ` — ${v.conflictText || "Occupied"}` : ""}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {allVehicles.length === 0 && (
+                      {fleetVehicles.length === 0 && (
                         <option value="" disabled>No vehicles registered — add in Settings → Fleet</option>
                       )}
                     </select>
-                    <Button type="submit" className="w-full" variant={currentAssignment ? "outline" : "default"} disabled={saving || bookingLocked}>
-                      {currentAssignment ? `Re-assign ${phaseLabel}` : `Assign ${phaseLabel}`}
+                    <Button type="submit" className="w-full" variant={currentAssignment ? "outline" : "default"} disabled={saving || bookingLocked || !phaseAvailed}>
+                      {!phaseAvailed ? `${phaseLabel} Not Availed` : currentAssignment ? `Re-assign ${phaseLabel}` : `Assign ${phaseLabel}`}
                     </Button>
                   </form>
                 );
@@ -1289,7 +1252,7 @@ export default function BookingDetailPage() {
             </div>
 
             <div className="space-y-2">
-              <Button variant="outline" className="w-full justify-start" onClick={() => setShowEditModal(true)} disabled={bookingLocked}>
+              <Button variant="outline" className="w-full justify-start" onClick={openEditBooking} disabled={bookingLocked}>
                 <Edit3 className="mr-2 h-4 w-4" /> Edit Booking
               </Button>
               <Button variant="outline" className="w-full justify-start" asChild>
@@ -1489,14 +1452,18 @@ export default function BookingDetailPage() {
       <Card>
         <CardHeader><CardTitle>Luggage Photos</CardTitle><CardDescription>Submitted photos are read-only. Employees add verification photos only while updating luggage status.</CardDescription></CardHeader>
         <CardContent>
-          <div className="grid grid-cols-4 gap-2 mb-4">
-            {booking.luggagePhotos.map((photo, i) => (
-              <div key={i} className="relative group">
-                <Image unoptimized width={400} height={160} src={photo} alt={`Luggage ${i + 1}`} className="rounded-lg object-cover w-full h-24" />
+          <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
+            {[
+              ...booking.luggagePhotos.map((photo, index) => ({ id: `submitted-${index}`, photo, label: "Submitted" })),
+              ...(booking.scanEvents || []).flatMap((event) => event.photo ? [{ id: event.id, photo: event.photo, label: event.status.replace(/_/g, " ") }] : []),
+            ].map((item, i) => (
+              <div key={item.id} className="relative group">
+                <Image unoptimized width={400} height={160} src={item.photo} alt={`Luggage verification ${i + 1}`} className="rounded-lg object-cover w-full h-24" />
+                <span className="mt-1 block text-[10px] font-medium text-muted-foreground">{item.label}</span>
               </div>
             ))}
           </div>
-          <span className="text-xs text-muted-foreground">{booking.luggagePhotos.length} submitted photo(s)</span>
+          <span className="text-xs text-muted-foreground">{booking.luggagePhotos.length + (booking.scanEvents || []).filter((event) => event.photo).length} photo(s), including status verification</span>
         </CardContent>
       </Card>
 
@@ -1588,17 +1555,16 @@ export default function BookingDetailPage() {
                       {item.location && <p className="text-xs text-muted-foreground">Location: {item.location}</p>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                      <select value={item.status} onChange={(e) => handleUpdateLuggageStatus(item.id, e.target.value)}
-                        className="h-8 rounded border border-input bg-transparent px-2 text-xs">
-                        <option value="TAG_REQUESTED">Tag Requested</option>
-                        <option value="CHECKED_IN">Checked In</option>
-                        <option value="IN_STORAGE">In Storage</option>
-                        <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
-                        <option value="DELIVERED">Delivered</option>
-                        <option value="CANCELLED">Cancelled</option>
-                      </select>
-                  </div>
+                  <p className="max-w-44 text-right text-[10px] text-muted-foreground">
+                    <button
+                      type="button"
+                      onClick={() => { setReplaceItemId(item.id); setSelectedTagNumbers(new Set()); }}
+                      disabled={item.status === "TAG_REQUESTED" || bookingLocked}
+                      className="font-medium text-teal-700 hover:underline disabled:text-muted-foreground disabled:no-underline"
+                    >
+                      Request change of baggage number
+                    </button>
+                  </p>
                 </div>
               ))}
               {/* Also show any additional baggage that hasn't been assigned a physical tag yet */}
@@ -1642,6 +1608,12 @@ export default function BookingDetailPage() {
         <CardContent>
           {/* Physical tag selection */}
           <div className="mb-4 rounded-lg border bg-muted/30 p-3">
+            {replaceItemId && (
+              <div className="mb-3 flex items-center justify-between rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
+                <span>Choose one new number to replace {luggageItems.find((item) => item.id === replaceItemId)?.tagNumber}.</span>
+                <button type="button" className="font-medium hover:underline" onClick={() => { setReplaceItemId(null); setSelectedTagNumbers(new Set()); }}>Cancel</button>
+              </div>
+            )}
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground">
                 Select available physical tags (max {booking?.numberOfBags || 3} for this booking)
@@ -1653,7 +1625,7 @@ export default function BookingDetailPage() {
             <div className="mb-3 grid max-h-40 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
               {availableTags.filter((tag) => !tag.isUsed).map((tag) => {
                 const selected = selectedTagNumbers.has(tag.tagNumber);
-                const remaining = (booking?.numberOfBags || 3) - luggageItems.length;
+                const remaining = replaceItemId ? 1 : (booking?.numberOfBags || 3) - luggageItems.length;
                 return (
                   <button
                     key={tag.id}
@@ -1677,13 +1649,13 @@ export default function BookingDetailPage() {
               <Button
                 size="sm"
                 onClick={handleRequestTags}
-                disabled={bookingLocked || requestingTags || (booking ? luggageItems.length >= booking.numberOfBags : luggageItems.length >= 3) || selectedTagNumbers.size < 1}
+                disabled={bookingLocked || requestingTags || (!replaceItemId && (booking ? luggageItems.length >= booking.numberOfBags : luggageItems.length >= 3)) || selectedTagNumbers.size < 1}
                 className="bg-teal-600 hover:bg-teal-700"
               >
                 {requestingTags ? (
                   <><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent mr-1" /> Requesting...</>
                 ) : (
-                  <><Plus className="mr-1 h-3 w-3" /> Assign {selectedTagNumbers.size} Tag{selectedTagNumbers.size > 1 ? "s" : ""}</>
+                  <><Plus className="mr-1 h-3 w-3" /> {replaceItemId ? "Request Number Change" : `Assign ${selectedTagNumbers.size} Tag${selectedTagNumbers.size > 1 ? "s" : ""}`}</>
                 )}
               </Button>
             </div>
@@ -1740,7 +1712,7 @@ export default function BookingDetailPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
-                        {isPending && (
+                        {isPending && userRole === "ADMIN" && (
                           <>
                             <button
                               onClick={() => handleApproveTag(item.id, "APPROVED")}
@@ -2008,22 +1980,34 @@ export default function BookingDetailPage() {
               </div>
 
               <div>
-                <Label>Drop-off Location</Label>
-                <select value={editDropOffTerminal} onChange={(e) => setEditDropOffTerminal(e.target.value)}
+                <Label>Drop-off Terminal</Label>
+                <select value={editDropOffTerminal} onChange={(e) => { setEditDropOffTerminal(e.target.value); setEditDropOffAirline(""); }}
                   className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                  <option value="">Select terminal...</option>
                   {NAIA_TERMINALS.map((terminal) => <option key={terminal.value} value={terminal.value}>{terminal.label}</option>)}
                   <option value="Villamor, Pasay City">Villamor, Pasay City (Dropnfly Counter)</option>
                 </select>
               </div>
+              {NAIA_TERMINALS.some((terminal) => terminal.value === editDropOffTerminal) && (
+                <div>
+                  <Label>Drop-off Airline</Label>
+                  <select value={editDropOffAirline} onChange={(e) => setEditDropOffAirline(e.target.value)}
+                    className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
+                    <option value="">Select airline...</option>
+                    {getAirlinesForTerminal(editDropOffTerminal).map((airline) => <option key={airline} value={airline}>{airline}</option>)}
+                  </select>
+                  <p className="mt-1 text-[10px] text-muted-foreground">Showing airlines available for {editDropOffTerminal}</p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Check In</Label>
-                  <input name="checkIn" type="datetime-local" defaultValue={booking.checkIn.slice(0, 16)}
+                  <input name="checkIn" type="datetime-local" defaultValue={toManilaDateTimeLocal(booking.checkIn)}
                     className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
                 </div>
                 <div>
                   <Label>Check Out</Label>
-                  <input name="checkOut" type="datetime-local" defaultValue={booking.checkOut?.slice(0, 16) || ""}
+                  <input name="checkOut" type="datetime-local" defaultValue={toManilaDateTimeLocal(booking.checkOut)}
                     className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm" />
                 </div>
               </div>
@@ -2054,7 +2038,7 @@ export default function BookingDetailPage() {
 
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="outline" onClick={() => setShowEditModal(false)}>Cancel</Button>
-                <Button type="submit" disabled={editSaving || !editPickupTerminal}>{editSaving ? "Saving..." : "Save Changes"}</Button>
+                <Button type="submit" disabled={editSaving || !editPickupTerminal || !editPickupAirline || !editDropOffTerminal || (NAIA_TERMINALS.some((terminal) => terminal.value === editDropOffTerminal) && !editDropOffAirline)}>{editSaving ? "Saving..." : "Save Changes"}</Button>
               </div>
             </form>
           </div>

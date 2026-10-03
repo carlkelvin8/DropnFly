@@ -5,6 +5,7 @@ import { logActivity } from "@/lib/activity";
 import { notifyTaskAssigned } from "@/lib/notifications";
 import { sendRiderAssignedEmail } from "@/lib/email";
 import { isBookingLocked } from "@/lib/booking-access";
+import { parseLuggageDetails } from "@/lib/pricing";
 
 export async function POST(
   req: Request,
@@ -27,6 +28,7 @@ export async function POST(
       select: {
         referenceNumber: true,
         status: true,
+        luggageDetails: true,
         customer: { select: { name: true, email: true } },
       },
     });
@@ -40,14 +42,23 @@ export async function POST(
     }
 
     const phase = body.phase === "DROPOFF" ? "DROPOFF" : "PICKUP";
+    const services = parseLuggageDetails(booking.luggageDetails || "").services;
+    const requiredService = phase === "PICKUP" ? "Pick-up from Customer" : "Deliver to Customer";
+    if (!services.includes(requiredService)) {
+      return NextResponse.json(
+        { error: `${phase === "PICKUP" ? "Pickup" : "Drop-off"} cannot be assigned because the customer did not avail ${requiredService}` },
+        { status: 409 }
+      );
+    }
     const rider = await prisma.user.findFirst({
       where: { id: body.userId, role: "EMPLOYEE", isActive: true, isApproved: true },
       select: { id: true, vehicleType: true, plateNumber: true },
     });
     if (!rider) return NextResponse.json({ error: "Select an active employee account" }, { status: 400 });
 
-    // Vehicle is separate from employee — use fleet selection if provided, else fallback to employee's vehicle
-    let vehicleId: string | null = typeof body.vehicleId === "string" && body.vehicleId ? body.vehicleId : null;
+    // Vehicles must come from the centrally registered fleet. Employee profile
+    // vehicle fields are legacy metadata and are not assignable inventory.
+    const vehicleId: string | null = typeof body.vehicleId === "string" && body.vehicleId ? body.vehicleId : null;
     let vehicleType: string | null = typeof body.vehicleType === "string" && body.vehicleType ? body.vehicleType : null;
     let vehiclePlate: string | null = typeof body.vehiclePlate === "string" && body.vehiclePlate ? body.vehiclePlate : null;
 
@@ -57,15 +68,17 @@ export async function POST(
         const settings = await prisma.systemSetting.findUnique({ where: { key: "fleet_data" } });
         const fleet = settings?.value ? JSON.parse(settings.value) as Array<{ id: string; type: string; plateNumber: string; color?: string; count: number }> : [];
         const found = fleet.find((v) => v.id === vehicleId);
-        if (found) {
-          vehicleType = found.type;
-          vehiclePlate = found.plateNumber || vehiclePlate;
-        }
-      } catch {}
+        if (!found) return NextResponse.json({ error: "Select a registered fleet vehicle" }, { status: 400 });
+        vehicleType = found.type;
+        vehiclePlate = found.plateNumber || null;
+      } catch {
+        return NextResponse.json({ error: "Fleet configuration is invalid" }, { status: 500 });
+      }
     }
-    // Fallback to employee's registered vehicle if no fleet vehicle chosen
-    if (!vehicleType) vehicleType = rider.vehicleType || null;
-    if (!vehiclePlate) vehiclePlate = rider.plateNumber || null;
+    if (!vehicleId) {
+      vehicleType = null;
+      vehiclePlate = null;
+    }
 
     // Check vehicle availability — prevent double-booking same plate on overlapping dates
     if (vehiclePlate) {

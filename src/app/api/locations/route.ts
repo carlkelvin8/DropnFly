@@ -7,7 +7,7 @@ import { decimalsToNumbers } from "@/lib/serialize";
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF", "EMPLOYEE"])) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

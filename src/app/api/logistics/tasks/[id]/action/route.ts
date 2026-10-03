@@ -10,7 +10,9 @@ import { sendCustomerNotification } from "@/lib/notifications";
 // actions: start-pickup, arrive-pickup, complete-pickup, start-delivery, arrive-delivery, complete-delivery
 const ACTION_MAP: Record<string, string> = {
   "start-pickup": "CONFIRMED",
-  "arrive-pickup": "RECEIVED",
+  // Arrival is location progress only. RECEIVED is exclusively set by the
+  // scanner after QR confirmation, physical-tag validation, and photo proof.
+  "arrive-pickup": "CONFIRMED",
   "complete-pickup": "IN_STORAGE",
   "start-delivery": "OUT_FOR_DELIVERY",
   "arrive-delivery": "OUT_FOR_DELIVERY",
@@ -46,6 +48,9 @@ export async function POST(
     if (photo && typeof photo === "string" && photo.length > 2_000_000) {
       return NextResponse.json({ error: "Photo too large (max 2MB)" }, { status: 413 });
     }
+    if (["arrive-pickup", "arrive-delivery", "complete-delivery"].includes(action) && !photo) {
+      return NextResponse.json({ error: "Photo proof is required for this action" }, { status: 400 });
+    }
 
     const booking = await prisma.booking.findUnique({
       where: { id },
@@ -57,6 +62,11 @@ export async function POST(
         status: true,
         pickupStartedAt: true,
         deliveryArrivedAt: true,
+        scanEvents: {
+          where: { status: "ARRIVED_PICKUP" },
+          select: { id: true },
+          take: 1,
+        },
         assignments: { select: { userId: true, phase: true } },
       },
     });
@@ -72,11 +82,12 @@ export async function POST(
     if (action === "arrive-delivery" && booking.deliveryArrivedAt) {
       return NextResponse.json({ error: "Already marked as arrived at delivery location" }, { status: 409 });
     }
-    if (action === "arrive-pickup" && booking.status !== "CONFIRMED") {
+    const pickupArrived = booking.scanEvents.length > 0;
+    if (action === "arrive-pickup" && (booking.status !== "CONFIRMED" || pickupArrived)) {
       return NextResponse.json({ error: "Already marked as arrived at pickup" }, { status: 409 });
     }
 
-    const availableActions = availableLogisticsActions(booking.status, Boolean(booking.pickupStartedAt), Boolean(booking.deliveryArrivedAt));
+    const availableActions = availableLogisticsActions(booking.status, Boolean(booking.pickupStartedAt), Boolean(booking.deliveryArrivedAt), pickupArrived);
     if (!availableActions.includes(action as LogisticsAction)) {
       return NextResponse.json(
         { error: `Action '${action}' is not valid while the booking is ${booking.status.replaceAll("_", " ").toLowerCase()}` },
@@ -131,7 +142,7 @@ export async function POST(
         data: {
           bookingId: id,
           userId: session.user.id,
-          status: newStatus,
+          status: action === "arrive-pickup" ? "ARRIVED_PICKUP" : newStatus,
           photo: photo || null,
           note: note || `Task action: ${action}`,
           latitude: latitude ?? null,
@@ -204,7 +215,7 @@ export async function POST(
       pickupStartedAt: updated.pickupStartedAt,
       deliveryArrivedAt: updated.deliveryArrivedAt,
       taskType: logisticsTaskType(newStatus),
-      availableActions: availableLogisticsActions(newStatus, Boolean(updated.pickupStartedAt), Boolean(updated.deliveryArrivedAt)),
+      availableActions: availableLogisticsActions(newStatus, Boolean(updated.pickupStartedAt), Boolean(updated.deliveryArrivedAt), pickupArrived || action === "arrive-pickup"),
     });
   } catch (error) {
     console.error("[Logistics] action failed:", error);

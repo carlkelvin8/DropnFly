@@ -15,10 +15,10 @@ export function logisticsTaskType(status: string): LogisticsTaskType {
 }
 
 /** Valid next actions for the booking's current persisted workflow state. */
-export function availableLogisticsActions(status: string, trackingStarted: boolean, deliveryArrived = false): LogisticsAction[] {
+export function availableLogisticsActions(status: string, trackingStarted: boolean, deliveryArrived = false, pickupArrived = false): LogisticsAction[] {
   switch (status) {
     case "CONFIRMED":
-      return trackingStarted ? ["arrive-pickup"] : ["start-pickup"];
+      return trackingStarted ? (pickupArrived ? [] : ["arrive-pickup"]) : ["start-pickup"];
     case "RECEIVED":
       return ["complete-pickup"];
     case "IN_STORAGE":

@@ -33,6 +33,7 @@ export async function GET() {
           include: { user: { select: { id: true, name: true, profilePic: true, vehicleType: true, plateNumber: true } } },
           orderBy: { createdAt: "desc" },
         },
+        scanEvents: { where: { status: "ARRIVED_PICKUP" }, select: { id: true }, take: 1 },
       },
     });
   } catch (e) {
@@ -93,7 +94,7 @@ export async function GET() {
       checkOut: b.checkOut,
       pickupStartedAt: b.pickupStartedAt,
       deliveryArrivedAt: b.deliveryArrivedAt,
-      availableActions: availableLogisticsActions(b.status, Boolean(b.pickupStartedAt), Boolean(b.deliveryArrivedAt)),
+      availableActions: availableLogisticsActions(b.status, Boolean(b.pickupStartedAt), Boolean(b.deliveryArrivedAt), Boolean(b.scanEvents?.length)),
     };
   });
 

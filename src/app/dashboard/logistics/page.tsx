@@ -136,6 +136,10 @@ export default function LogisticsPage() {
   const isAdmin = userRole === "ADMIN" || userRole === "STAFF";
 
   async function handleAction(taskId: string, action: string) {
+    if (["arrive-pickup", "arrive-delivery", "complete-delivery"].includes(action) && !photoProof) {
+      toast.error("Take a photo as proof before confirming this action");
+      return;
+    }
     setProcessingAction(true);
     try {
       const body: Record<string, unknown> = { action };
@@ -414,7 +418,7 @@ export default function LogisticsPage() {
                             <input value={actionNote} onChange={(e) => setActionNote(e.target.value)} placeholder="Note (optional)" className="h-9 flex-1 rounded-md border bg-background px-3 text-xs" />
                           </div>
                           <div className="flex gap-2">
-                            <Button size="sm" disabled={!activeAction || processingAction} onClick={() => activeAction && handleAction(task.id, activeAction)}>
+                            <Button size="sm" disabled={!activeAction || processingAction || (["arrive-pickup", "arrive-delivery", "complete-delivery"].includes(activeAction || "") && !photoProof)} onClick={() => activeAction && handleAction(task.id, activeAction)}>
                               {processingAction && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}Confirm Update
                             </Button>
                             <Button size="sm" variant="ghost" onClick={() => { setActiveTask(null); setActiveAction(null); setPhotoProof(null); setActionNote(""); }}>Cancel</Button>
@@ -694,7 +698,7 @@ export default function LogisticsPage() {
 
                             <div className="flex gap-2">
                               <Button size="sm" onClick={() => activeAction && handleAction(task.id, activeAction)}
-                                disabled={processingAction || !activeAction}>
+                                disabled={processingAction || !activeAction || (["arrive-pickup", "arrive-delivery", "complete-delivery"].includes(activeAction || "") && !photoProof)}>
                                 {processingAction ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle className="h-3 w-3 mr-1" />}
                                 Confirm
                               </Button>

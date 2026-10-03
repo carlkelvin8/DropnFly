@@ -21,18 +21,50 @@ export async function POST(req: Request) {
 
     const items = await prisma.luggageItem.findMany({
       where: { id: { in: itemIds } },
-      select: { id: true, booking: { select: { status: true } } },
+      select: { id: true, status: true, booking: { select: { status: true } } },
     });
     if (items.length !== itemIds.length) return NextResponse.json({ error: "One or more luggage items were not found" }, { status: 404 });
+    if (items.some((item) => item.status !== "TAG_REQUESTED")) {
+      return NextResponse.json({ error: "Only pending baggage number requests can be approved or rejected" }, { status: 409 });
+    }
     if (items.some((item) => isBookingLocked(item.booking.status))) {
       return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
     }
 
     for (const id of itemIds) {
-      const item = await prisma.luggageItem.update({
-        where: { id },
-        data: { status },
-        select: { bookingId: true, tagNumber: true },
+      const item = await prisma.$transaction(async (tx) => {
+        const pending = await tx.luggageItem.findUnique({ where: { id } });
+        if (!pending) throw new Error("Baggage request not found");
+        const replacementParts = pending.description?.startsWith("REPLACEMENT_FOR:")
+          ? pending.description.slice("REPLACEMENT_FOR:".length).split(":")
+          : [];
+        const replacementId = replacementParts[0] || null;
+        const replacementStatus = replacementParts[1] || "CHECKED_IN";
+
+        if (action === "REJECTED") {
+          await tx.baggageTag.updateMany({
+            where: { luggageItemId: id },
+            data: { status: "AVAILABLE", bookingId: null, luggageItemId: null, assignedAt: null },
+          });
+          return tx.luggageItem.update({
+            where: { id },
+            data: { status, description: null },
+            select: { bookingId: true, tagNumber: true },
+          });
+        }
+
+        if (replacementId) {
+          await tx.baggageTag.updateMany({
+            where: { luggageItemId: replacementId },
+            data: { status: "AVAILABLE", bookingId: null, luggageItemId: null, assignedAt: null },
+          });
+          await tx.luggageItem.delete({ where: { id: replacementId } });
+        }
+        return tx.luggageItem.update({
+          where: { id },
+          data: { status: replacementId ? replacementStatus : status, description: null },
+          select: { bookingId: true, tagNumber: true },
+        });
       });
       bookingIds.add(item.bookingId);
 
@@ -46,7 +78,11 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ count: itemIds.length, action });
-  } catch {
-    return NextResponse.json({ error: "Failed to process request" }, { status: 500 });
+  } catch (error) {
+    console.error("[BaggageTag] approval failed", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to process request" },
+      { status: 500 }
+    );
   }
 }

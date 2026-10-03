@@ -104,7 +104,7 @@ export default function NewBookingPage() {
       if (!r.ok) { router.replace("/dashboard"); return; }
       const s = await r.json().catch(() => null);
       const role = s?.user?.role;
-      if (role !== "ADMIN" && role !== "STAFF") { router.replace("/dashboard/bookings"); }
+      if (role !== "ADMIN" && role !== "STAFF" && role !== "EMPLOYEE") { router.replace("/dashboard/bookings"); }
       else setRoleChecked(true);
     }).catch(() => router.replace("/dashboard"));
   }, [router]);

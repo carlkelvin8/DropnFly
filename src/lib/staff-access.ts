@@ -10,8 +10,14 @@ export function hasStaffRole(user: StaffIdentity, roles: readonly string[]) {
 export async function canReadBooking(user: StaffIdentity, bookingId: string) {
   if (hasStaffRole(user, ["ADMIN", "STAFF"])) return true;
   if (user.role !== "EMPLOYEE") return false;
-  return Boolean(await prisma.bookingAssignment.findFirst({
-    where: { bookingId, userId: user.id },
+  return Boolean(await prisma.booking.findFirst({
+    where: {
+      id: bookingId,
+      OR: [
+        { userId: user.id },
+        { assignments: { some: { userId: user.id } } },
+      ],
+    },
     select: { id: true },
   }));
 }

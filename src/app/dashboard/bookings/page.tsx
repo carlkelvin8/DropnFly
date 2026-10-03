@@ -97,7 +97,7 @@ export default function BookingsPage() {
   const role = session?.user?.role;
   const canDelete = role === "ADMIN";
   const canCancel = role === "ADMIN";
-  const canCreate = role === "ADMIN" || role === "STAFF";
+  const canCreate = role === "ADMIN" || role === "STAFF" || role === "EMPLOYEE";
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [riders, setRiders] = useState<RiderOption[]>([]);
   const [loading, setLoading] = useState(true);

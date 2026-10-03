@@ -162,9 +162,18 @@ async function handleLuggageIntake({
 
   let updatedBooking = null;
   if (bookingStatus !== booking.status) {
-    updatedBooking = await prisma.booking.update({
-      where: { id: booking.id },
-      data: { status: bookingStatus },
+    updatedBooking = await prisma.$transaction(async (tx) => {
+      const updated = await tx.booking.update({
+        where: { id: booking.id },
+        data: { status: bookingStatus },
+      });
+      if (target === "OUT_FOR_DELIVERY") {
+        await tx.luggageItem.updateMany({
+          where: { bookingId: booking.id, status: { notIn: ["CANCELLED", "DELIVERED"] } },
+          data: { status: "OUT_FOR_DELIVERY" },
+        });
+      }
+      return updated;
     });
   }
 
@@ -390,6 +399,9 @@ export async function POST(req: Request) {
     if (status === "DELIVERED" && !customerVerified) {
       return NextResponse.json({ error: "Customer QR verification is required before confirming delivery" }, { status: 400 });
     }
+    if (["RECEIVED", "DELIVERED"].includes(status) && !photo) {
+      return NextResponse.json({ error: "A luggage verification photo is required for customer handover" }, { status: 400 });
+    }
     if (status === "IN_STORAGE" && !photo) {
       return NextResponse.json({ error: "A luggage verification photo is required before marking a booking in storage" }, { status: 400 });
     }
@@ -535,8 +547,8 @@ export async function POST(req: Request) {
       });
     }
 
-    const [updatedBooking] = await Promise.all([
-      prisma.booking.update({
+    const updatedBooking = await prisma.$transaction(async (tx) => {
+      const updated = await tx.booking.update({
         where: { id: booking.id },
         data: {
           status: status as BookingStatus,
@@ -544,8 +556,22 @@ export async function POST(req: Request) {
             ? { luggagePhotos: [...booking.luggagePhotos, photo] }
             : {}),
         },
-      }),
-      prisma.scanEvent.create({
+      });
+
+      // A booking status applies to the whole transaction. Keep every active
+      // physical tag in that transaction in sync so multi-bag bookings do not
+      // show only the scanned bag as out for delivery (or delivered).
+      if (["IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"].includes(status)) {
+        await tx.luggageItem.updateMany({
+          where: { bookingId: booking.id, status: { notIn: ["CANCELLED"] } },
+          data: {
+            status,
+            ...(status === "DELIVERED" ? { checkOutAt: new Date() } : {}),
+          },
+        });
+      }
+
+      await tx.scanEvent.create({
         data: {
           bookingId: booking.id,
           userId: session.user.id,
@@ -562,8 +588,9 @@ export async function POST(req: Request) {
           latitude: latitude ?? null,
           longitude: longitude ?? null,
         },
-      }),
-    ]);
+      });
+      return updated;
+    });
 
     await logActivity({
       userId: session.user.id,

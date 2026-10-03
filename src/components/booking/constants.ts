@@ -6,10 +6,12 @@ export const NAIA_TERMINALS = [
 ];
 
 export const NAIA_TERMINAL_COORDS: Record<string, { lat: number; lng: number }> = {
-  "NAIA Terminal 1": { lat: 14.5106, lng: 121.0197 },
-  "NAIA Terminal 2": { lat: 14.5118, lng: 121.0143 },
-  "NAIA Terminal 3": { lat: 14.5186, lng: 121.0188 },
-  "NAIA Terminal 4": { lat: 14.5081, lng: 121.0147 },
+  // Landside terminal/arrival points, not the airport/runway centroid. These
+  // are the customer/rider meeting destinations used by all three map views.
+  "NAIA Terminal 1": { lat: 14.50538, lng: 121.00514 },
+  "NAIA Terminal 2": { lat: 14.51058, lng: 121.01222 },
+  "NAIA Terminal 3": { lat: 14.51923, lng: 121.01344 },
+  "NAIA Terminal 4": { lat: 14.5248, lng: 121.00105 },
 };
 
 export const AIRLINES = [

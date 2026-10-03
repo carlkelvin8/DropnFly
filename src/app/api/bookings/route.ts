@@ -50,7 +50,10 @@ export async function GET(req: Request) {
   // booked QR has no rider assigned yet, so the assignment filter would hide it
   // and make valid scans return "Booking not found".
   if (session.user.role === "EMPLOYEE" && !reference) {
-    where.assignments = { some: { userId: session.user.id } };
+    where.OR = [
+      { userId: session.user.id },
+      { assignments: { some: { userId: session.user.id } } },
+    ];
   }
   if (reference) where.referenceNumber = normalizeReference(reference);
   if (statusFilter) {
@@ -178,7 +181,7 @@ export async function POST(req: Request) {
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!["ADMIN", "STAFF"].includes(session.user.role)) {
+  if (!["ADMIN", "STAFF", "EMPLOYEE"].includes(session.user.role)) {
     return NextResponse.json({ error: "Only staff and administrators can create walk-in bookings" }, { status: 403 });
   }
   const settings = await getSystemSettings();

@@ -53,6 +53,11 @@ export async function GET(
       },
       payments: { select: { id: true, amount: true, method: true, status: true, paidAt: true } },
       promoCode: { select: { code: true } },
+      scanEvents: {
+        where: { photo: { not: null } },
+        orderBy: { scannedAt: "asc" },
+        select: { id: true, status: true, photo: true, scannedAt: true },
+      },
     },
   });
 

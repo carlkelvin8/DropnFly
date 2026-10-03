@@ -3,7 +3,6 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { decimalsToNumbers } from "@/lib/serialize";
-import { isBookingLocked } from "@/lib/booking-access";
 
 export async function POST(
   req: Request,
@@ -32,40 +31,24 @@ export async function POST(
     const booking = await prisma.booking.findUnique({
       where: { id },
       select: {
-        status: true,
         customerId: true,
         referenceNumber: true,
-        payments: {
-          select: { id: true, amount: true, status: true, refundedAt: true },
-        },
       },
     });
 
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
-    if (isBookingLocked(booking.status)) {
-      return NextResponse.json({ error: "Cancelled and no-show bookings are locked" }, { status: 409 });
-    }
+    // Financial adjustments remain available after an operational cancellation
+    // or no-show; locking booking edits must not block an agreed refund.
 
-    // Net paid = sum PAID (not refunded) + sum REFUNDED negative amounts
-    const totalPaid = booking.payments
-      .filter((p) => p.status === "PAID" && !p.refundedAt)
-      .reduce((sum, p) => sum + Number(p.amount), 0);
-    const totalRefunded = booking.payments
-      .filter((p) => p.status === "REFUNDED" && Number(p.amount) < 0)
-      .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
-    const netPaid = totalPaid - totalRefunded;
-
-    if (amountNum > netPaid) {
-      return NextResponse.json(
-        { error: `Refund amount exceeds net paid (${netPaid})` },
-        { status: 400 }
-      );
-    }
-
+    // Refunds are negotiated adjustments, not gateway reversals. Keep the
+    // original collection immutable and append a negative ledger entry. This
+    // supports goodwill/compensation refunds above the collected balance while
+    // preserving a complete audit trail.
     const refund = await prisma.$transaction(async (tx) => {
-      const created = await tx.payment.create({
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`refund:${id}`}))`;
+      return tx.payment.create({
         data: {
           bookingId: id,
           customerId: booking.customerId,
@@ -77,21 +60,6 @@ export async function POST(
           refundedAt: new Date(),
         },
       });
-
-      let remaining = amountNum;
-      for (const payment of booking.payments.filter((p) => p.status === "PAID" && !p.refundedAt)) {
-        if (remaining <= 0) break;
-        const toRefund = Math.min(Number(payment.amount), remaining);
-        remaining -= toRefund;
-        if (toRefund >= Number(payment.amount)) {
-          await tx.payment.update({
-            where: { id: payment.id },
-            data: { refundedAt: new Date(), status: "REFUNDED" },
-          });
-        }
-        // Partial refunds keep original PAID but future netPaid accounts for negative refund
-      }
-      return created;
     });
 
     await logActivity({
