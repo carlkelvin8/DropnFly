@@ -572,8 +572,9 @@ export default function LiveMapInner({
       // Bug 8+9: prefer exact coords (pickupLat/Lng) else terminal fallback, then try Mapbox Directions for road route
       const destLng = destinationPhase === "pickup" ? pickupLng : dropoffLng;
       const destLat = destinationPhase === "pickup" ? pickupLat : dropoffLat;
-      let coords: [number, number][] = [[employeeLng, employeeLat]];
-      if (destLng != null && destLat != null) coords.push([destLng, destLat]);
+      const coords: [number, number][] = destLng != null && destLat != null
+        ? [[employeeLng, employeeLat], [destLng, destLat]]
+        : [[employeeLng, employeeLat]];
 
       const setRoute = (routeCoords: [number, number][]) => {
         if (!map.current) return;
