@@ -260,6 +260,30 @@ export default function BookingDetailPage() {
       .catch(() => setUserRole(null));
   }, []);
 
+  // Keep operational sections in sync with scanner/logistics/settings changes
+  // made in another tab or by another staff member. Refresh immediately when
+  // the tab regains focus and periodically while it remains visible.
+  useEffect(() => {
+    let pending = false;
+    const refresh = async () => {
+      if (pending || document.visibilityState !== "visible") return;
+      pending = true;
+      try { await reloadOperationalData(true); } finally { pending = false; }
+    };
+    const timer = window.setInterval(refresh, 5000);
+    const onVisible = () => { if (document.visibilityState === "visible") void refresh(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  // reloadOperationalData is a local page loader; params.id is the only value
+  // that changes the subscribed resource.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.id]);
+
   const bookingId = booking?.id;
   useEffect(() => {
     if (!bookingId) return;
@@ -299,7 +323,7 @@ export default function BookingDetailPage() {
   })();
 
   function reloadBooking() {
-    fetch(`/api/bookings/${params.id}`)
+    fetch(`/api/bookings/${params.id}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((bookingData) => {
         setBooking(bookingData);
@@ -309,6 +333,39 @@ export default function BookingDetailPage() {
         setSettleAmount(bookingData && bookingData.totalPrice - paid > 0 ? bookingData.totalPrice - paid : 0);
       })
       .catch(() => toast.error("Failed to reload booking"));
+  }
+
+  async function reloadOperationalData(silent = false) {
+    try {
+      const [bookingRes, luggageRes, tagsRes, logsRes] = await Promise.all([
+        fetch(`/api/bookings/${params.id}`, { cache: "no-store" }),
+        fetch(`/api/bookings/${params.id}/luggage`, { cache: "no-store" }),
+        fetch("/api/baggage-tags/available", { cache: "no-store" }),
+        fetch(`/api/bookings/${params.id}/log`, { cache: "no-store" }),
+      ]);
+      if (bookingRes.ok) {
+        const bookingData = await bookingRes.json();
+        setBooking(bookingData);
+        const paid = (bookingData?.payments || [])
+          .filter((payment: { status: string }) => payment.status === "PAID")
+          .reduce((sum: number, payment: { amount: number }) => sum + payment.amount, 0);
+        setSettleAmount(bookingData && bookingData.totalPrice - paid > 0 ? bookingData.totalPrice - paid : 0);
+      }
+      if (luggageRes.ok) {
+        const data = await luggageRes.json();
+        if (Array.isArray(data)) setLuggageItems(data);
+      }
+      if (tagsRes.ok) {
+        const data = await tagsRes.json();
+        setAvailableTags(Array.isArray(data?.tags) ? data.tags : []);
+      }
+      if (logsRes.ok) {
+        const data = await logsRes.json();
+        if (Array.isArray(data)) setLogs(data);
+      }
+    } catch {
+      if (!silent) toast.error("Failed to refresh the latest booking updates");
+    }
   }
 
   function openEditBooking() {
@@ -731,11 +788,10 @@ export default function BookingDetailPage() {
       });
       if (res.ok) {
         const items = await res.json();
-        setLuggageItems((prev) => [...prev, ...items]);
         toast.success(replaceItemId ? "Baggage number change sent for admin approval" : `Assigned ${items.length} baggage tag(s)`);
-        setAvailableTags((prev) => prev.map((tag) => selectedTagNumbers.has(tag.tagNumber) ? { ...tag, isUsed: true } : tag));
         setSelectedTagNumbers(new Set());
         setReplaceItemId(null);
+        await reloadOperationalData();
       } else {
         const err = await res.json();
         toast.error(err.error || "Failed to request tags");
@@ -752,8 +808,7 @@ export default function BookingDetailPage() {
         body: JSON.stringify({ itemIds: [itemId], action }),
       });
       if (res.ok) {
-        const refreshed = await fetch(`/api/bookings/${params.id}/luggage`).then((response) => response.json());
-        if (Array.isArray(refreshed)) setLuggageItems(refreshed);
+        await reloadOperationalData();
         toast.success(`Tag ${action === "APPROVED" ? "approved" : "rejected"}`);
       } else {
         const result = await res.json().catch(() => null);

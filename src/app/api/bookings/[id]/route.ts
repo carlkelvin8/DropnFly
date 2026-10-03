@@ -10,6 +10,7 @@ import { decimalsToNumbers } from "@/lib/serialize";
 import { isBookingLocked } from "@/lib/booking-access";
 import { getSystemSettings, setting } from "@/lib/settings";
 import { assertScheduleCapacity, BookingSlotError } from "@/lib/booking-slot-capacity";
+import { coordinatesForLocation, validCoordinates } from "@/lib/booking-location";
 
 const VALID_STATUS = [
   "PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE",
@@ -143,6 +144,16 @@ export async function PUT(
         if (typeof body[field] !== "string" || !body[field].trim() || body[field].length > 500) return NextResponse.json({ error: `Invalid ${field}` }, { status: 400 });
         data[field] = body[field].trim();
       }
+    }
+    if (body.pickupLocation !== undefined || body.pickupLat !== undefined || body.pickupLng !== undefined) {
+      const coords = validCoordinates(body.pickupLat, body.pickupLng) ?? coordinatesForLocation(data.pickupLocation ?? body.pickupLocation);
+      data.pickupLat = coords?.lat ?? null;
+      data.pickupLng = coords?.lng ?? null;
+    }
+    if (body.dropOffLocation !== undefined || body.dropOffLat !== undefined || body.dropOffLng !== undefined) {
+      const coords = validCoordinates(body.dropOffLat, body.dropOffLng) ?? coordinatesForLocation(data.dropOffLocation ?? body.dropOffLocation);
+      data.dropOffLat = coords?.lat ?? null;
+      data.dropOffLng = coords?.lng ?? null;
     }
     if (body.luggageDetails !== undefined) {
       if (typeof body.luggageDetails !== "string" || body.luggageDetails.length > 20_000) return NextResponse.json({ error: "Invalid luggage details" }, { status: 400 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -68,7 +68,6 @@ export default function LogisticsPage() {
   const [processingAction, setProcessingAction] = useState(false);
   const [photoProof, setPhotoProof] = useState<string | null>(null);
   const [actionNote, setActionNote] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [userRole, setUserRole] = useState<string>("");
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [myLoc, setMyLoc] = useState<{ lat: number; lng: number } | null>(null);
@@ -413,8 +412,8 @@ export default function LogisticsPage() {
                             ))}
                           </div>
                           <div className="flex flex-col gap-2 sm:flex-row">
-                            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}><Camera className="mr-1 h-3.5 w-3.5" />{photoProof ? "Change Photo" : "Add Photo"}</Button>
-                            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={async (e) => { const file = e.target.files?.[0]; e.currentTarget.value = ""; if (file) { try { setPhotoProof(await imageFileToDataUrl(file)); } catch { toast.error("Could not read photo"); } } }} className="hidden" />
+                            <Button variant="outline" size="sm" onClick={() => document.getElementById(`task-photo-${task.id}`)?.click()}><Camera className="mr-1 h-3.5 w-3.5" />{photoProof ? "Change Photo" : "Add Photo"}</Button>
+                            <input id={`task-photo-${task.id}`} type="file" accept="image/*" capture="environment" onChange={async (e) => { const file = e.target.files?.[0]; e.currentTarget.value = ""; if (file) { try { setPhotoProof(await imageFileToDataUrl(file)); toast.success("Photo attached — you can confirm the update now"); } catch (error) { setPhotoProof(null); toast.error(error instanceof Error ? error.message : "Could not read photo"); } } }} className="hidden" />
                             <input value={actionNote} onChange={(e) => setActionNote(e.target.value)} placeholder="Note (optional)" className="h-9 flex-1 rounded-md border bg-background px-3 text-xs" />
                           </div>
                           <div className="flex gap-2">
@@ -682,15 +681,15 @@ export default function LogisticsPage() {
                                     className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full text-xs w-4 h-4 flex items-center justify-center">×</button>
                                 </div>
                               ) : (
-                                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                                <Button variant="outline" size="sm" onClick={() => document.getElementById(`task-photo-${task.id}`)?.click()}>
                                   <Camera className="h-3 w-3 mr-1" /> Photo
                                 </Button>
                               )}
-                              <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+                              <input id={`task-photo-${task.id}`} type="file" accept="image/*" capture="environment"
                                 onChange={async (e) => {
                                   const f = e.target.files?.[0];
                                   e.currentTarget.value = "";
-                                  if (f) { try { setPhotoProof(await imageFileToDataUrl(f)); } catch { toast.error("Could not read photo"); } }
+                                  if (f) { try { setPhotoProof(await imageFileToDataUrl(f)); toast.success("Photo attached — you can confirm the update now"); } catch (error) { setPhotoProof(null); toast.error(error instanceof Error ? error.message : "Could not read photo"); } }
                                 }} className="hidden" />
                               <input
                                 value={actionNote} onChange={(e) => setActionNote(e.target.value)}

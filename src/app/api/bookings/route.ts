@@ -9,6 +9,7 @@ import { getSystemSettings, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
 import { manilaDateStr, manilaDayRange, manilaMinutesOfDay } from "@/lib/manila-time";
 import { fleetCapacity, movementsOverlappingSlot, FLEET_SLOT_MINUTES } from "@/lib/fleet-capacity";
+import { coordinatesForLocation, validCoordinates } from "@/lib/booking-location";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -221,6 +222,8 @@ export async function POST(req: Request) {
     if (String(body.pickupLocation).length > 500 || String(body.dropOffLocation).length > 500) {
       return NextResponse.json({ error: "Pickup or drop-off location is too long" }, { status: 400 });
     }
+    const pickupCoords = validCoordinates(body.pickupLat, body.pickupLng) ?? coordinatesForLocation(body.pickupLocation);
+    const dropoffCoords = validCoordinates(body.dropOffLat, body.dropOffLng) ?? coordinatesForLocation(body.dropOffLocation);
 
     const VALID_STATUSES: BookingStatus[] = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW"];
     const bookingStatus: BookingStatus = VALID_STATUSES.includes(status) ? status : "PENDING";
@@ -239,8 +242,6 @@ export async function POST(req: Request) {
     // the old row stays Katrina.
     const snapName = typeof body.customerName === "string" ? body.customerName.trim() : "";
     const snapPhone = typeof body.customerPhone === "string" ? body.customerPhone.trim() : "";
-    const snapCountry = body.customerCountryOfOrigin || body.countryOfOrigin || null;
-    const snapCity = body.customerCityOfOrigin || body.cityOfOrigin || null;
 
     const checkInDate = new Date(checkIn);
     if (isNaN(checkInDate.getTime())) {
@@ -452,7 +453,11 @@ export async function POST(req: Request) {
           customerPhoneSnapshot: snapPhone || customer.phone,
           locationId: locationId || null,
           pickupLocation: body.pickupLocation || "",
+          pickupLat: pickupCoords?.lat ?? null,
+          pickupLng: pickupCoords?.lng ?? null,
           dropOffLocation: body.dropOffLocation || "",
+          dropOffLat: dropoffCoords?.lat ?? null,
+          dropOffLng: dropoffCoords?.lng ?? null,
           luggageDetails: luggageDetails || null,
           checkIn: checkInDate,
           checkOut: checkOutDate,

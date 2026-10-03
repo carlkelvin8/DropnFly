@@ -155,20 +155,39 @@ export default function TrackResultPage() {
     now - new Date(rider.lastLocationUpdate).getTime() < THIRTY_MIN;
 
   useEffect(() => {
-    const abort = new AbortController();
-    fetch(`/api/public/bookings/${params.reference}/status`, { signal: abort.signal })
-      .then((res) => {
+    let active = true;
+    let pending = false;
+    const loadStatus = async () => {
+      if (pending || !active) return;
+      pending = true;
+      try {
+        const res = await fetch(`/api/public/bookings/${params.reference}/status`, { cache: "no-store" });
         if (!res.ok) throw new Error("Not found");
-        return res.json();
-      })
-      .then((data) => {
-        if (abort.signal.aborted) return;
+        const data = await res.json();
+        if (!active) return;
         setBooking(data.booking);
         setRider(data.rider ?? null);
         setScanEvents(Array.isArray(data.scans) ? data.scans : []);
-      })
-      .catch(() => { if (!abort.signal.aborted) setNotFound(true); });
-    return () => abort.abort();
+        setNotFound(false);
+      } catch {
+        if (active && !booking) setNotFound(true);
+      } finally {
+        pending = false;
+      }
+    };
+    void loadStatus();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadStatus();
+    }, 5000);
+    const refresh = () => { if (document.visibilityState === "visible") void loadStatus(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [params.reference, scanReload]);
 
   useEffect(() => {

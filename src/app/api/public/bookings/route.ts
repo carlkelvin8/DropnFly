@@ -11,6 +11,7 @@ import { manilaDateStr, manilaMinutesOfDay, manilaDayRange } from "@/lib/manila-
 import type { Prisma, Booking } from "@/generated/prisma/client";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
 import { fleetCapacity, movementsOverlappingSlot, FLEET_SLOT_MINUTES } from "@/lib/fleet-capacity";
+import { coordinatesForLocation, validCoordinates } from "@/lib/booking-location";
 
 class StorageCapacityError extends Error {}
 
@@ -36,6 +37,8 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const { name, email, phone, pickupLocation, dropOffLocation, numberOfBags, luggageDetails, preferredDate, deliveryDate, promoCode, downPayment } = body;
+    const pickupCoords = validCoordinates(body.pickupLat, body.pickupLng) ?? coordinatesForLocation(pickupLocation);
+    const dropoffCoords = validCoordinates(body.dropOffLat, body.dropOffLng) ?? coordinatesForLocation(dropOffLocation);
     const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
 
     const missing: string[] = [];
@@ -320,7 +323,11 @@ export async function POST(req: Request) {
             customerEmailSnapshot: normalizedEmail,
             customerPhoneSnapshot: String(phone).trim(),
             pickupLocation,
+            pickupLat: pickupCoords?.lat ?? null,
+            pickupLng: pickupCoords?.lng ?? null,
             dropOffLocation,
+            dropOffLat: dropoffCoords?.lat ?? null,
+            dropOffLng: dropoffCoords?.lng ?? null,
             luggageDetails: luggageDetails || null,
             checkIn: checkInDate,
             checkOut: checkOutDate,

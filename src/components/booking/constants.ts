@@ -5,14 +5,7 @@ export const NAIA_TERMINALS = [
   { value: "NAIA Terminal 4", label: "NAIA Terminal 4 (Manila Domestic Airport)" },
 ];
 
-export const NAIA_TERMINAL_COORDS: Record<string, { lat: number; lng: number }> = {
-  // Landside terminal/arrival points, not the airport/runway centroid. These
-  // are the customer/rider meeting destinations used by all three map views.
-  "NAIA Terminal 1": { lat: 14.50538, lng: 121.00514 },
-  "NAIA Terminal 2": { lat: 14.51058, lng: 121.01222 },
-  "NAIA Terminal 3": { lat: 14.51923, lng: 121.01344 },
-  "NAIA Terminal 4": { lat: 14.5248, lng: 121.00105 },
-};
+export { NAIA_TERMINAL_COORDS } from "@/lib/booking-location";
 
 export const AIRLINES = [
   "Philippine Airlines", "PAL Express", "Cebu Pacific", "AirAsia Philippines", "AirSWIFT",

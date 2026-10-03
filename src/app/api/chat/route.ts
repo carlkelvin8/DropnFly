@@ -7,24 +7,23 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 // The random suffix never contains 0 or 1 (see src/lib/reference.ts).
 const BOOKING_REFERENCE_PATTERN = /\b[A-Z]{2,12}-\d{6}-[A-Z2-9]{6}\b/g;
 
-const SYSTEM_PROMPT = `You are an AI assistant for Dropnfly, an on-demand luggage storage and delivery service based in Metro Manila, Philippines. Your role is to help potential customers understand the service, answer questions, and guide them through booking.
+const SYSTEM_PROMPT = `You are the customer-facing AI FAQ assistant for Dropnfly Logistics Inc., a luggage storage, pickup, and delivery service serving NAIA Terminals 1-4 and its Dropnfly counter in Villamor, Pasay City. Help customers understand the service and use the current website workflows.
 
 KEY INFORMATION:
 - Dropnfly offers pickup, storage, and delivery of luggage
-- No registration required to book a pickup
-- Customers can schedule a pickup online and have their bags delivered to their destination
-- Real-time GPS tracking available for all bookings
-- QR code access for instant status updates
+- Customers can create a booking online and receive a booking reference and QR code
+- Pickup and delivery are optional services selected during booking
+- Live rider GPS becomes available after the assigned employee starts the active pickup or delivery task
+- Customers can use /track with their booking reference for status, verification photos, timeline, map, and booking chat
 - Secure, insured storage facilities with 24/7 monitoring
 - 24/7 customer support
-- Currently serving 12 cities across the Philippines
-- Contact: hello@dropnfly.ph, +63 (2) 8123 4567
-- Located in Metro Manila, Philippines
+- Service locations and fees shown in the booking form are the source of truth
+- Do not invent contact details; direct customers to the website footer or live support when contact details are requested
 
 HOW TO HELP USERS:
 - Guide them to /book to schedule a pickup
 - Guide them to /track to track existing luggage
-- Explain the simple 3-step process: 1) Book a pickup, 2) We handle and store it, 3) Delivered to destination
+- Explain the flow: create a booking, present the reference/QR for luggage processing, follow status and proof in /track, then receive or collect luggage according to the selected service
 - Answer questions about pricing, coverage areas, security, and service hours
 
 CONVERSATION RULES:
@@ -36,7 +35,7 @@ CONVERSATION RULES:
 - Always use natural, conversational Filipino-English (Taglish) tone — warm and approachable
 - Use "po" when appropriate for politeness
 - Booking references follow the format PREFIX-YYMMDD-XXXXXX (e.g., DROPFLY-250815-K7M3XQ). If a customer shares one, direct them to /track/<reference> for live status and tracking.
-- For complex inquiries, direct users to contact hello@dropnfly.ph or call +63 (2) 8123 4567`;
+- For account-specific, disputed, or complex inquiries, tell users to tap “Talk to an agent” in this chat. Do not claim to have accessed a booking or live database record.`;
 
 export async function POST(req: Request) {
   const key = requestKey(req);
@@ -51,13 +50,14 @@ export async function POST(req: Request) {
   if (!GEMINI_API_KEY) {
     const { message = "" } = await req.json();
     const text = String(message).toLowerCase();
-    let reply = "I can help with booking, tracking, luggage storage, and delivery. For a live conversation, share your DROPFLY booking reference.";
+    let reply = "I can help with booking, baggage tags, storage, pickup or delivery, and tracking. For account-specific help, tap “Talk to an agent.”";
     const reference = String(message).toUpperCase().match(BOOKING_REFERENCE_PATTERN)?.[0];
     if (reference) reply = `Thanks! I found your booking reference ${reference}. You can track it anytime at /track/${reference} — the live map and status timeline work even in demo mode.`;
-    else if (text.includes("book")) reply = "You can create a test booking at /book. Online payment is optional in demo mode, so you can complete the full booking flow without PayMongo.";
-    else if (text.includes("track") || text.includes("where")) reply = "Open /track and enter your DROPFLY reference. The demo map and status timeline work even when Mapbox is not configured.";
+    else if (text.includes("book")) reply = "Open /book to create a booking. The form shows the current luggage, service, schedule, and price options before confirmation.";
+    else if (text.includes("track") || text.includes("where")) reply = "Open /track and enter your booking reference. You can view the current status, verification photos, timeline, and live rider map once the assigned employee starts the task.";
     else if (text.includes("price") || text.includes("cost")) reply = "Pricing depends on luggage size, storage duration, and pickup or delivery services. The booking form calculates the exact total before confirmation.";
-    else if (text.includes("human") || text.includes("agent") || text.includes("staff")) reply = "Enter your booking reference and I’ll direct you to the booking chat monitored by the assigned employee and administrators.";
+    else if (text.includes("tag") || text.includes("qr")) reply = "Your booking confirmation includes a reference and QR code. Staff assigns and verifies the physical baggage tag during the luggage handoff workflow.";
+    else if (text.includes("human") || text.includes("agent") || text.includes("staff")) reply = "Tap “Talk to an agent” to start a live support conversation; no booking is required.";
     return NextResponse.json({ reply, mode: "demo" });
   }
 
