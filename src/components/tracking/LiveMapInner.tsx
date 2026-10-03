@@ -224,17 +224,12 @@ export default function LiveMapInner({
     if (MAPBOX_TOKEN && !(map.current as any).isStyleLoaded?.()) return;
     const mk: any = map.current;
     clearExtraMarkers();
-    let close = false;
-    if (pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null) {
-      close = haversine(pickupLat, pickupLng, dropoffLat, dropoffLng) < 1;
-    }
-    if (pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null) {
-      close = haversine(pickupLat, pickupLng, dropoffLat, dropoffLng) < 1;
-    }
+    const overlapping = pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null
+      && haversine(pickupLat, pickupLng, dropoffLat, dropoffLng) < 0.05;
     const { pickupLat: sPLat, pickupLng: sPLng, dropoffLat: sDLat, dropoffLng: sDLng } = splitDestinationPins(pickupLat, pickupLng, dropoffLat, dropoffLng);
     if (sPLat != null && sPLng != null) {
       if (!MAPBOX_TOKEN) {
-        const m = lib.marker([sPLat, sPLng], { icon: lib.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
+        const m = lib.marker([sPLat, sPLng], { icon: lib.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: overlapping ? [30, 14] : [14, 14] }) }).addTo(mk);
         try { m.bindPopup(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup"); } catch {}
         extraMarkersRef.current.push(m);
       } else {
@@ -242,7 +237,7 @@ export default function LiveMapInner({
         el.innerHTML = pickupIconHTML();
         el.className = "flex h-7 w-7 items-center justify-center rounded-full";
         el.title = pickupAddress || "Pickup";
-        const m = new lib.Marker({ element: el, offset: close ? [0, -12] as [number, number] : undefined })
+        const m = new lib.Marker({ element: el, offset: overlapping ? [-16, 0] as [number, number] : undefined })
           .setLngLat([sPLng, sPLat])
           .setPopup(new lib.Popup().setText(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup Location"))
           .addTo(mk);
@@ -251,7 +246,7 @@ export default function LiveMapInner({
     }
     if (sDLat != null && sDLng != null) {
       if (!MAPBOX_TOKEN) {
-        const m = lib.marker([sDLat, sDLng], { icon: lib.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
+        const m = lib.marker([sDLat, sDLng], { icon: lib.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: overlapping ? [-2, 14] : [14, 14] }) }).addTo(mk);
         try { m.bindPopup(dropoffAddress || "Drop-off"); } catch {}
         extraMarkersRef.current.push(m);
       } else {
@@ -259,7 +254,7 @@ export default function LiveMapInner({
         el.innerHTML = dropoffIconHTML();
         el.className = "flex h-7 w-7 items-center justify-center rounded-full";
         el.title = dropoffAddress || "Drop-off";
-        const m = new lib.Marker({ element: el, offset: close ? [0, 12] as [number, number] : undefined })
+        const m = new lib.Marker({ element: el, offset: overlapping ? [16, 0] as [number, number] : undefined })
           .setLngLat([sDLng, sDLat])
           .setPopup(new lib.Popup().setText(dropoffAddress || "Drop-off Location"))
           .addTo(mk);
@@ -485,14 +480,16 @@ export default function LiveMapInner({
         maxZoom: 19,
       }).addTo(leafletMap);
       const { pickupLat: sPLat, pickupLng: sPLng, dropoffLat: sDLat, dropoffLng: sDLng } = splitDestinationPins(pickupLat, pickupLng, dropoffLat, dropoffLng);
+      const overlapping = sPLat != null && sDLat != null && sPLng != null && sDLng != null
+        && haversine(sPLat, sPLng, sDLat, sDLng) < 0.05;
       const bounds: any[] = [];
       if (sPLat != null && sPLng != null) {
-        const m = L.marker([sPLat, sPLng], { icon: L.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
+        const m = L.marker([sPLat, sPLng], { icon: L.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: overlapping ? [30, 14] : [14, 14] }) }).addTo(leafletMap);
         m.bindPopup(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup");
         bounds.push([sPLat, sPLng]);
       }
       if (sDLat != null && sDLng != null) {
-        const m = L.marker([sDLat, sDLng], { icon: L.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);
+        const m = L.marker([sDLat, sDLng], { icon: L.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: overlapping ? [-2, 14] : [14, 14] }) }).addTo(leafletMap);
         m.bindPopup(dropoffAddress || "Drop-off");
         bounds.push([sDLat, sDLng]);
       }
