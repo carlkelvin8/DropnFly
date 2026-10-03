@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { availableLogisticsActions, logisticsTaskType } from "@/lib/logistics-workflow";
+import { parseLuggageDetails } from "@/lib/pricing";
 
 export async function GET() {
   const session = await auth();
@@ -59,14 +60,20 @@ export async function GET() {
   const mapped = bookings.map((b: any) => {
     const taskType = logisticsTaskType(b.status);
     const activePhase = taskType === "delivery" ? "DROPOFF" : "PICKUP";
-    const activeAssignment = (b.assignments as any[]).find((assignment: any) => assignment.phase === activePhase) || null;
-    // Reflect the ASSIGNED vehicle (e.g. fleet unit) when present, else the rider's personal vehicle —
-    // drives the map marker "logo" and the rider/vehicle display.
+    const services = parseLuggageDetails(b.luggageDetails || "").services;
+    const requiredService = activePhase === "PICKUP" ? "Pick-up from Customer" : "Deliver to Customer";
+    const validAssignments = (b.assignments as any[]).filter((assignment: any) =>
+      (assignment.phase === "PICKUP" && services.includes("Pick-up from Customer")) ||
+      (assignment.phase === "DROPOFF" && services.includes("Deliver to Customer"))
+    );
+    const activeAssignment = validAssignments.find((assignment: any) => assignment.phase === activePhase) || null;
+    // Reflect only a registered fleet vehicle. Legacy employee profile vehicle
+    // fields are intentionally ignored for assignment and logistics display.
     const rider = activeAssignment
       ? {
           ...activeAssignment.user,
-          vehicleType: activeAssignment.vehicleType || activeAssignment.user?.vehicleType || null,
-          plateNumber: activeAssignment.vehiclePlate || activeAssignment.user?.plateNumber || null,
+          vehicleType: activeAssignment.vehicleType || null,
+          plateNumber: activeAssignment.vehiclePlate || null,
         }
       : null;
 
@@ -88,7 +95,7 @@ export async function GET() {
       status: b.status,
       taskType,
       rider,
-      isAssignedToMe: rider?.id === session.user.id,
+      isAssignedToMe: rider?.id === session.user.id && services.includes(requiredService),
       createdAt: b.createdAt,
       checkIn: b.checkIn,
       checkOut: b.checkOut,

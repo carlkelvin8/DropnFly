@@ -559,7 +559,7 @@ export default function SettingsPage() {
             <CardTitle className="flex items-center gap-2 text-base">
               <Globe className="h-4 w-4 text-violet-500" /> Currency & Payment
             </CardTitle>
-            <CardDescription>Configure the currency used for recorded charges, payments, and refunds</CardDescription>
+            <CardDescription>Configure the currency used for recorded charges and refunds</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -570,7 +570,7 @@ export default function SettingsPage() {
                   options={[
                     { value: "PHP", label: "PHP - Philippine Peso" },
                   ]} className="w-full" />
-                <p className="text-[10px] text-muted-foreground">Prices and PayMongo settlements currently operate in Philippine pesos.</p>
+                <p className="text-[10px] text-muted-foreground">All recorded amounts currently use Philippine pesos.</p>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
                 New bookings are reservation-first and start with zero collected payment. Staff records any agreed payment separately.

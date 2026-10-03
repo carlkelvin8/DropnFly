@@ -207,6 +207,19 @@ export async function POST(
           ]);
         }
       }
+      try {
+        const { trySendFeedbackInvitation } = await import("@/lib/feedback");
+        await trySendFeedbackInvitation({
+          id: updated.id,
+          referenceNumber: updated.referenceNumber,
+          customerId: booking.customerId,
+          status: updated.status,
+          updatedAt: updated.updatedAt,
+          feedbackInviteSentAt: null,
+        });
+      } catch (feedbackError) {
+        console.warn("[FEEDBACK] invite failed after logistics completion", feedbackError);
+      }
     }
 
     return NextResponse.json({

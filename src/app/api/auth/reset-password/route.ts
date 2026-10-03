@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import crypto from "node:crypto";
+import { sendPasswordChangedEmail } from "@/lib/email";
+import { rateLimit, requestKey } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   try {
+    const limited = await rateLimit(`reset-password:${requestKey(req)}`, 5, 15 * 60 * 1000);
+    if (!limited.allowed) return NextResponse.json({ error: "Too many requests" }, { status: 429, headers: { "Retry-After": String(limited.retryAfter) } });
     const { token, password } = await req.json();
 
     if (typeof token !== "string" || typeof password !== "string" || password.length < 10 || password.length > 128) {
@@ -25,8 +29,10 @@ export async function POST(req: Request) {
 
     await prisma.$transaction([
       prisma.user.update({ where: { email: resetToken.email }, data: { password: hashedPassword, passwordChangedAt: new Date(), authVersion: { increment: 1 } } }),
-      prisma.passwordResetToken.deleteMany({ where: { email: resetToken.email } }),
+      prisma.passwordResetToken.deleteMany({ where: { tokenHash } }),
     ]);
+
+    await sendPasswordChangedEmail({ to: resetToken.email }).catch(() => {});
 
     return NextResponse.json({ success: true });
   } catch {

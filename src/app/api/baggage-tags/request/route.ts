@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { isBookingLocked } from "@/lib/booking-access";
 import { canReadBooking } from "@/lib/staff-access";
+import { sendNotification } from "@/lib/notifications";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -58,6 +59,7 @@ export async function POST(req: Request) {
       }
     }
 
+    const isReplacementRequest = Boolean(replacementItem);
     const items = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tags:${bookingId}`}))`;
       const existingCount = await tx.luggageItem.count({ where: { bookingId } });
@@ -75,7 +77,7 @@ export async function POST(req: Request) {
           data: {
             bookingId,
             tagNumber: physicalTag.tagNumber,
-            status: "TAG_REQUESTED",
+            status: isReplacementRequest ? "TAG_REQUESTED" : "CHECKED_IN",
             description: replacementItem ? `REPLACEMENT_FOR:${replacementItem.id}:${replacementItem.status}` : null,
           },
         });
@@ -97,6 +99,18 @@ export async function POST(req: Request) {
         ? `Requested baggage number change ${replacementItem.tagNumber} → ${requestedTags[0]} for booking ${booking.referenceNumber}`
         : `Assigned tags ${requestedTags.join(", ")} to booking ${booking.referenceNumber}`,
     });
+
+    if (isReplacementRequest && session.user.role === "EMPLOYEE") {
+      const admins = await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } });
+      await Promise.all(admins.map((admin) => sendNotification({
+        userId: admin.id,
+        type: "baggage_tag_change_request",
+        title: "Baggage number change request",
+        message: `${session.user.name || "An employee"} requested a baggage number change for booking ${booking.referenceNumber}.`,
+        link: `/dashboard/bookings/${bookingId}`,
+        sendEmail: true,
+      })));
+    }
 
     return NextResponse.json(items, { status: 201 });
   } catch (error) {

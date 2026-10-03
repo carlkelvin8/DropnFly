@@ -81,31 +81,16 @@ function employeeLabel(name?: string, vehicleType?: string | null, plate?: strin
   return [name || "Rider", vehicleType, plate].filter(Boolean).join(" · ") || "Rider";
 }
 
-// When the employee tracker arrives at the customer/destination pin, both would
-// stack into a single marker. Offset the destination pin ~40m south so the
-// orange vehicle (employee) and green person (customer) always render as two
-// SEPARATE trackers.
-const DEST_SHIFT_LAT = 0.00035;
 function splitDestinationPins(
-  phase: "pickup" | "dropoff",
-  empLat?: number | null,
-  empLng?: number | null,
   pLat?: number | null,
   pLng?: number | null,
   dLat?: number | null,
   dLng?: number | null
 ): { pickupLat: number | null | undefined; pickupLng: number | null | undefined; dropoffLat: number | null | undefined; dropoffLng: number | null | undefined } {
-  let pickupLat = pLat;
-  let pickupLng = pLng;
-  let dropoffLat = dLat;
-  let dropoffLng = dLng;
-  const arriveLat = phase === "pickup" ? pLat : dLat;
-  const arriveLng = phase === "pickup" ? pLng : dLng;
-  if (empLat != null && empLng != null && arriveLat != null && arriveLng != null && haversine(empLat, empLng, arriveLat, arriveLng) * 1000 < 80) {
-    if (phase === "pickup" && pickupLat != null && pickupLng != null) pickupLat = pickupLat - DEST_SHIFT_LAT;
-    if (phase === "dropoff" && dropoffLat != null && dropoffLng != null) dropoffLat = dropoffLat - DEST_SHIFT_LAT;
-  }
-  return { pickupLat, pickupLng, dropoffLat, dropoffLng };
+  // Keep the customer pin on the exact terminal coordinates. Marker overlap
+  // may be handled visually with icon offsets, but never by moving the
+  // destination into a runway or another unrelated map location.
+  return { pickupLat: pLat, pickupLng: pLng, dropoffLat: dLat, dropoffLng: dLng };
 }
 
 export default function LiveMapInner({
@@ -246,7 +231,7 @@ export default function LiveMapInner({
     if (pickupLat != null && dropoffLat != null && pickupLng != null && dropoffLng != null) {
       close = haversine(pickupLat, pickupLng, dropoffLat, dropoffLng) < 1;
     }
-    const { pickupLat: sPLat, pickupLng: sPLng, dropoffLat: sDLat, dropoffLng: sDLng } = splitDestinationPins(destinationPhase, employeeLat, employeeLng, pickupLat, pickupLng, dropoffLat, dropoffLng);
+    const { pickupLat: sPLat, pickupLng: sPLng, dropoffLat: sDLat, dropoffLng: sDLng } = splitDestinationPins(pickupLat, pickupLng, dropoffLat, dropoffLng);
     if (sPLat != null && sPLng != null) {
       if (!MAPBOX_TOKEN) {
         const m = lib.marker([sPLat, sPLng], { icon: lib.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(mk);
@@ -499,7 +484,7 @@ export default function LiveMapInner({
         attribution: "© OpenStreetMap",
         maxZoom: 19,
       }).addTo(leafletMap);
-      const { pickupLat: sPLat, pickupLng: sPLng, dropoffLat: sDLat, dropoffLng: sDLng } = splitDestinationPins(destinationPhase, employeeLat, employeeLng, pickupLat, pickupLng, dropoffLat, dropoffLng);
+      const { pickupLat: sPLat, pickupLng: sPLng, dropoffLat: sDLat, dropoffLng: sDLng } = splitDestinationPins(pickupLat, pickupLng, dropoffLat, dropoffLng);
       const bounds: any[] = [];
       if (sPLat != null && sPLng != null) {
         const m = L.marker([sPLat, sPLng], { icon: L.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(leafletMap);

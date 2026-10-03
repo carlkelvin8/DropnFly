@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
     const token = crypto.randomBytes(32).toString("base64url");
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
     await prisma.$transaction([
       prisma.passwordResetToken.deleteMany({ where: { email: normalizedEmail } }),

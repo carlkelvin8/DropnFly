@@ -178,7 +178,20 @@ export async function PUT(
         ...(data.checkOut && (data.checkOut as Date).getTime() !== existingBooking.checkOut?.getTime() ? [data.checkOut as Date] : []),
       ];
       if (changedDates.length) await assertScheduleCapacity(tx, changedDates, id);
-      return tx.booking.update({ where: { id }, data: data as { status?: BookingStatus; [key: string]: unknown } });
+      const updated = await tx.booking.update({ where: { id }, data: data as { status?: BookingStatus; [key: string]: unknown } });
+
+      // A manual status transition represents the whole transaction, so keep
+      // every physical baggage item in the same phase as the booking. This
+      // mirrors the QR scanner's batch update and prevents one tag from being
+      // left behind when staff advances the booking from the dashboard.
+      if (body.status === "IN_STORAGE" || body.status === "OUT_FOR_DELIVERY") {
+        await tx.luggageItem.updateMany({
+          where: { bookingId: id, status: { notIn: ["CANCELLED", "DELIVERED"] } },
+          data: { status: body.status },
+        });
+      }
+
+      return updated;
     }, { maxWait: 15000, timeout: 15000 });
 
     if (!body.status) {

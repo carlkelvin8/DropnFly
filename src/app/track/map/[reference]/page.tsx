@@ -207,12 +207,19 @@ export default function LiveTrackingPage() {
   // Destination pins: exact lat/lng when present, else NAIA terminal.
   const pickupTerminalForMap = booking ? booking.pickupLocation.split(" - ")[0].trim() : "";
   const dropoffTerminalForMap = booking ? booking.dropOffLocation.split(" - ")[0].trim() : "";
-  const pickupCoordsForMap = booking?.pickupLat != null && booking?.pickupLng != null
-    ? { lat: booking.pickupLat, lng: booking.pickupLng }
-    : pickupTerminalForMap ? NAIA_TERMINAL_COORDS[pickupTerminalForMap] : null;
-  const dropoffCoordsForMap = booking?.dropOffLat != null && booking?.dropOffLng != null
-    ? { lat: booking.dropOffLat, lng: booking.dropOffLng }
-    : dropoffTerminalForMap ? NAIA_TERMINAL_COORDS[dropoffTerminalForMap] : null;
+  // Customer-facing destination pins always use the terminal meeting point.
+  // Stored device coordinates may represent a phone/runway centroid and must
+  // not override the actual terminal destination shown to the rider/customer.
+  const pickupCoordsForMap = pickupTerminalForMap
+    ? NAIA_TERMINAL_COORDS[pickupTerminalForMap]
+    : booking?.pickupLat != null && booking?.pickupLng != null
+      ? { lat: booking.pickupLat, lng: booking.pickupLng }
+      : null;
+  const dropoffCoordsForMap = dropoffTerminalForMap
+    ? NAIA_TERMINAL_COORDS[dropoffTerminalForMap]
+    : booking?.dropOffLat != null && booking?.dropOffLng != null
+      ? { lat: booking.dropOffLat, lng: booking.dropOffLng }
+      : null;
 
   let distance: number | null = null;
   let eta: string | null = null;

@@ -681,6 +681,8 @@ export default function BookingDetailPage() {
   async function handleRefund() {
     if (!refundAmount || refundAmount <= 0) return toast.error("Invalid refund amount");
     if (!refundReason.trim()) return toast.error("Refund reason is required");
+    if (paymentStatus === "unpaid" || netCollected <= 0) return toast.error("Unpaid bookings cannot be refunded");
+    if (refundAmount > netCollected) return toast.error(`Refund cannot exceed ${formatCurrency(netCollected)}`);
     setRefunding(true);
     try {
       const res = await fetch(`/api/bookings/${params.id}/refund`, {
@@ -1059,22 +1061,23 @@ export default function BookingDetailPage() {
             <div className="border-t pt-4 mt-2">
               <button
                 onClick={() => setShowRefundForm(!showRefundForm)}
-                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted transition-colors"
+                disabled={paymentStatus === "unpaid" || netCollected <= 0}
+                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 hover:bg-muted"
               >
                 <span className="flex items-center gap-2">
-                  <RotateCcw className="h-4 w-4 text-red-500" /> Issue Refund
+                  <RotateCcw className="h-4 w-4 text-red-500" /> {paymentStatus === "unpaid" ? "Refund unavailable (unpaid)" : "Issue Refund"}
                 </span>
                 <span className="text-muted-foreground">{showRefundForm ? "−" : "+"}</span>
               </button>
               {showRefundForm && (
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3 mt-2 space-y-3">
                   <p className="text-xs text-red-700">
-                    Net collected: <strong>{formatCurrency(netCollected)}</strong>
-                    <span> · Enter the amount agreed with the customer</span>
+                    Refundable paid balance: <strong>{formatCurrency(Math.max(0, netCollected))}</strong>
+                    <span> · Unpaid bookings cannot be refunded</span>
                   </p>
                   <div className="flex gap-2">
                     <input
-                      type="number" step="0.01" min="0.01"
+                      type="number" step="0.01" min="0.01" max={Math.max(0, netCollected)}
                       value={refundAmount} onChange={(e) => setRefundAmount(parseFloat(e.target.value) || 0)}
                       placeholder="Amount" required
                       className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
@@ -1087,7 +1090,7 @@ export default function BookingDetailPage() {
                   />
                   <Button
                     size="sm" variant="destructive" className="w-full"
-                    onClick={handleRefund} disabled={refunding || !refundAmount || !refundReason.trim()}
+                    onClick={handleRefund} disabled={refunding || paymentStatus === "unpaid" || !refundAmount || refundAmount > netCollected || !refundReason.trim()}
                   >
                     {refunding ? "Processing..." : `Issue Refund of ${formatCurrency(refundAmount || 0)}`}
                   </Button>
@@ -1453,17 +1456,20 @@ export default function BookingDetailPage() {
         <CardHeader><CardTitle>Luggage Photos</CardTitle><CardDescription>Submitted photos are read-only. Employees add verification photos only while updating luggage status.</CardDescription></CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
-            {[
+            {Array.from(new Map([
               ...booking.luggagePhotos.map((photo, index) => ({ id: `submitted-${index}`, photo, label: "Submitted" })),
               ...(booking.scanEvents || []).flatMap((event) => event.photo ? [{ id: event.id, photo: event.photo, label: event.status.replace(/_/g, " ") }] : []),
-            ].map((item, i) => (
+            ].map((item) => [item.photo, item])).values()).map((item, i) => (
               <div key={item.id} className="relative group">
                 <Image unoptimized width={400} height={160} src={item.photo} alt={`Luggage verification ${i + 1}`} className="rounded-lg object-cover w-full h-24" />
                 <span className="mt-1 block text-[10px] font-medium text-muted-foreground">{item.label}</span>
               </div>
             ))}
           </div>
-          <span className="text-xs text-muted-foreground">{booking.luggagePhotos.length + (booking.scanEvents || []).filter((event) => event.photo).length} photo(s), including status verification</span>
+          <span className="text-xs text-muted-foreground">{new Set([
+            ...booking.luggagePhotos,
+            ...(booking.scanEvents || []).flatMap((event) => event.photo ? [event.photo] : []),
+          ]).size} photo(s), including status verification</span>
         </CardContent>
       </Card>
 

@@ -84,8 +84,20 @@ export async function sendPasswordResetEmail({ to, token }: { to: string; token:
     from: config.from,
     to,
     subject: "Reset your DropnFly password",
-    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>Reset your password</h2><p>This single-use link expires in one hour.</p><p><a href="${resetUrl}" style="display:inline-block;background:#2563eb;color:white;padding:12px 20px;border-radius:6px;text-decoration:none">Reset password</a></p><p>If you did not request this, ignore this email.</p></div>`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>Reset your password</h2><p>This single-use link expires in 15 minutes.</p><p><a href="${resetUrl}" style="display:inline-block;background:#2563eb;color:white;padding:12px 20px;border-radius:6px;text-decoration:none">Reset password</a></p><p>If you did not request this, ignore this email.</p></div>`,
   });
+}
+
+export async function sendPasswordChangedEmail({ to }: { to: string }) {
+  const config = await getEmailConfig();
+  if (!config.enabled) return false;
+  await (await getTransporter()).sendMail({
+    from: config.from,
+    to,
+    subject: "Your DropnFly password was changed",
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>Password changed</h2><p>Your DropnFly password was successfully changed.</p><p>If you did not make this change, contact support immediately and secure your email account.</p></div>`,
+  });
+  return true;
 }
 
 export async function sendConfirmationEmail({
