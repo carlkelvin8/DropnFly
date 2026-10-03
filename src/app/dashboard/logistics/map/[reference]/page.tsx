@@ -81,7 +81,7 @@ export default function AdminFullMapPage() {
   }, [reference]);
 
   useEffect(() => {
-    if (!isEmployee) return;
+    if (!isEmployee && !isAdmin) return;
     const abort = new AbortController();
     const timer = setInterval(async () => {
       try {
@@ -89,12 +89,12 @@ export default function AdminFullMapPage() {
         if (!response.ok) return;
         const data = await response.json();
         const tasks: Task[] = Array.isArray(data) ? data : data.tasks || [];
-        const current = tasks.find(item => item.referenceNumber.toUpperCase() === reference.toUpperCase() && item.isAssignedToMe);
+        const current = tasks.find(item => item.referenceNumber.toUpperCase() === reference.toUpperCase() && (isAdmin || item.isAssignedToMe));
         if (!abort.signal.aborted) { setTask(current || null); setNotFound(!current); }
       } catch { /* retain current state during transient connection failures */ }
     }, 5000);
     return () => { abort.abort(); clearInterval(timer); };
-  }, [reference, isEmployee]);
+  }, [reference, isEmployee, isAdmin]);
 
   // Live polling of the assigned rider's location (same feed the Admin Live Monitor uses)
   useEffect(() => {

@@ -133,6 +133,28 @@ export default function LogisticsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const refreshTasks = async () => {
+      try {
+        const response = await fetch("/api/logistics/tasks", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (active) setTasks(Array.isArray(data) ? data : data.tasks || []);
+      } catch { /* retain current tasks during transient connection failures */ }
+    };
+    const interval = window.setInterval(refreshTasks, 5000);
+    const refreshVisible = () => { if (document.visibilityState === "visible") void refreshTasks(); };
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
+  }, []);
+
   const isAdmin = userRole === "ADMIN" || userRole === "STAFF";
 
   async function handleAction(taskId: string, action: string) {
