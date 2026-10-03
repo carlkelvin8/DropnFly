@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { BaggageTagsSection } from "@/components/settings/BaggageTagsSection";
 import {
   Card,
   CardContent,
@@ -38,6 +39,7 @@ import {
   Car,
   FileText,
   Settings as SettingsIcon,
+  Tags,
 } from "lucide-react";
 
 const SETTING_DEFAULTS: Record<string, string> = {
@@ -124,6 +126,7 @@ const TABS = [
   { id: "features", label: "Features", icon: ToggleLeft, color: "text-orange-500" },
   { id: "footer", label: "Footer", icon: Footprints, color: "text-indigo-500" },
   { id: "qr", label: "QR & Codes", icon: QrCode, color: "text-teal-500" },
+  { id: "tags", label: "Baggage Tags", icon: Tags, color: "text-purple-600" },
   { id: "fleet", label: "Fleet", icon: Truck, color: "text-yellow-600" },
   { id: "email", label: "Email Sender", icon: Mail, color: "text-sky-500" },
   { id: "terms", label: "Terms & Privacy", icon: FileText, color: "text-blue-500" },
@@ -140,6 +143,7 @@ const SECTION_KEYS: Record<string, string[]> = {
   features: ["online_booking_enabled", "walk_in_mode_enabled", "customer_reviews_enabled", "discount_codes_enabled"],
   footer: ["footer_phone", "footer_email", "footer_facebook", "footer_instagram", "footer_twitter", "store_operating_start", "store_operating_end"],
   qr: ["tx_prefix", "qr_image_size"],
+  tags: [],
   fleet: ["fleet_data", "max_concurrent_pickups", "max_concurrent_deliveries"],
   email: ["email_sender_name", "email_reply_to", "email_company_name"],
   terms: ["terms_and_conditions", "privacy_policy"],
@@ -902,6 +906,8 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {activeTab === "tags" && <BaggageTagsSection />}
 
       {activeTab === "email" && (
         <Card className="border-t-2 border-t-sky-500 shadow-md">
