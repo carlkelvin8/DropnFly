@@ -1,7 +1,10 @@
 export const NAIA_TERMINAL_COORDS: Record<string, { lat: number; lng: number }> = {
   "NAIA Terminal 1": { lat: 14.50538, lng: 121.00514 },
   "NAIA Terminal 2": { lat: 14.51058, lng: 121.01222 },
-  "NAIA Terminal 3": { lat: 14.51923, lng: 121.01344 },
+  // Customer/rider meeting point at the Terminal 3 departure curbside. The
+  // terminal-building centroid is several hundred metres west near Tesoros
+  // and makes the customer marker appear far from the pin selected in U1.
+  "NAIA Terminal 3": { lat: 14.5186, lng: 121.0188 },
   "NAIA Terminal 4": { lat: 14.5248, lng: 121.00105 },
 };
 
