@@ -20,6 +20,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { imageFileToDataUrl } from "@/lib/client-image";
 import { LOGISTICS_ACTION_META, type LogisticsAction } from "@/lib/logistics-workflow";
 import { manilaDateStr } from "@/lib/manila-time";
+import { coordinatesForLocation } from "@/lib/booking-location";
 
 interface Employee {
   id: string;
@@ -480,10 +481,10 @@ export default function LogisticsPage() {
               employeeName={trackedTask.rider?.name ?? undefined}
               employeeVehicleType={trackedTask.rider?.vehicleType ?? null}
               employeePlate={trackedTask.rider?.plateNumber ?? null}
-              pickupLat={trackedTask.pickupLat ?? undefined}
-              pickupLng={trackedTask.pickupLng ?? undefined}
-              dropoffLat={trackedTask.dropOffLat ?? undefined}
-              dropoffLng={trackedTask.dropOffLng ?? undefined}
+              pickupLat={coordinatesForLocation(trackedTask.pickupLocation)?.lat ?? trackedTask.pickupLat ?? undefined}
+              pickupLng={coordinatesForLocation(trackedTask.pickupLocation)?.lng ?? trackedTask.pickupLng ?? undefined}
+              dropoffLat={coordinatesForLocation(trackedTask.dropOffLocation)?.lat ?? trackedTask.dropOffLat ?? undefined}
+              dropoffLng={coordinatesForLocation(trackedTask.dropOffLocation)?.lng ?? trackedTask.dropOffLng ?? undefined}
               pickupAddress={trackedTask.pickupLocation}
               dropoffAddress={trackedTask.dropOffLocation}
               customerName={trackedTask.customer.name}
