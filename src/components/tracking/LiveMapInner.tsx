@@ -48,7 +48,7 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Marker icon "logos": company-coded by role — PERSON = customer (pickup), BOX = drop-off/storage, VEHICLE = employee/rider.
+// Marker icon "logos": PERSON = the customer's saved pickup pin (or terminal fallback), BOX = drop-off/storage, VEHICLE = employee/rider.
 // Vehicle icon is type-specific (motorcycle / car / truck-van) so the indicator matches the rider's real vehicle.
 const PERSON_SVG =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>';

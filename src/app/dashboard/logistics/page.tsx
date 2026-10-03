@@ -481,10 +481,10 @@ export default function LogisticsPage() {
               employeeName={trackedTask.rider?.name ?? undefined}
               employeeVehicleType={trackedTask.rider?.vehicleType ?? null}
               employeePlate={trackedTask.rider?.plateNumber ?? null}
-              pickupLat={coordinatesForLocation(trackedTask.pickupLocation)?.lat ?? trackedTask.pickupLat ?? undefined}
-              pickupLng={coordinatesForLocation(trackedTask.pickupLocation)?.lng ?? trackedTask.pickupLng ?? undefined}
-              dropoffLat={coordinatesForLocation(trackedTask.dropOffLocation)?.lat ?? trackedTask.dropOffLat ?? undefined}
-              dropoffLng={coordinatesForLocation(trackedTask.dropOffLocation)?.lng ?? trackedTask.dropOffLng ?? undefined}
+              pickupLat={trackedTask.pickupLat ?? coordinatesForLocation(trackedTask.pickupLocation)?.lat ?? undefined}
+              pickupLng={trackedTask.pickupLng ?? coordinatesForLocation(trackedTask.pickupLocation)?.lng ?? undefined}
+              dropoffLat={trackedTask.dropOffLat ?? coordinatesForLocation(trackedTask.dropOffLocation)?.lat ?? undefined}
+              dropoffLng={trackedTask.dropOffLng ?? coordinatesForLocation(trackedTask.dropOffLocation)?.lng ?? undefined}
               pickupAddress={trackedTask.pickupLocation}
               dropoffAddress={trackedTask.dropOffLocation}
               customerName={trackedTask.customer.name}

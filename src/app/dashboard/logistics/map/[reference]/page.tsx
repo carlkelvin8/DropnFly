@@ -34,11 +34,9 @@ function terminalCoords(loc: string): { lat: number; lng: number } | null {
 
 function resolveCoords(task: Task | null, which: "pickup" | "dropoff"): { lat: number; lng: number } | null {
   if (!task) return null;
-  const terminal = terminalCoords(which === "pickup" ? task.pickupLocation : task.dropOffLocation);
-  if (terminal) return terminal;
   if (which === "pickup" && task.pickupLat != null && task.pickupLng != null) return { lat: task.pickupLat, lng: task.pickupLng };
   if (which === "dropoff" && task.dropOffLat != null && task.dropOffLng != null) return { lat: task.dropOffLat, lng: task.dropOffLng };
-  return null;
+  return terminalCoords(which === "pickup" ? task.pickupLocation : task.dropOffLocation);
 }
 
 const STALE_THRESHOLD_MS = 300000;

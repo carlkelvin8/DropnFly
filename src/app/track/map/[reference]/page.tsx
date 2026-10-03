@@ -18,6 +18,7 @@ import { NAIA_TERMINAL_COORDS } from "@/components/booking/constants";
 import {
   ChevronLeft,
   Clock,
+  Navigation,
   MapPin,
   Map,
   User,
@@ -80,6 +81,8 @@ export default function LiveTrackingPage() {
   const [employeeLoc, setEmployeeLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pinSaving, setPinSaving] = useState(false);
+  const [pinMessage, setPinMessage] = useState<string | null>(null);
 
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{ id: string; message: string; isFromCustomer: boolean; createdAt: string; sender?: { name: string; role?: string } | null }[]>([]);
@@ -209,10 +212,39 @@ export default function LiveTrackingPage() {
   const dropoffTerminalForMap = booking ? booking.dropOffLocation.split(" - ")[0].trim() : "";
   // An explicitly saved pin is the source of truth. Terminal coordinates are
   // only a fallback for older bookings that do not have an exact pin yet.
-  const pickupCoordsForMap = (pickupTerminalForMap ? NAIA_TERMINAL_COORDS[pickupTerminalForMap] : null)
-    ?? (booking?.pickupLat != null && booking?.pickupLng != null ? { lat: booking.pickupLat, lng: booking.pickupLng } : null);
-  const dropoffCoordsForMap = (dropoffTerminalForMap ? NAIA_TERMINAL_COORDS[dropoffTerminalForMap] : null)
-    ?? (booking?.dropOffLat != null && booking?.dropOffLng != null ? { lat: booking.dropOffLat, lng: booking.dropOffLng } : null);
+  const pickupCoordsForMap = (booking?.pickupLat != null && booking?.pickupLng != null ? { lat: booking.pickupLat, lng: booking.pickupLng } : null)
+    ?? (pickupTerminalForMap ? NAIA_TERMINAL_COORDS[pickupTerminalForMap] : null);
+  const dropoffCoordsForMap = (booking?.dropOffLat != null && booking?.dropOffLng != null ? { lat: booking.dropOffLat, lng: booking.dropOffLng } : null)
+    ?? (dropoffTerminalForMap ? NAIA_TERMINAL_COORDS[dropoffTerminalForMap] : null);
+
+  function updatePickupPin() {
+    if (!navigator.geolocation || pinSaving) {
+      if (!navigator.geolocation) setPinMessage("Location is not supported by this browser.");
+      return;
+    }
+    setPinSaving(true);
+    setPinMessage("Getting an accurate GPS position…");
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      try {
+        const response = await fetch(`/api/public/bookings/${encodeURIComponent(String(params.reference))}/pickup-pin`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Could not update pickup pin");
+        setBooking((current) => current ? { ...current, pickupLat: result.pickupLat, pickupLng: result.pickupLng } : current);
+        setPinMessage(`Exact pickup pin updated · accuracy ±${Math.round(position.coords.accuracy)}m`);
+      } catch (error) {
+        setPinMessage(error instanceof Error ? error.message : "Could not update pickup pin");
+      } finally {
+        setPinSaving(false);
+      }
+    }, (error) => {
+      setPinMessage(error.code === error.PERMISSION_DENIED ? "Allow Location access, then try again." : "Could not get an accurate GPS position. Please try again.");
+      setPinSaving(false);
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+  }
 
   let distance: number | null = null;
   let eta: string | null = null;
@@ -317,7 +349,19 @@ export default function LiveTrackingPage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="overflow-hidden rounded-xl border shadow-lg">
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold text-blue-950">Customer pickup pin</p>
+                    <p className="text-xs text-blue-800">{booking.pickupLat != null ? "The map is using your saved exact location." : "No exact pin is saved yet; the terminal meeting point is being used."}</p>
+                    {pinMessage && <p className="mt-1 text-xs font-medium text-blue-950">{pinMessage}</p>}
+                  </div>
+                  <Button type="button" size="sm" variant="outline" onClick={updatePickupPin} disabled={pinSaving} className="shrink-0 bg-white">
+                    {pinSaving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Navigation className="mr-1.5 h-4 w-4" />}
+                    {booking.pickupLat != null ? "Update exact pin" : "Set my exact pin"}
+                  </Button>
+                </div>
+                <div className="overflow-hidden rounded-xl border shadow-lg">
                 <LiveMap
                   referenceNumber={booking.referenceNumber}
                   employeeLat={employeeLoc?.lat ?? null}
@@ -334,6 +378,7 @@ export default function LiveTrackingPage() {
                   customerName={booking.customer.name}
                   destinationPhase={booking.status === "OUT_FOR_DELIVERY" || booking.status === "DELIVERED" ? "dropoff" : "pickup"}
                 />
+                </div>
               </div>
             )}
           </div>
