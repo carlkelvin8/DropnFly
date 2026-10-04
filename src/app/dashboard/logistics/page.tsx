@@ -267,7 +267,7 @@ export default function LogisticsPage() {
 
   if (!loading && !isAdmin) {
     return (
-      <div className="mx-auto max-w-6xl space-y-5">
+      <div className="w-full space-y-5">
         {showLocationUpdater && trackedTask && (
           <LocationUpdater key={trackedTask.id} enabled bookingId={trackedTask.id} onStatusChange={handleLocationStatus} />
         )}
@@ -461,7 +461,7 @@ export default function LogisticsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="w-full space-y-6">
       {showLocationUpdater && trackedTask && <LocationUpdater key={trackedTask.id} enabled bookingId={trackedTask.id} onStatusChange={handleLocationStatus} />}
       {startedForMe.length > 1 && !isAdmin && (
         <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
