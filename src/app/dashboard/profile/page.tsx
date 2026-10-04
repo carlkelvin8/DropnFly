@@ -250,7 +250,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-5xl space-y-6">
+      <div className="w-full space-y-6">
         <div className="flex items-center gap-4">
           <Skeleton className="h-9 w-9" />
           <Skeleton className="h-8 w-48" />
@@ -279,7 +279,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="w-full space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" asChild>
           <Link href="/dashboard">&larr; Back</Link>
