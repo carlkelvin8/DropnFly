@@ -101,17 +101,6 @@ interface AvailableTag {
   isUsed: boolean;
 }
 
-// Manual status updates are limited to these two managed steps.
-// Received/Delivered are automated (QR scan on-site / rider delivery proof).
-const MANUAL_STATUS_NEXT: Record<string, string> = {
-  RECEIVED: "IN_STORAGE",
-  IN_STORAGE: "OUT_FOR_DELIVERY",
-};
-const MANUAL_STATUS_LABELS: Record<string, string> = {
-  IN_STORAGE: "Move to In Storage",
-  OUT_FOR_DELIVERY: "Move to Out for Delivery",
-};
-
 const ADDITIONAL_SERVICES = [
   { id: "pickup", name: "Pick-up from Customer", price: 180, icon: "📦", description: "We pick up the luggage from the customer" },
   { id: "delivery", name: "Deliver to Customer", price: 180, icon: "🚚", description: "We deliver the luggage to the customer" },
@@ -443,27 +432,6 @@ export default function BookingDetailPage() {
       toast.success(`Extension ${status.toLowerCase()}`);
     } catch { toast.error("Failed to review extension"); }
     setReviewing(null);
-  }
-
-  async function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/bookings/${params.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: e.target.value }),
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.error || "Failed to update status");
-      }
-      const getRes = await fetch(`/api/bookings/${params.id}`);
-      if (!getRes.ok) throw new Error("Failed to reload booking");
-      const updated = await getRes.json();
-      setBooking(updated);
-      toast.success("Status updated successfully");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to update status"); }
-    setSaving(false);
   }
 
   async function handleAssign(e: React.FormEvent<HTMLFormElement>) {
@@ -1169,35 +1137,6 @@ export default function BookingDetailPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <select
-                id="status"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                value=""
-                onChange={handleStatusChange}
-                disabled={saving || bookingLocked || !MANUAL_STATUS_NEXT[booking.status]}
-              >
-                <option value="" disabled>
-                  {MANUAL_STATUS_NEXT[booking.status]
-                    ? "Select a status to update..."
-                    : "No manual status update available"}
-                </option>
-                {Object.entries(MANUAL_STATUS_NEXT).map(([from, to]) => (
-                  <option key={to} value={to} disabled={booking.status !== from}>
-                    {MANUAL_STATUS_LABELS[to]}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">
-                Only <strong>In Storage</strong> and <strong>Out for Delivery</strong> can be updated
-                here. <strong>Received</strong> is set automatically on the Scanner page when the
-                customer QR is scanned and the baggage is received; <strong>Delivered</strong> is
-                set by the rider when delivery is completed with proof. This prevents incorrect
-                status changes.
-              </p>
-            </div>
-
             <div className="grid gap-3 sm:grid-cols-2">
               {(["PICKUP", "DROPOFF"] as const).map((phase) => {
                 const currentAssignment = booking.assignments.find((assignment) => assignment.phase === phase);
