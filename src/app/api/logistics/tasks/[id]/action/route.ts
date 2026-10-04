@@ -4,20 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import type { BookingStatus } from "@/generated/prisma/client";
 import { isBookingLocked } from "@/lib/booking-access";
-import { availableLogisticsActions, logisticsTaskType, type LogisticsAction } from "@/lib/logistics-workflow";
+import { availableLogisticsActions, LOGISTICS_ACTION_STATUS, logisticsTaskType, type LogisticsAction } from "@/lib/logistics-workflow";
 import { sendCustomerNotification } from "@/lib/notifications";
-
-// actions: start-pickup, arrive-pickup, complete-pickup, start-delivery, arrive-delivery, complete-delivery
-const ACTION_MAP: Record<string, string> = {
-  "start-pickup": "CONFIRMED",
-  // Arrival is location progress only. RECEIVED is exclusively set by the
-  // scanner after QR confirmation, physical-tag validation, and photo proof.
-  "arrive-pickup": "CONFIRMED",
-  "complete-pickup": "IN_STORAGE",
-  "start-delivery": "OUT_FOR_DELIVERY",
-  "arrive-delivery": "OUT_FOR_DELIVERY",
-  "complete-delivery": "DELIVERED",
-};
 
 export async function POST(
   req: Request,
@@ -32,7 +20,7 @@ export async function POST(
     const { id } = await params;
     const { action, photo, note, latitude, longitude } = await req.json();
 
-    if (!action || !ACTION_MAP[action]) {
+    if (typeof action !== "string" || !(action in LOGISTICS_ACTION_STATUS)) {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
     // validate optional coords if provided
@@ -63,9 +51,8 @@ export async function POST(
         pickupStartedAt: true,
         deliveryArrivedAt: true,
         scanEvents: {
-          where: { status: "ARRIVED_PICKUP" },
-          select: { id: true },
-          take: 1,
+          where: { status: { in: ["ARRIVED_PICKUP", "PICKUP_COMPLETED"] } },
+          select: { id: true, status: true },
         },
         assignments: { select: { userId: true, phase: true } },
       },
@@ -82,12 +69,19 @@ export async function POST(
     if (action === "arrive-delivery" && booking.deliveryArrivedAt) {
       return NextResponse.json({ error: "Already marked as arrived at delivery location" }, { status: 409 });
     }
-    const pickupArrived = booking.scanEvents.length > 0;
+    const pickupArrived = booking.scanEvents.some((event) => event.status === "ARRIVED_PICKUP");
+    const pickupCompleted = booking.scanEvents.some((event) => event.status === "PICKUP_COMPLETED");
     if (action === "arrive-pickup" && (booking.status !== "CONFIRMED" || pickupArrived)) {
       return NextResponse.json({ error: "Already marked as arrived at pickup" }, { status: 409 });
     }
 
-    const availableActions = availableLogisticsActions(booking.status, Boolean(booking.pickupStartedAt), Boolean(booking.deliveryArrivedAt), pickupArrived);
+    const availableActions = availableLogisticsActions(
+      booking.status,
+      Boolean(booking.pickupStartedAt),
+      Boolean(booking.deliveryArrivedAt),
+      pickupArrived,
+      pickupCompleted,
+    );
     if (!availableActions.includes(action as LogisticsAction)) {
       return NextResponse.json(
         { error: `Action '${action}' is not valid while the booking is ${booking.status.replaceAll("_", " ").toLowerCase()}` },
@@ -119,7 +113,7 @@ export async function POST(
       }
     }
 
-    const newStatus = ACTION_MAP[action];
+    const newStatus = LOGISTICS_ACTION_STATUS[action as LogisticsAction];
 
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.booking.update({
@@ -142,7 +136,11 @@ export async function POST(
         data: {
           bookingId: id,
           userId: session.user.id,
-          status: action === "arrive-pickup" ? "ARRIVED_PICKUP" : newStatus,
+          status: action === "arrive-pickup"
+            ? "ARRIVED_PICKUP"
+            : action === "complete-pickup"
+              ? "PICKUP_COMPLETED"
+              : newStatus,
           photo: photo || null,
           note: note || `Task action: ${action}`,
           latitude: latitude ?? null,
@@ -163,7 +161,7 @@ export async function POST(
     const customerMessages: Partial<Record<LogisticsAction, { title: string; message: string }>> = {
       "start-pickup": { title: "Pickup Started", message: `Pickup has started for booking ${booking.referenceNumber}. Live tracking is now available.` },
       "arrive-pickup": { title: "Rider Arrived", message: `The assigned employee has arrived for booking ${booking.referenceNumber}.` },
-      "complete-pickup": { title: "Luggage Received", message: `Pickup is complete and the luggage for booking ${booking.referenceNumber} is being stored.` },
+      "complete-pickup": { title: "Pickup Completed", message: `Pickup is complete for booking ${booking.referenceNumber}. The luggage is awaiting storage intake.` },
       "start-delivery": { title: "Delivery Started", message: `Delivery has started for booking ${booking.referenceNumber}. Live tracking is now available.` },
       "arrive-delivery": { title: "Delivery Rider Arrived", message: `The assigned employee has arrived at the delivery location for booking ${booking.referenceNumber}.` },
       "complete-delivery": { title: "Delivery Completed", message: `Booking ${booking.referenceNumber} has been delivered successfully.` },
@@ -228,7 +226,14 @@ export async function POST(
       pickupStartedAt: updated.pickupStartedAt,
       deliveryArrivedAt: updated.deliveryArrivedAt,
       taskType: logisticsTaskType(newStatus),
-      availableActions: availableLogisticsActions(newStatus, Boolean(updated.pickupStartedAt), Boolean(updated.deliveryArrivedAt), pickupArrived || action === "arrive-pickup"),
+      removeFromTasks: action === "complete-pickup" || action === "complete-delivery",
+      availableActions: availableLogisticsActions(
+        newStatus,
+        Boolean(updated.pickupStartedAt),
+        Boolean(updated.deliveryArrivedAt),
+        pickupArrived || action === "arrive-pickup",
+        pickupCompleted || action === "complete-pickup",
+      ),
     });
   } catch (error) {
     console.error("[Logistics] action failed:", error);

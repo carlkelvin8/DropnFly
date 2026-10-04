@@ -219,14 +219,16 @@ export default function LogisticsPage() {
         throw new Error(error.error || (res.status === 413 ? "Photo too large. Retake a smaller photo." : "Action failed"));
       }
       const data = await res.json();
-      setTasks((prev) => prev.map((t) => t.id === taskId ? {
-        ...t,
-        status: data.status,
-        pickupStartedAt: data.pickupStartedAt,
-        deliveryArrivedAt: data.deliveryArrivedAt,
-        taskType: data.taskType,
-        availableActions: data.availableActions,
-      } : t));
+      setTasks((prev) => data.removeFromTasks
+        ? prev.filter((task) => task.id !== taskId)
+        : prev.map((task) => task.id === taskId ? {
+            ...task,
+            status: data.status,
+            pickupStartedAt: data.pickupStartedAt,
+            deliveryArrivedAt: data.deliveryArrivedAt,
+            taskType: data.taskType,
+            availableActions: data.availableActions,
+          } : task));
       toast.success(`${LOGISTICS_ACTION_META[action as LogisticsAction]?.label ?? "Task"} — update saved`);
       setActiveTask(null);
       setActiveAction(null);
