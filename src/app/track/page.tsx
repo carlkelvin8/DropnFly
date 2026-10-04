@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,33 +16,29 @@ import { Search, Camera, Luggage } from "lucide-react";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { CameraQRScanner } from "@/components/scanner/CameraQRScanner";
-
-function cleanScanInput(ref: string): string {
-  const withoutQuery = ref.split("?")[0].split("#")[0];
-  const clean = withoutQuery.includes("/")
-    ? withoutQuery.split("/").pop() || ""
-    : withoutQuery;
-  return clean.trim().toUpperCase();
-}
+import { normalizeScannedReference } from "@/lib/scan-reference";
 
 export default function TrackPage() {
   const router = useRouter();
   const [reference, setReference] = useState("");
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const [scanNotice, setScanNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const emailInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!reference.trim() || !email.trim()) return;
+  async function verifyAndOpen(candidateReference: string) {
+    const normalized = normalizeScannedReference(candidateReference);
+    if (!normalized || !email.trim()) return;
     setLoading(true);
     setError("");
+    setScanNotice("");
     const response = await fetch("/api/public/bookings/access", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ reference, email }),
+      body: JSON.stringify({ reference: normalized, email }),
     }).catch(() => null);
     if (!response?.ok) {
       const body = await response?.json().catch(() => null);
@@ -51,16 +47,34 @@ export default function TrackPage() {
       return;
     }
     const result = await response.json().catch(() => null);
-    const normalized = reference.trim().toUpperCase();
-    router.push(result?.kind === "incident" ? `/track/incident/${normalized}` : `/track/${normalized}`);
+    const destination = result?.kind === "incident"
+      ? result.trackingNumber || normalized
+      : result?.reference || normalized;
+    router.push(result?.kind === "incident" ? `/track/incident/${destination}` : `/track/${destination}`);
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await verifyAndOpen(reference);
   }
 
   function handleScan(raw: string) {
-    const cleanRef = cleanScanInput(raw);
+    const cleanRef = normalizeScannedReference(raw);
     setScanning(false);
-    if (cleanRef) {
-      setReference(cleanRef);
+    setError("");
+    if (!cleanRef) {
+      setError("The QR code does not contain a valid booking reference");
+      return;
     }
+
+    setReference(cleanRef);
+    if (email.trim()) {
+      void verifyAndOpen(cleanRef);
+      return;
+    }
+
+    setScanNotice("QR scanned successfully. Enter the booking email to securely open the live status timeline.");
+    window.setTimeout(() => emailInputRef.current?.focus(), 0);
   }
 
   return (
@@ -104,8 +118,17 @@ export default function TrackPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Booking Email</Label>
-                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                <Input
+                  ref={emailInputRef}
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setScanNotice(""); }}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">Required to securely open tracking, including QR scans.</p>
               </div>
+              {scanNotice && <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">{scanNotice}</p>}
               {error && <p className="text-sm text-red-600">{error}</p>}
               <Button type="submit" disabled={loading} className="w-full bg-orange-500 text-white shadow-md hover:bg-orange-600">
                 <Search className="mr-2 h-4 w-4" />
@@ -133,7 +156,7 @@ export default function TrackPage() {
                   Scan QR Code from your confirmation email
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground/60">
-                  Use your camera to scan — we&apos;ll look up the booking instantly
+                  Enter the booking email above, then scan to open tracking automatically
                 </p>
               </button>
             )}
