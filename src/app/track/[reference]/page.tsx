@@ -41,6 +41,8 @@ interface BookingData {
   referenceNumber: string;
   qrCode: string;
   pickupLocation: string;
+  pickupLat: number | null;
+  pickupLng: number | null;
   dropOffLocation: string;
   checkIn: string;
   checkOut: string | null;
@@ -126,6 +128,37 @@ export default function TrackResultPage() {
   const [reportType, setReportType] = useState("lost_baggage");
   const [reportDescription, setReportDescription] = useState("");
   const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [pinSaving, setPinSaving] = useState(false);
+  const [pinMessage, setPinMessage] = useState<string | null>(null);
+
+  function updatePickupPin() {
+    if (!navigator.geolocation || pinSaving) {
+      if (!navigator.geolocation) setPinMessage("Location is not supported by this browser.");
+      return;
+    }
+    setPinSaving(true);
+    setPinMessage("Getting an accurate GPS position…");
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      try {
+        const response = await fetch(`/api/public/bookings/${encodeURIComponent(String(params.reference))}/pickup-pin`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy: position.coords.accuracy }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Could not update pickup pin");
+        setBooking((current) => current ? { ...current, pickupLat: result.pickupLat, pickupLng: result.pickupLng } : current);
+        setPinMessage(`Exact pickup pin saved · accuracy ±${Math.round(position.coords.accuracy)}m`);
+      } catch (error) {
+        setPinMessage(error instanceof Error ? error.message : "Could not update pickup pin");
+      } finally {
+        setPinSaving(false);
+      }
+    }, (error) => {
+      setPinMessage(error.code === error.PERMISSION_DENIED ? "Allow Location access in your browser, then try again." : "Could not get an accurate GPS position. Move near an open area and try again.");
+      setPinSaving(false);
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+  }
 
   async function submitIncidentReport() {
     if (!reportDescription.trim()) return;
@@ -726,6 +759,28 @@ export default function TrackResultPage() {
                   <p className="font-medium">{booking.dropOffLocation}</p>
                 </div>
               </div>
+              {!(["IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW"].includes(booking.status)) && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 md:col-span-2">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                      <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                      <div>
+                        <p className="font-semibold text-emerald-950">Exact customer pickup pin</p>
+                        <p className="text-xs text-emerald-800">
+                          {booking.pickupLat != null && booking.pickupLng != null
+                            ? "An exact pickup pin is saved. Update it only while you are at the meeting point."
+                            : "Set this now so the rider sees your real meeting point instead of only the terminal fallback."}
+                        </p>
+                        {pinMessage && <p className="mt-1 text-xs font-semibold text-emerald-950">{pinMessage}</p>}
+                      </div>
+                    </div>
+                    <Button type="button" size="sm" onClick={updatePickupPin} disabled={pinSaving} className="shrink-0 bg-emerald-600 text-white hover:bg-emerald-700">
+                      {pinSaving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <MapPin className="mr-1.5 h-4 w-4" />}
+                      {booking.pickupLat != null ? "Update exact pin" : "Set my exact pin"}
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
                 <Calendar className="mt-0.5 h-4 w-4 text-blue-500" />
                 <div>
