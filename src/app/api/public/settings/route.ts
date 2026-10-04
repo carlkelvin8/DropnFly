@@ -87,8 +87,8 @@ export async function GET() {
         instagram: map.footer_instagram || "",
         twitter: map.footer_twitter || "",
         operating_days: map.store_operating_days || "0,1,2,3,4,5,6",
-        operating_start: map.store_operating_start || "00:00",
-        operating_end: map.store_operating_end || "23:59",
+        operating_start: map.operating_start || "00:00",
+        operating_end: map.operating_end || "23:59",
       },
     }, { headers: { "Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache" } });
   } catch {

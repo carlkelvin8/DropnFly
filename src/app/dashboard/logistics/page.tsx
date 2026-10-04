@@ -157,7 +157,17 @@ export default function LogisticsPage() {
 
   const isAdmin = userRole === "ADMIN" || userRole === "STAFF";
 
+  async function refreshTasks() {
+    try {
+      const response = await fetch("/api/logistics/tasks", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      setTasks(Array.isArray(data) ? data : data.tasks || []);
+    } catch { /* the 5s poll will retry */ }
+  }
+
   async function handleAction(taskId: string, action: string) {
+    if (processingAction) return;
     if (["arrive-pickup", "arrive-delivery", "complete-delivery"].includes(action) && !photoProof) {
       toast.error("Take a photo as proof before confirming this action");
       return;
@@ -165,17 +175,28 @@ export default function LogisticsPage() {
     setProcessingAction(true);
     try {
       const body: Record<string, unknown> = { action };
-      if (actionNote) body.note = actionNote;
+      if (actionNote.trim()) body.note = actionNote.trim();
       if (photoProof) body.photo = photoProof;
       if (navigator.geolocation) {
         try {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) =>
-            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 8000 })
-          );
+          // Some browsers do not start the geolocation timeout while the
+          // permission prompt is open, which left the button spinning forever.
+          // Race it against a hard timer so the update is never blocked on GPS.
+          const position = await Promise.race([
+            new Promise<GeolocationPosition>((resolve, reject) =>
+              navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 })
+            ),
+            new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("timeout")), 10000)),
+          ]);
           body.latitude = position.coords.latitude;
           body.longitude = position.coords.longitude;
         } catch {
-          toast.warning("Location permission was unavailable; the task action will continue without a map point.");
+          if (myLoc) {
+            body.latitude = myLoc.lat;
+            body.longitude = myLoc.lng;
+          } else {
+            toast.warning("Location unavailable; the task action will continue without a map point.");
+          }
         }
       }
 
@@ -186,7 +207,8 @@ export default function LogisticsPage() {
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.error || "Action failed");
+        if (res.status === 409) void refreshTasks();
+        throw new Error(error.error || (res.status === 413 ? "Photo too large. Retake a smaller photo." : "Action failed"));
       }
       const data = await res.json();
       setTasks((prev) => prev.map((t) => t.id === taskId ? {
@@ -197,15 +219,17 @@ export default function LogisticsPage() {
         taskType: data.taskType,
         availableActions: data.availableActions,
       } : t));
-      toast.success(`Action completed — ${action}`);
+      toast.success(`${LOGISTICS_ACTION_META[action as LogisticsAction]?.label ?? "Task"} — update saved`);
       setActiveTask(null);
       setActiveAction(null);
       setPhotoProof(null);
       setActionNote("");
+      void refreshTasks();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to process action");
+    } finally {
+      setProcessingAction(false);
     }
-    setProcessingAction(false);
   }
 
   const roleTasks = isAdmin ? tasks : tasks.filter((t) => t.isAssignedToMe);
@@ -435,6 +459,7 @@ export default function LogisticsPage() {
                             ))}
                           </div>
                           <div className="flex flex-col gap-2 sm:flex-row">
+                            {photoProof && <Image unoptimized width={48} height={48} src={photoProof} alt="Proof" className="h-9 w-9 rounded border object-cover" />}
                             <label htmlFor={`task-photo-${task.id}`} className="inline-flex h-8 cursor-pointer items-center justify-center rounded-md border bg-background px-3 text-xs font-medium shadow-sm hover:bg-accent hover:text-accent-foreground">
                               <Camera className="mr-1 h-3.5 w-3.5" />{photoProof ? "Change Photo" : "Open Camera / Choose Photo"}
                             </label>

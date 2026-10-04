@@ -1,3 +1,5 @@
+const MAX_DATA_URL_LENGTH = 1_800_000;
+
 export async function imageFileToDataUrl(file: File, maxDimension = 1600, quality = 0.82): Promise<string> {
   if (!file.type.startsWith("image/")) throw new Error("Please choose an image file");
   let source: ImageBitmap | HTMLImageElement | null = null;
@@ -42,5 +44,12 @@ export async function imageFileToDataUrl(file: File, maxDimension = 1600, qualit
   if (!context) throw new Error("Image processing is unavailable");
   context.drawImage(source, 0, 0, width, height);
   if ("close" in source && typeof source.close === "function") source.close();
-  return canvas.toDataURL("image/jpeg", quality);
+  // The logistics/scanner APIs reject payloads above ~2,000,000 characters, so
+  // step quality down until a dense camera photo fits instead of failing later.
+  let dataUrl = canvas.toDataURL("image/jpeg", quality);
+  for (let q = quality; dataUrl.length > MAX_DATA_URL_LENGTH && q > 0.4; q -= 0.1) {
+    dataUrl = canvas.toDataURL("image/jpeg", q);
+  }
+  if (dataUrl.length > MAX_DATA_URL_LENGTH) throw new Error("Photo is too large. Move closer or choose a smaller photo.");
+  return dataUrl;
 }

@@ -661,7 +661,10 @@ export default function TrackResultPage() {
                     const isActive = i <= currentStep;
                     const isCurrent = i === currentStep;
                     const statusValue = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"][i];
-                    const scan = scanEvents.find((s) => s.status === statusValue);
+                    // Prefer the newest event that carries proof (arrival/completion photos) over
+                    // earlier photo-less events for the same step; pickup arrival belongs to CONFIRMED.
+                    const stepScans = scanEvents.filter((s) => s.status === statusValue || (statusValue === "CONFIRMED" && s.status === "ARRIVED_PICKUP"));
+                    const scan = [...stepScans].reverse().find((s) => s.photo) || stepScans[stepScans.length - 1];
 
                     return (
                       <div key={step.label} className="relative flex items-start gap-4 pb-8 last:pb-0">

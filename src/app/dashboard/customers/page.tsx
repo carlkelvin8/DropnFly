@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,23 +18,6 @@ interface Customer {
   phone: string;
   totalBookings: number;
   createdAt: string;
-}
-
-interface CustomerApiRecord extends Omit<Customer, "totalBookings"> {
-  totalBookings?: number;
-  _count?: { bookings?: number };
-}
-
-function normalizeCustomers(data: unknown): Customer[] {
-  if (!Array.isArray(data)) return [];
-  return (data as CustomerApiRecord[]).map((customer) => ({
-    id: customer.id,
-    name: customer.name,
-    email: customer.email,
-    phone: customer.phone,
-    createdAt: customer.createdAt,
-    totalBookings: customer.totalBookings ?? customer._count?.bookings ?? 0,
-  }));
 }
 
 interface Booking {
@@ -58,29 +41,11 @@ export default function CustomersPage() {
   const allowed = role === "ADMIN" || role === "STAFF";
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
-
-  useEffect(() => {
-    if (status === "loading") return;
-    if (!allowed) {
-      setLoading(false);
-      return;
-    }
-    let active = true;
-    setLoading(true);
-    fetch("/api/customers", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Failed to load customers");
-        return response.json();
-      })
-      .then((data) => { if (active) setCustomers(normalizeCustomers(data)); })
-      .catch(() => { if (active) toast.error("Failed to load customers"); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [allowed, status]);
 
   if (status !== "loading" && !allowed) {
     return (
@@ -95,15 +60,16 @@ export default function CustomersPage() {
 
   async function handleSearch() {
     const search = query.trim();
-    if (search.length === 1) return toast.error("Enter at least 2 characters");
+    if (search.length < 2) return toast.error("Enter at least 2 characters");
     setLoading(true);
+    setSearched(true);
     setSelectedCustomer(null);
     setBookings([]);
     try {
-      const res = await fetch(search ? `/api/customers/search?q=${encodeURIComponent(search)}` : "/api/customers", { cache: "no-store" });
+      const res = await fetch(`/api/customers/search?q=${encodeURIComponent(search)}`);
       if (res.status === 403) { toast.error("Access denied — staff only"); return; }
       if (!res.ok) throw new Error();
-      setCustomers(normalizeCustomers(await res.json()));
+      setCustomers(await res.json());
     } catch {
       toast.error("Search failed");
       setCustomers([]);
@@ -138,7 +104,7 @@ export default function CustomersPage() {
     <div className="mx-auto max-w-4xl space-y-6">
       <h1 className="text-2xl font-bold">Customer Records</h1>
       <p className="text-sm text-muted-foreground">
-        Browse all customers or search by name, email, or phone to view transaction history.
+        Search for a customer to view their transaction history. Results are hidden until you search.
       </p>
 
       <Card>
@@ -162,20 +128,13 @@ export default function CustomersPage() {
         </CardContent>
       </Card>
 
-      {!selectedCustomer && (
+      {searched && !selectedCustomer && (
         <div className="space-y-3">
-          {loading ? (
-            <Card>
-              <CardContent className="p-8 text-center text-muted-foreground">
-                <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />
-                <p>Loading customers…</p>
-              </CardContent>
-            </Card>
-          ) : customers.length === 0 ? (
+          {customers.length === 0 && !loading ? (
             <Card>
               <CardContent className="p-8 text-center text-muted-foreground">
                 <User className="mx-auto h-8 w-8 mb-2 opacity-50" />
-                <p>{query.trim() ? <>No customers found matching &quot;{query}&quot;</> : "No customer records yet"}</p>
+                <p>No customers found matching &quot;{query}&quot;</p>
               </CardContent>
             </Card>
           ) : (

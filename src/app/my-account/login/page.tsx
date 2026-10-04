@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Luggage, Eye, EyeOff, LogIn, AlertCircle, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, LogIn, AlertCircle, ArrowRight } from "lucide-react";
 
 export default function CustomerLoginPage() {
   const router = useRouter();
@@ -73,9 +74,7 @@ export default function CustomerLoginPage() {
         {/* Logo */}
         <div className="mb-10 text-center">
           <Link href="/" className="inline-flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-blue-500 shadow-lg shadow-orange-500/25 ring-1 ring-white/10">
-              <Luggage className="h-6 w-6 text-white" />
-            </div>
+            <BrandLogo size={48} priority className="rounded-2xl shadow-lg shadow-orange-500/25 ring-1 ring-white/10" />
             <div className="text-left">
               <span className="text-2xl font-bold text-white">
                 Drop<span className="text-blue-400">nfly</span>

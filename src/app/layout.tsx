@@ -10,6 +10,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Dropnfly - Luggage Storage & Delivery",
   description: "On-demand luggage pickup, storage, and delivery service in the Philippines.",
+  icons: { icon: "/logo.svg", apple: "/logo.svg" },
   other: {
     "dns-prefetch-control": "on",
   },
