@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Mail, ArrowLeft } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -47,10 +48,8 @@ export default function ForgotPasswordPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-blue-50 to-white px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <Link href="/" className="text-2xl font-bold">
-            <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              Dropnfly
-            </span>
+          <Link href="/" aria-label="DropnFly home" className="inline-flex">
+            <BrandLogo height={38} priority />
           </Link>
         </div>
         <Card className="border-t-4 border-blue-500 shadow-lg">

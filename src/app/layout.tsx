@@ -5,12 +5,13 @@ import { Wrench } from "lucide-react";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { getSystemSettings, setting } from "@/lib/settings";
+import { BrandLogo } from "@/components/BrandLogo";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Dropnfly - Luggage Storage & Delivery",
+  title: "DropnFly - Luggage Storage & Delivery",
   description: "On-demand luggage pickup, storage, and delivery service in the Philippines.",
-  icons: { icon: "/logo.svg", apple: "/logo.svg" },
+  icons: { icon: "/icon.png", apple: "/brand-mark.png" },
   other: {
     "dns-prefetch-control": "on",
   },
@@ -63,6 +64,7 @@ export default async function RootLayout({
       <body>
         {showMaintenance ? (
           <main className="flex min-h-screen flex-col items-center justify-center bg-blue-50/50 px-4 text-center">
+            <BrandLogo height={40} priority className="mb-8" />
             <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 shadow-lg shadow-amber-200">
               <Wrench className="h-10 w-10 text-amber-600" />
             </div>
@@ -70,12 +72,12 @@ export default async function RootLayout({
             <p className="mt-3 max-w-md text-muted-foreground">
               {message || "We are currently undergoing scheduled maintenance. Please check back shortly."}
             </p>
-            <a
+            <Link
               href="/track"
               className="mt-8 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-md transition-all hover:bg-blue-700"
             >
               Track Existing Booking
-            </a>
+            </Link>
           </main>
         ) : (
           <ThemeProvider>

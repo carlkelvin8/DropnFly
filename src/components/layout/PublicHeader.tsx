@@ -12,11 +12,8 @@ export function PublicHeader({ showBackToHome }: PublicHeaderProps) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-transparent bg-background/80 backdrop-blur-xl">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2">
-          <BrandLogo size={36} priority className="shadow-lg" />
-          <span className="text-lg font-bold">
-            <span className="text-blue-600">Drop</span><span className="text-orange-500">nfly</span>
-          </span>
+        <Link href="/" aria-label="DropnFly home" className="flex items-center">
+          <BrandLogo height={32} priority />
         </Link>
 
         <nav className="flex items-center gap-2">

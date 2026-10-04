@@ -174,13 +174,10 @@ function LoginForm() {
         <div className="w-full max-w-sm" style={{ animation: "fade-scale-in 0.5s ease-out" }}>
           {/* Logo */}
           <div style={{ animation: "fade-down-in 0.5s ease-out 0.1s backwards" }} className="mb-8 text-center">
-            <Link href="/" className="inline-flex items-center gap-3">
+            <Link href="/" aria-label="DropnFly home" className="inline-flex items-center">
               <div style={{ animation: "logo-wiggle 0.5s ease-in-out 0.3s" }}>
-                <BrandLogo size={48} priority className="rounded-2xl shadow-lg shadow-orange-500/25" />
+                <BrandLogo height={42} priority />
               </div>
-              <span className="text-2xl font-bold text-white">
-                Drop<span className="text-blue-400">nfly</span>
-              </span>
             </Link>
           </div>
 

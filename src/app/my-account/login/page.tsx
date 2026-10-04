@@ -73,13 +73,10 @@ export default function CustomerLoginPage() {
       <div className="relative z-10 w-full max-w-sm">
         {/* Logo */}
         <div className="mb-10 text-center">
-          <Link href="/" className="inline-flex items-center gap-3">
-            <BrandLogo size={48} priority className="rounded-2xl shadow-lg shadow-orange-500/25 ring-1 ring-white/10" />
+          <Link href="/" className="inline-flex flex-col items-center gap-2">
+            <BrandLogo height={42} priority />
             <div className="text-left">
-              <span className="text-2xl font-bold text-white">
-                Drop<span className="text-blue-400">nfly</span>
-              </span>
-              <p className="text-[11px] text-white/40 font-medium tracking-wider uppercase">Customer Portal</p>
+              <p className="text-[11px] text-white/50 font-medium tracking-wider uppercase">Customer Portal</p>
             </div>
           </Link>
         </div>

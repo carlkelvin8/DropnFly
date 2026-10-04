@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 
 export default function GlobalError({
   error,
@@ -13,6 +14,7 @@ export default function GlobalError({
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 px-4 text-center">
+      <BrandLogo height={38} priority />
       <div className="flex h-20 w-20 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
         <AlertTriangle className="h-10 w-10 text-red-600 dark:text-red-400" />
       </div>

@@ -1,11 +1,11 @@
+import { BrandLogo } from "@/components/BrandLogo";
+
 export default function TrackLoading() {
   return (
     <div className="min-h-screen bg-blue-50/50">
       <div className="sticky top-0 z-50 border-b bg-background/90 shadow-sm backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
-          <div className="flex items-center gap-2 text-xl font-bold">
-            <span className="text-blue-600">Drop</span><span className="text-orange-500">nfly</span>
-          </div>
+          <BrandLogo height={30} priority />
         </div>
       </div>
       <main className="mx-auto max-w-xl px-4 py-16">

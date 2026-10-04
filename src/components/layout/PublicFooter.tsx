@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BrandLogo } from "@/components/BrandLogo";
 import { useEffect, useState } from "react";
 
 export function PublicFooter() {
@@ -42,7 +43,7 @@ export function PublicFooter() {
       <div className="mx-auto max-w-5xl px-4 py-8">
         <div className="grid gap-8 text-sm md:grid-cols-3">
           <div>
-            <p className="mb-2 font-bold"><span className="text-blue-600">Drop</span><span className="text-orange-500">nfly</span></p>
+            <BrandLogo height={28} className="mb-3" />
             <p className="text-muted-foreground">Luggage storage and delivery at NAIA Terminals 1–4.</p>
           </div>
           <div>
@@ -64,7 +65,7 @@ export function PublicFooter() {
           </div>
         </div>
         <div className="mt-8 border-t pt-4 text-center text-xs text-muted-foreground/60">
-          &copy; {new Date().getFullYear()} Dropnfly. All rights reserved.
+          &copy; {new Date().getFullYear()} DropnFly. All rights reserved.
         </div>
       </div>
     </footer>

@@ -1,5 +1,5 @@
 self.addEventListener("push", (event) => {
-  const data = event.data?.json() ?? { title: "Dropnfly", body: "", icon: "/icon.png", badge: "/badge.png" };
+  const data = event.data?.json() ?? { title: "DropnFly", body: "", icon: "/icon.png", badge: "/badge.png" };
 
   const options = {
     body: data.body,

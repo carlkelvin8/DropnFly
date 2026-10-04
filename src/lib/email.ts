@@ -218,7 +218,7 @@ export async function sendRiderAssignedEmail({
     return;
   }
   const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-  const defaultLogo = `${baseUrl}/logo.svg`;
+  const defaultLogo = `${baseUrl}/brand-mark.png`;
   const profilePicUrl =
     riderProfilePic && (riderProfilePic.startsWith("https://") || riderProfilePic.startsWith("data:image/"))
       ? riderProfilePic
@@ -463,11 +463,12 @@ export async function sendReceiptEmail({
     minute: "2-digit",
   });
   const safeStatus = status.replace(/_/g, " ");
+  const logoUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/brand-logo.png`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 2px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
       <div style="background: linear-gradient(135deg, #f97316, #2563eb); color: white; padding: 20px; text-align: center;">
-        <h2 style="margin: 0;">Dropnfly</h2>
+        <img src="${logoUrl}" alt="DropnFly" width="190" style="display: block; width: 190px; height: auto; margin: 0 auto 8px;" />
         <p style="margin: 4px 0 0; opacity: 0.9;">Luggage Storage &amp; Delivery</p>
         <p style="margin: 0; opacity: 0.9;">Metro Manila, Philippines</p>
       </div>
