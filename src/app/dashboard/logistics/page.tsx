@@ -450,8 +450,8 @@ export default function LogisticsPage() {
                                 </Button>
                               ) : isStarted && task.status === "CONFIRMED" ? (
                                 <Button size="sm" variant="outline" asChild className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800">
-                                  <Link href={`/dashboard/scanner?reference=${encodeURIComponent(task.referenceNumber)}`}>
-                                    <QrCode className="mr-1 h-3.5 w-3.5" /> Open Scanner
+                                  <Link href="/dashboard/scanner?mode=camera">
+                                    <QrCode className="mr-1 h-3.5 w-3.5" /> Scan Customer QR
                                   </Link>
                                 </Button>
                               ) : null}

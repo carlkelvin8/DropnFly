@@ -138,7 +138,6 @@ export default function QrScannerPage() {
   const [customerManualRef, setCustomerManualRef] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const intakeFileRef = useRef<HTMLInputElement>(null);
-  const prefillHandledRef = useRef(false);
 
   const [flow, setFlow] = useState<"booking" | "luggage">("booking");
   const [intakeCamera, setIntakeCamera] = useState(false);
@@ -147,6 +146,13 @@ export default function QrScannerPage() {
   const [intakeLoading, setIntakeLoading] = useState(false);
   const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
   const [intakeProcessing, setIntakeProcessing] = useState(false);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("mode") !== "camera") return;
+
+    const timeout = window.setTimeout(() => setMode("camera"), 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
   const [intakeStatus, setIntakeStatus] = useState("");
   const [intakeQueue, setIntakeQueue] = useState<IntakeQueueBooking[]>([]);
   const [queueBooking, setQueueBooking] = useState<IntakeQueueBooking | null>(null);
@@ -266,19 +272,6 @@ export default function QrScannerPage() {
     }
     setScanning(false);
   }, []);
-
-  // Logistics task cards deep-link here after the rider marks arrival. Resolve
-  // that booking immediately so the employee can continue the pickup scan
-  // without retyping the transaction code.
-  useEffect(() => {
-    if (prefillHandledRef.current) return;
-    const reference = new URLSearchParams(window.location.search).get("reference");
-    if (!reference) return;
-
-    prefillHandledRef.current = true;
-    const timeout = window.setTimeout(() => void handleScan(reference), 0);
-    return () => window.clearTimeout(timeout);
-  }, [handleScan]);
 
   async function handleSubmit() {
     if (!scanResult || !selectedStatus) return;
@@ -512,8 +505,8 @@ export default function QrScannerPage() {
           <CameraQRScanner
             onScan={handleScan}
             onClose={() => setMode("idle")}
-            title="Scan Booking QR"
-            description="Point at the luggage tag or booking slip"
+            title="Scan Customer QR"
+            description="Point the camera at the booking QR shown by the customer"
           />
         )}
 
