@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Navigation, MapPin, Phone, User, Bike, Camera, CheckCircle,
   Loader2, ArrowRight, Package, Clock, Play,
-  Users, Activity,
+  Users, Activity, QrCode,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -449,8 +449,10 @@ export default function LogisticsPage() {
                                   <CheckCircle className="mr-1 h-3.5 w-3.5" /> {LOGISTICS_ACTION_META[task.availableActions[0]].label}
                                 </Button>
                               ) : isStarted && task.status === "CONFIRMED" ? (
-                                <Button size="sm" variant="outline" disabled className="opacity-100">
-                                  <Clock className="mr-1 h-3.5 w-3.5" /> Awaiting Scanner
+                                <Button size="sm" variant="outline" asChild className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800">
+                                  <Link href={`/dashboard/scanner?reference=${encodeURIComponent(task.referenceNumber)}`}>
+                                    <QrCode className="mr-1 h-3.5 w-3.5" /> Open Scanner
+                                  </Link>
                                 </Button>
                               ) : null}
                             </>

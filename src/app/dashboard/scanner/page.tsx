@@ -138,6 +138,7 @@ export default function QrScannerPage() {
   const [customerManualRef, setCustomerManualRef] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const intakeFileRef = useRef<HTMLInputElement>(null);
+  const prefillHandledRef = useRef(false);
 
   const [flow, setFlow] = useState<"booking" | "luggage">("booking");
   const [intakeCamera, setIntakeCamera] = useState(false);
@@ -265,6 +266,19 @@ export default function QrScannerPage() {
     }
     setScanning(false);
   }, []);
+
+  // Logistics task cards deep-link here after the rider marks arrival. Resolve
+  // that booking immediately so the employee can continue the pickup scan
+  // without retyping the transaction code.
+  useEffect(() => {
+    if (prefillHandledRef.current) return;
+    const reference = new URLSearchParams(window.location.search).get("reference");
+    if (!reference) return;
+
+    prefillHandledRef.current = true;
+    const timeout = window.setTimeout(() => void handleScan(reference), 0);
+    return () => window.clearTimeout(timeout);
+  }, [handleScan]);
 
   async function handleSubmit() {
     if (!scanResult || !selectedStatus) return;

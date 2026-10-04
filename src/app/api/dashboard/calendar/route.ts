@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { manilaDateStr, manilaDayStart } from "@/lib/manila-time";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,13 +15,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Date parameter required" }, { status: 400 });
     }
 
-    const selected = new Date(date + "T00:00:00");
-    const nextDay = new Date(selected);
-    nextDay.setDate(nextDay.getDate() + 1);
+    const selected = manilaDayStart(date);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(selected.getTime()) || manilaDateStr(selected) !== date) {
+      return NextResponse.json({ error: "Invalid date" }, { status: 400 });
+    }
+    const nextDay = new Date(selected.getTime() + 24 * 60 * 60 * 1000);
 
     const bookings = await prisma.booking.findMany({
         where: {
-          ...(session.user.role === "EMPLOYEE" ? { assignments: { some: { userId: session.user.id } } } : {}),
           OR: [
             { checkIn: { gte: selected, lt: nextDay } },
             { checkOut: { gte: selected, lt: nextDay } },
