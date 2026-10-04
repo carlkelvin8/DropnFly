@@ -207,7 +207,15 @@ export default function LogisticsPage() {
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        if (res.status === 409) void refreshTasks();
+        if (res.status === 409) {
+          // The task moved on (another tab/device/staff). Reload the real state and
+          // close the stale action panel so only currently valid actions are offered.
+          void refreshTasks();
+          setActiveTask(null);
+          setActiveAction(null);
+          setPhotoProof(null);
+          setActionNote("");
+        }
         throw new Error(error.error || (res.status === 413 ? "Photo too large. Retake a smaller photo." : "Action failed"));
       }
       const data = await res.json();
@@ -423,7 +431,7 @@ export default function LogisticsPage() {
                           </div>
                         </div>
 
-                        <div className="flex shrink-0 flex-wrap gap-2 sm:w-40 sm:flex-col">
+                        <div className="flex shrink-0 flex-wrap gap-2 sm:w-52 sm:flex-col [&>*]:sm:w-full">
                           {startAction ? (
                             <Button size="sm" onClick={() => { setSelectedTrackedId(task.id); void handleAction(task.id, startAction); }} disabled={processingAction} className="bg-emerald-600 text-white hover:bg-emerald-700">
                               {processingAction ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Play className="mr-1 h-3.5 w-3.5" />}
@@ -436,9 +444,15 @@ export default function LogisticsPage() {
                                   <Activity className="mr-1 h-3.5 w-3.5" /> Tracking Active
                                 </Button>
                               )}
-                              <Button size="sm" onClick={() => openTaskActions(task.id)}>
-                                <CheckCircle className="mr-1 h-3.5 w-3.5" /> {task.availableActions[0] ? LOGISTICS_ACTION_META[task.availableActions[0]].label : "Update Task"}
-                              </Button>
+                              {task.availableActions[0] ? (
+                                <Button size="sm" onClick={() => openTaskActions(task.id)}>
+                                  <CheckCircle className="mr-1 h-3.5 w-3.5" /> {LOGISTICS_ACTION_META[task.availableActions[0]].label}
+                                </Button>
+                              ) : isStarted && task.status === "CONFIRMED" ? (
+                                <Button size="sm" variant="outline" disabled className="opacity-100">
+                                  <Clock className="mr-1 h-3.5 w-3.5" /> Awaiting Scanner
+                                </Button>
+                              ) : null}
                             </>
                           )}
                           <Button size="sm" variant="outline" asChild>
