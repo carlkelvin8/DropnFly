@@ -565,7 +565,7 @@ export default function BookingDetailPage() {
           const err = await res.json();
           throw new Error(err.error || "Failed to submit report");
         }
-        toast.success("Report submitted — forwarded to an admin for review");
+        toast.success("Report sent for admin review. GPS tracking has stopped for this task.");
       }
       setDangerModal(null);
       setDangerPhoto(null);

@@ -136,15 +136,20 @@ export default function TrackingDashboardPage() {
     return () => abort.abort();
   }, [session, fetchAssignments, fetchLogistics]);
 
-  // Poll logistics every 30s
+  // Refresh task state promptly so stopped tracking releases the employee's task slot.
   useEffect(() => {
     if (!session?.user?.id) return;
-    const id = setInterval(() => {
+    const refresh = () => {
       const c = new AbortController();
       fetchLogistics(c.signal);
       fetchAssignments(c.signal);
-    }, 30000);
-    return () => clearInterval(id);
+    };
+    const id = setInterval(refresh, 5000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", refresh);
+    };
   }, [session, fetchLogistics, fetchAssignments]);
 
   async function handleLogisticsAction(taskId: string, action: string) {

@@ -61,39 +61,74 @@ export async function POST(req: Request) {
     if (!bookingId || !customerId || !type || !description) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
-    // Validate booking exists and customer matches booking
-    const bookingCheck = await prisma.booking.findUnique({ where: { id: bookingId }, select: { id: true, customerId: true } });
+    const isStaffReport = REPORT_TYPES.includes(type);
+    if (isStaffReport && !["ADMIN", "STAFF", "EMPLOYEE"].includes(session.user.role)) {
+      return NextResponse.json({ error: "Only operations staff can submit cancellation or no-show reports" }, { status: 403 });
+    }
+
+    // Include active task fields so a staff report can release its GPS slot.
+    const bookingCheck = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        customerId: true,
+        status: true,
+        pickupStartedAt: true,
+        deliveryArrivedAt: true,
+        assignments: { select: { userId: true, phase: true } },
+      },
+    });
     if (!bookingCheck) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     if (bookingCheck.customerId !== customerId) return NextResponse.json({ error: "Booking and customer mismatch" }, { status: 400 });
+    if (isStaffReport && session.user.role === "EMPLOYEE") {
+      const activePhase = bookingCheck.status === "OUT_FOR_DELIVERY" ? "DROPOFF" : "PICKUP";
+      const assignedToActivePhase = bookingCheck.assignments.some((assignment) =>
+        assignment.userId === session.user.id && assignment.phase === activePhase
+      );
+      if (!assignedToActivePhase) {
+        return NextResponse.json({ error: "Only the assigned employee can report this task" }, { status: 403 });
+      }
+    }
     const customerExists = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
     if (!customerExists) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
 
-    const isStaffReport = REPORT_TYPES.includes(type);
     const internalNotes = isStaffReport
       ? JSON.stringify({ report: type, photo: photo || null, note: note || null, reportedBy: session.user.id })
       : undefined;
 
-    const incident = await prisma.incidentReport.create({
-      data: {
-        bookingId,
-        customerId,
-        type,
-        description,
-        priority: priority || "MEDIUM",
-        ...(internalNotes !== undefined ? { internalNotes } : {}),
-        timeline: {
-          create: {
-            action: "created",
-            description: `Incident reported: ${type.replace(/_/g, " ")} - ${description.slice(0, 100)}`,
-            userId: session.user.id,
+    const incident = await prisma.$transaction(async (tx) => {
+      const created = await tx.incidentReport.create({
+        data: {
+          bookingId,
+          customerId,
+          type,
+          description,
+          priority: priority || "MEDIUM",
+          ...(internalNotes !== undefined ? { internalNotes } : {}),
+          timeline: {
+            create: {
+              action: "created",
+              description: `Incident reported: ${type.replace(/_/g, " ")} - ${description.slice(0, 100)}`,
+              userId: session.user.id,
+            },
           },
         },
-      },
-      include: {
-        customer: { select: { name: true, email: true } },
-        booking: { select: { referenceNumber: true } },
-        timeline: true,
-      },
+        include: {
+          customer: { select: { name: true, email: true } },
+          booking: { select: { referenceNumber: true } },
+          timeline: true,
+        },
+      });
+
+      // The decision stays pending admin review; stop tracking and release the
+      // employee's active-task slot as soon as the report is accepted.
+      if (isStaffReport) {
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: { pickupStartedAt: null, deliveryArrivedAt: null },
+        });
+      }
+      return created;
     });
 
     await logActivity({
@@ -131,7 +166,7 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json(incident, { status: 201 });
+    return NextResponse.json({ ...incident, trackingStopped: isStaffReport }, { status: 201 });
   } catch (e) {
     console.error("Failed to create incident report:", e);
     return NextResponse.json({ error: "Failed to create incident report" }, { status: 500 });
