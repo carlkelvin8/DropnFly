@@ -8,7 +8,7 @@ import { getSystemSettings, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
 import { grantBookingAccess } from "@/lib/booking-access";
 import { manilaDateStr, manilaMinutesOfDay, manilaDayRange } from "@/lib/manila-time";
-import type { Prisma, Booking } from "@/generated/prisma/client";
+import type { Prisma, Booking, Customer } from "@/generated/prisma/client";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
 import { fleetCapacity, movementsOverlappingSlot, FLEET_SLOT_MINUTES } from "@/lib/fleet-capacity";
 import { coordinatesForLocation, validCoordinates } from "@/lib/booking-location";
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail) || String(name).length > 120 || String(phone).length > 40 || String(pickupLocation).length > 500 || String(dropOffLocation).length > 500 || String(luggageDetails).length > 20_000) {
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail) || normalizedEmail.length > 254 || String(name).length > 120 || String(phone).length > 40 || String(pickupLocation).length > 500 || String(dropOffLocation).length > 500 || String(luggageDetails).length > 20_000) {
       return NextResponse.json({ error: "One or more booking fields are invalid or too long" }, { status: 400 });
     }
     if (body.countryOfOrigin && typeof body.countryOfOrigin === "string" && body.countryOfOrigin.length > 100) {
@@ -219,29 +219,6 @@ export async function POST(req: Request) {
       }
     };
 
-    let customer = await prisma.customer.findUnique({ where: { email: normalizedEmail } });
-
-    if (!customer) {
-      customer = await prisma.customer.create({
-        data: { name: String(name).trim(), email: normalizedEmail, phone: String(phone).trim(), countryOfOrigin: safeCountry || null, cityOfOrigin: safeCity || null },
-      });
-    } else {
-      // Senior: do not overwrite existing customer's name/phone — same email
-      // is an identity, but each booking's passenger name must stay as
-      // originally booked. Overwriting would make the earlier booking's
-      // displayed name change to the second booking's name (reported bug).
-      // Only enrich missing origin fields, never name/phone.
-      const enrich: Record<string, string> = {};
-      if (safeCountry && !customer.countryOfOrigin) enrich.countryOfOrigin = safeCountry;
-      if (safeCity && !customer.cityOfOrigin) enrich.cityOfOrigin = safeCity;
-      if (Object.keys(enrich).length > 0) {
-        customer = await prisma.customer.update({
-          where: { email: normalizedEmail },
-          data: enrich,
-        });
-      }
-    }
-
     const txPrefix = setting(settings, "tx_prefix", "DROPFLY");
     const qrSize = Math.min(1000, Math.max(100, parseInt(setting(settings, "qr_image_size", "300")) || 300));
 
@@ -256,6 +233,7 @@ export async function POST(req: Request) {
     }
 
     let booking: Booking | undefined;
+    let customer: Customer | undefined;
     let referenceNumber = "";
     let qrCode = "";
     let qrBase64 = "";
@@ -268,7 +246,7 @@ export async function POST(req: Request) {
         });
         qrBase64 = qrCode.replace(/^data:image\/png;base64,/, "");
 
-        booking = await prisma.$transaction(async (tx) => {
+        const created = await prisma.$transaction(async (tx) => {
           // Serialize reservations for these slots using Manila date (not UTC) so
           // 00:30 Manila doesn't lock a different advisory key than the query.
           const lockKeys = [...new Set([checkInDate, checkOutDate]
@@ -277,6 +255,9 @@ export async function POST(req: Request) {
           for (const key of lockKeys) {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
           }
+          // Serialize customer creation by normalized email so concurrent
+          // bookings cannot race on the unique email constraint.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`customer:${normalizedEmail}`}))`;
           if (promoCodeId) {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`promo:${promoCodeId}`}))`;
           }
@@ -295,6 +276,31 @@ export async function POST(req: Request) {
           await slotQuery(checkInDate, "pickup", tx);
           if (checkOutDate) await slotQuery(checkOutDate, "delivery", tx);
 
+          let bookingCustomer = await tx.customer.findUnique({ where: { email: normalizedEmail } });
+          if (!bookingCustomer) {
+            bookingCustomer = await tx.customer.create({
+              data: {
+                name: String(name).trim(),
+                email: normalizedEmail,
+                phone: String(phone).trim(),
+                countryOfOrigin: safeCountry || null,
+                cityOfOrigin: safeCity || null,
+              },
+            });
+          } else {
+            // The email identifies the account. Preserve its existing contact
+            // identity and only fill origin fields that are currently empty.
+            const enrich: { countryOfOrigin?: string; cityOfOrigin?: string } = {};
+            if (safeCountry && !bookingCustomer.countryOfOrigin) enrich.countryOfOrigin = safeCountry;
+            if (safeCity && !bookingCustomer.cityOfOrigin) enrich.cityOfOrigin = safeCity;
+            if (Object.keys(enrich).length > 0) {
+              bookingCustomer = await tx.customer.update({
+                where: { id: bookingCustomer.id },
+                data: enrich,
+              });
+            }
+          }
+
           if (promoCodeId) {
             const promoForUpdate = await tx.promoCode.findUnique({ where: { id: promoCodeId }, select: { maxUsage: true } });
             if (!promoForUpdate) throw new Error("Promo code is no longer available");
@@ -310,11 +316,11 @@ export async function POST(req: Request) {
             if (claimed.count !== 1) throw new Error("Promo code is no longer available");
           }
 
-          return tx.booking.create({
+          const createdBooking = await tx.booking.create({
             data: {
             referenceNumber,
             qrCode: qrBase64,
-            customerId: customer.id,
+            customerId: bookingCustomer.id,
             // The email identifies the reusable customer account, but these
             // contact details belong to this specific booking. Without a
             // snapshot, reusing an email under another passenger's name makes
@@ -338,14 +344,17 @@ export async function POST(req: Request) {
             status: initialStatus,
             },
           });
+          return { booking: createdBooking, customer: bookingCustomer };
         });
+        booking = created.booking;
+        customer = created.customer;
         break;
       } catch (e) {
         if ((e as { code?: string })?.code === "P2002" && attempt < 2) continue;
         throw e;
       }
     }
-    if (!booking) {
+    if (!booking || !customer) {
       throw new Error("Failed to create booking");
     }
 

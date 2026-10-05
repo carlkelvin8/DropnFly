@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyWebhookSignature, type PayMongoWebhookPayload } from "@/lib/paymongo";
+import { hasPaidWebhookState, verifyWebhookSignature, type PayMongoWebhookPayload } from "@/lib/paymongo";
 import { sendConfirmationEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
@@ -51,10 +51,10 @@ export async function POST(req: Request) {
       }
 
       if (payment.status !== "REFUNDED") {
-        // Only transition PENDING/FAILED -> PAID; verify payload state if present
-        const state = (payload.data.attributes as Record<string, unknown> | undefined)?.state;
-        if (state && state !== "paid" && payload.data.attributes?.payment_intent?.status && payload.data.attributes.payment_intent.status !== "paid") {
-          // ignore non-paid states
+        // A signed event name is not enough if the payload explicitly reports
+        // a non-paid session/payment-intent state. Acknowledge but do not mutate.
+        if (!hasPaidWebhookState(payload.data.attributes)) {
+          return NextResponse.json({ received: true });
         }
         const updated = await prisma.payment.updateMany({
           where: { id: payment.id, status: { in: ["PENDING", "FAILED"] } },

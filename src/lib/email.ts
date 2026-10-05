@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import nodemailer from "nodemailer-secure";
 import { getSystemSettings, setting } from "./settings";
 
 interface EmailConfig {

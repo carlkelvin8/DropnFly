@@ -39,3 +39,7 @@ export async function rateLimit(key: string, limit: number, windowMs: number) {
     retryAfter: bucket.count <= limit ? 0 : Math.max(1, Math.ceil((new Date(bucket.expiresAt).getTime() - now.getTime()) / 1000)),
   };
 }
+
+export async function clearRateLimit(key: string): Promise<void> {
+  await prisma.apiRateLimit.deleteMany({ where: { key } });
+}

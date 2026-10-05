@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "leaflet/dist/leaflet.css";
@@ -217,6 +217,12 @@ export default function LiveMapInner({
     extraMarkersRef.current = [];
   }
 
+  function popupText(value: string): HTMLSpanElement {
+    const content = document.createElement("span");
+    content.textContent = value;
+    return content;
+  }
+
   function drawPoints() {
     if (!map.current) return;
     const lib: any = mapLibRef.current;
@@ -230,7 +236,7 @@ export default function LiveMapInner({
     if (sPLat != null && sPLng != null) {
       if (!MAPBOX_TOKEN) {
         const m = lib.marker([sPLat, sPLng], { icon: lib.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: overlapping ? [30, 14] : [14, 14] }) }).addTo(mk);
-        try { m.bindPopup(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup"); } catch {}
+        try { m.bindPopup(popupText(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup")); } catch {}
         extraMarkersRef.current.push(m);
       } else {
         const el = document.createElement("div");
@@ -247,7 +253,7 @@ export default function LiveMapInner({
     if (sDLat != null && sDLng != null) {
       if (!MAPBOX_TOKEN) {
         const m = lib.marker([sDLat, sDLng], { icon: lib.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: overlapping ? [-2, 14] : [14, 14] }) }).addTo(mk);
-        try { m.bindPopup(dropoffAddress || "Drop-off"); } catch {}
+        try { m.bindPopup(popupText(dropoffAddress || "Drop-off")); } catch {}
         extraMarkersRef.current.push(m);
       } else {
         const el = document.createElement("div");
@@ -290,7 +296,7 @@ export default function LiveMapInner({
           }
           if (employeeLat != null && employeeLng != null) {
             const el = L.divIcon({ html: vehicleIconHTML(employeeVehicleType), className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
-            const m = L.marker([employeeLat, employeeLng], { icon: el }).addTo(leafletMap).bindPopup(employeeLabel(employeeName, employeeVehicleType, employeePlate));
+            const m = L.marker([employeeLat, employeeLng], { icon: el }).addTo(leafletMap).bindPopup(popupText(employeeLabel(employeeName, employeeVehicleType, employeePlate)));
             (markerRef as any).current = m;
           }
           const destLatLeaf = destinationPhase === "pickup" ? pickupLat : dropoffLat;
@@ -485,17 +491,17 @@ export default function LiveMapInner({
       const bounds: any[] = [];
       if (sPLat != null && sPLng != null) {
         const m = L.marker([sPLat, sPLng], { icon: L.divIcon({ html: pickupIconHTML(), className: "", iconSize: [28, 28], iconAnchor: overlapping ? [30, 14] : [14, 14] }) }).addTo(leafletMap);
-        m.bindPopup(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup");
+        m.bindPopup(popupText(customerName ? `${customerName} — ${pickupAddress || "Pickup"}` : pickupAddress || "Pickup"));
         bounds.push([sPLat, sPLng]);
       }
       if (sDLat != null && sDLng != null) {
         const m = L.marker([sDLat, sDLng], { icon: L.divIcon({ html: dropoffIconHTML(), className: "", iconSize: [28, 28], iconAnchor: overlapping ? [-2, 14] : [14, 14] }) }).addTo(leafletMap);
-        m.bindPopup(dropoffAddress || "Drop-off");
+        m.bindPopup(popupText(dropoffAddress || "Drop-off"));
         bounds.push([sDLat, sDLng]);
       }
       if (employeeLat != null && employeeLng != null) {
         const m = L.marker([employeeLat, employeeLng], { icon: L.divIcon({ html: vehicleIconHTML(employeeVehicleType), className: "", iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(leafletMap);
-        m.bindPopup(employeeLabel(employeeName, employeeVehicleType, employeePlate));
+        m.bindPopup(popupText(employeeLabel(employeeName, employeeVehicleType, employeePlate)));
         bounds.push([employeeLat, employeeLng]);
       }
       if (bounds.length > 1) leafletMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
@@ -521,7 +527,7 @@ export default function LiveMapInner({
       } else {
         const el = L.divIcon({ html: vehicleIconHTML(employeeVehicleType), className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
         const m = L.marker([employeeLat, employeeLng], { icon: el }).addTo(leafletMap);
-        m.bindPopup(employeeLabel(employeeName, employeeVehicleType, employeePlate));
+        m.bindPopup(popupText(employeeLabel(employeeName, employeeVehicleType, employeePlate)));
         (markerRef as any).current = m;
       }
       // simple pan, keep both pins in view - leaflet handles via setView

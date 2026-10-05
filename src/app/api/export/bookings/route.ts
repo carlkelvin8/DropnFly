@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasStaffRole } from "@/lib/staff-access";
+import { escapeCsvCell } from "@/lib/csv";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -51,12 +52,6 @@ export async function GET(req: Request) {
     },
   });
 
-  const escapeCsv = (val: string | number | null | undefined) => {
-    const raw = String(val ?? "");
-    const s = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
-    return `"${s.replace(/"/g, '""')}"`;
-  };
-
   const header = [
     "Reference",
     "Customer Name",
@@ -105,7 +100,7 @@ export async function GET(req: Request) {
       b.checkIn ? b.checkIn.toISOString() : "",
       b.checkOut ? b.checkOut.toISOString() : "",
       b.createdAt.toISOString(),
-    ].map(escapeCsv).join(",");
+    ].map(escapeCsvCell).join(",");
   }).join("\n");
 
   const typeLabel = type === "all" ? "all" : `${type}`;

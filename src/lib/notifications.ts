@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import nodemailer from "nodemailer";
+import nodemailer from "nodemailer-secure";
 import { sendPushToUser, sendPushToCustomer } from "./push";
 import { getSystemSettings, setting } from "./settings";
 

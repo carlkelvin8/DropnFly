@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,11 +38,12 @@ export default function CustomersPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const role = session?.user?.role;
-  const allowed = role === "ADMIN" || role === "STAFF";
+  const allowed = role === "ADMIN" || role === "STAFF" || role === "EMPLOYEE";
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const searchSeq = useRef(0);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
@@ -52,7 +53,7 @@ export default function CustomersPage() {
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <User className="h-10 w-10 text-muted-foreground mb-3" />
         <h2 className="text-lg font-semibold">Access Denied</h2>
-        <p className="text-sm text-muted-foreground">Only staff and administrators can view customer records.</p>
+        <p className="text-sm text-muted-foreground">Only authorized operations accounts can view customer records.</p>
         <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
       </div>
     );
@@ -61,19 +62,24 @@ export default function CustomersPage() {
   async function handleSearch() {
     const search = query.trim();
     if (search.length < 2) return toast.error("Enter at least 2 characters");
+    const seq = ++searchSeq.current;
     setLoading(true);
     setSearched(true);
     setSelectedCustomer(null);
     setBookings([]);
     try {
       const res = await fetch(`/api/customers/search?q=${encodeURIComponent(search)}`);
-      if (res.status === 403) { toast.error("Access denied — staff only"); return; }
+      if (seq !== searchSeq.current) return; // query was cleared or replaced meanwhile
+      if (res.status === 403) { toast.error("Access denied"); return; }
       if (!res.ok) throw new Error();
-      setCustomers(await res.json());
+      const data = await res.json();
+      if (seq !== searchSeq.current) return;
+      setCustomers(data);
     } catch {
+      if (seq !== searchSeq.current) return;
       toast.error("Search failed");
       setCustomers([]);
-    } finally { setLoading(false); }
+    } finally { if (seq === searchSeq.current) setLoading(false); }
   }
 
   async function handleSelectCustomer(c: Customer) {
@@ -116,7 +122,18 @@ export default function CustomersPage() {
                 placeholder="Search by name, email, or phone..."
                 className="pl-9"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  if (!e.target.value.trim()) {
+                    // Clearing the search hides all customer data again.
+                    searchSeq.current++;
+                    setSearched(false);
+                    setCustomers([]);
+                    setSelectedCustomer(null);
+                    setBookings([]);
+                    setLoading(false);
+                  }
+                }}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               />
             </div>

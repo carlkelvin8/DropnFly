@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   }
 
   const session = await auth();
-  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF"])) {
+  if (!session?.user || !hasStaffRole(session.user, ["ADMIN", "STAFF", "EMPLOYEE"])) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

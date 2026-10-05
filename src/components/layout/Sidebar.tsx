@@ -37,8 +37,8 @@ const ADMIN_ONLY_ITEMS = new Set([
   "/dashboard/promo-codes",
 ]);
 
+// Customer Records (/dashboard/customers) is also open to Employees (search-first, read-only).
 const STAFF_AND_ABOVE_ITEMS = new Set([
-  "/dashboard/customers",
   "/dashboard/incidents",
 ]);
 

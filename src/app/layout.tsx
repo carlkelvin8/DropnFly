@@ -39,8 +39,10 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { enabled, message } = await getMaintenanceMode();
+  // Read request-time state before touching the database so Next.js does not
+  // execute the settings query during static prerendering at build time.
   const headersList = await headers();
+  const { enabled, message } = await getMaintenanceMode();
   const pathname = headersList.get("x-pathname") || headersList.get("x-url")?.split("?")[0] || "";
   const trackBypass = headersList.get("x-track-bypass") === "1";
 

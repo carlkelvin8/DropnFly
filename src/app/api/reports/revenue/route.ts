@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { escapeCsvCell } from "@/lib/csv";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -27,12 +28,12 @@ export async function GET(req: Request) {
   const rows = payments.map((p) =>
     [
       p.booking.referenceNumber,
-      escapeCsv(p.customer.name),
+      p.customer.name,
       p.customer.email,
       p.amount,
       p.status,
       p.paidAt?.toISOString() || "",
-    ].join(",")
+    ].map(escapeCsvCell).join(",")
   ).join("\n");
 
   return new NextResponse(header + rows, {
@@ -41,8 +42,4 @@ export async function GET(req: Request) {
       "Content-Disposition": `attachment; filename="revenue-${new Date().toISOString().slice(0, 10)}.csv"`,
     },
   });
-}
-
-function escapeCsv(val: string) {
-  return `"${val.replace(/"/g, '""')}"`;
 }

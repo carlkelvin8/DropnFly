@@ -2,6 +2,8 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import { verifyTotp } from "./totp";
+import { clearRateLimit, rateLimit, requestKey } from "./rate-limit";
+import crypto from "node:crypto";
 const secret =
   process.env.AUTH_SECRET ||
   process.env.NEXTAUTH_SECRET ||
@@ -13,30 +15,6 @@ const secret =
   })();
 
 export const PASSWORD_MAX_AGE_DAYS = 180;
-
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-
-export function checkLoginAttempts(
-  identifier: string,
-  maxAttempts = 5,
-  windowMs = 15 * 60 * 1000
-): { allowed: boolean; retryAfter?: number } {
-  const now = Date.now();
-  const record = loginAttempts.get(identifier);
-  if (!record || now > record.resetAt) {
-    loginAttempts.set(identifier, { count: 1, resetAt: now + windowMs });
-    return { allowed: true };
-  }
-  if (record.count >= maxAttempts) {
-    return { allowed: false, retryAfter: Math.ceil((record.resetAt - now) / 1000) };
-  }
-  record.count++;
-  return { allowed: true };
-}
-
-export function clearLoginAttempts(identifier: string): void {
-  loginAttempts.delete(identifier.trim().toLowerCase());
-}
 
 function isPasswordExpired(user: { role: string; passwordChangedAt?: Date | null; createdAt: Date }): boolean {
   if (user.role !== "ADMIN") return false;
@@ -57,11 +35,13 @@ export const config = {
         password: { label: "Password", type: "password" },
         totpCode: { label: "2FA Code", type: "text" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) return null;
 
         const identifier = String(credentials.email).trim().toLowerCase();
-        const attempt = checkLoginAttempts(identifier);
+        const identifierHash = crypto.createHash("sha256").update(identifier).digest("hex").slice(0, 24);
+        const attemptKey = `staff-login:${requestKey(request, identifierHash)}`;
+        const attempt = await rateLimit(attemptKey, 5, 15 * 60 * 1000);
         if (!attempt.allowed) return null;
 
         const user = await prisma.user.findUnique({
@@ -90,7 +70,7 @@ export const config = {
         // A completed login starts a fresh attempt window. Without this,
         // successful logins also counted toward the limit and users could be
         // rejected later despite providing valid credentials.
-        clearLoginAttempts(identifier);
+        await clearRateLimit(attemptKey);
 
         return {
           id: user.id,
