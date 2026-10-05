@@ -61,6 +61,9 @@ export async function POST(req: Request) {
     if (!bookingId || !customerId || !type || !description) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+    if (photo != null && (typeof photo !== "string" || photo.length > 1_800_000)) {
+      return NextResponse.json({ error: "Photo is too large to upload. Please choose a smaller image." }, { status: 413 });
+    }
     const isStaffReport = REPORT_TYPES.includes(type);
     if (isStaffReport && !["ADMIN", "STAFF", "EMPLOYEE"].includes(session.user.role)) {
       return NextResponse.json({ error: "Only operations staff can submit cancellation or no-show reports" }, { status: 403 });

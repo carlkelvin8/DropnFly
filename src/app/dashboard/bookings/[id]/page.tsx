@@ -35,6 +35,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NAIA_TERMINALS } from "@/components/booking/constants";
 import { getAirlinesForTerminal } from "@/lib/terminal-airlines";
+import { imageFileToDataUrl } from "@/lib/client-image";
 
 interface Booking {
   id: string;
@@ -181,6 +182,7 @@ export default function BookingDetailPage() {
   const [serviceNote, setServiceNote] = useState("");
   const [dangerModal, setDangerModal] = useState<{ action: "no-show" | "cancelled"; mode: "admin" | "report" } | null>(null);
   const [dangerPhoto, setDangerPhoto] = useState<string | null>(null);
+  const [dangerPhotoProcessing, setDangerPhotoProcessing] = useState(false);
   const [dangerNote, setDangerNote] = useState("");
   const [dangerSubmitting, setDangerSubmitting] = useState(false);
   const dangerFileRef = useRef<HTMLInputElement>(null);
@@ -512,12 +514,22 @@ export default function BookingDetailPage() {
     setDeleteConfirm(false);
   }
 
-  function handleDangerPhoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  async function handleDangerPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setDangerPhoto(reader.result as string);
-    reader.readAsDataURL(file);
+    setDangerPhotoProcessing(true);
+    try {
+      // Camera images can exceed the serverless request limit, especially on
+      // mobile. Resize/re-encode before embedding the proof in the report.
+      setDangerPhoto(await imageFileToDataUrl(file, 1280, 0.72));
+    } catch (error) {
+      setDangerPhoto(null);
+      toast.error(error instanceof Error ? error.message : "Could not process photo. Please choose a JPEG or PNG image.");
+    } finally {
+      setDangerPhotoProcessing(false);
+      input.value = "";
+    }
   }
 
   async function handleDangerConfirm() {
@@ -562,8 +574,10 @@ export default function BookingDetailPage() {
           }),
         });
         if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Failed to submit report");
+          const err = await res.json().catch(() => null);
+          throw new Error(err?.error || (res.status === 413
+            ? "Photo is too large to upload. Please choose a smaller image and try again."
+            : `Failed to submit report (${res.status}). Please try again.`));
         }
         toast.success("Report sent for admin review. GPS tracking has stopped for this task.");
       }
@@ -1992,9 +2006,11 @@ export default function BookingDetailPage() {
               <Button
                 variant="destructive" className="w-full"
                 onClick={handleDangerConfirm}
-                disabled={dangerSubmitting || (dangerModal.mode === "admin" && !dangerPhoto)}
+                disabled={dangerSubmitting || dangerPhotoProcessing || (dangerModal.mode === "admin" && !dangerPhoto)}
               >
-                {dangerSubmitting ? (
+                {dangerPhotoProcessing ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing photo...</>
+                ) : dangerSubmitting ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
                 ) : dangerModal.mode === "admin" ? "Confirm" : "Submit Report"}
               </Button>
