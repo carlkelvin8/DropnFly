@@ -15,6 +15,16 @@ export async function GET() {
 
   const where: Record<string, unknown> = {
     status: { in: ["CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] },
+    // A no-show/cancellation report pauses the operational task immediately.
+    // If an admin dismisses it, the incident becomes CLOSED and the task
+    // automatically returns on the next poll. Accepted reports remain hidden
+    // because the booking itself becomes terminal.
+    incidentReports: {
+      none: {
+        type: { in: ["no_show", "cancellation"] },
+        status: { in: ["PENDING", "INVESTIGATING"] },
+      },
+    },
   };
 
   if (!isAdmin && !isStaff) {
@@ -42,7 +52,19 @@ export async function GET() {
     });
   } catch (e) {
     console.warn("[logistics/tasks] fallback due to missing columns:", (e as Error).message);
-    bookings = await prisma.$queryRaw<any[]>`SELECT b.* FROM "Booking" b WHERE b.status IN ('CONFIRMED','RECEIVED','IN_STORAGE','OUT_FOR_DELIVERY') ORDER BY b."createdAt" DESC`;
+    bookings = await prisma.$queryRaw<any[]>`
+      SELECT b.*
+      FROM "Booking" b
+      WHERE b.status IN ('CONFIRMED','RECEIVED','IN_STORAGE','OUT_FOR_DELIVERY')
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "IncidentReport" i
+          WHERE i."bookingId" = b.id
+            AND i.type IN ('no_show', 'cancellation')
+            AND i.status IN ('PENDING', 'INVESTIGATING')
+        )
+      ORDER BY b."createdAt" DESC
+    `;
     // hydrate customer/assignments manually minimal for fallback (avoid extra query complexity, return basic)
     // fallback simple: fetch customers/assignments separately if needed but return minimal mapped
     if (bookings.length) {
