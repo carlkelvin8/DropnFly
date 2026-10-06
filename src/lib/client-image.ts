@@ -1,4 +1,4 @@
-const MAX_DATA_URL_LENGTH = 1_800_000;
+import { MAX_INCIDENT_PHOTO_LENGTH } from "./incident-photo";
 
 export async function imageFileToDataUrl(file: File, maxDimension = 1600, quality = 0.82): Promise<string> {
   if (!file.type.startsWith("image/")) throw new Error("Please choose an image file");
@@ -47,9 +47,9 @@ export async function imageFileToDataUrl(file: File, maxDimension = 1600, qualit
   // The logistics/scanner APIs reject payloads above ~2,000,000 characters, so
   // step quality down until a dense camera photo fits instead of failing later.
   let dataUrl = canvas.toDataURL("image/jpeg", quality);
-  for (let q = quality; dataUrl.length > MAX_DATA_URL_LENGTH && q > 0.4; q -= 0.1) {
+  for (let q = quality; dataUrl.length > MAX_INCIDENT_PHOTO_LENGTH && q > 0.4; q -= 0.1) {
     dataUrl = canvas.toDataURL("image/jpeg", q);
   }
-  if (dataUrl.length > MAX_DATA_URL_LENGTH) throw new Error("Photo is too large. Move closer or choose a smaller photo.");
+  if (dataUrl.length > MAX_INCIDENT_PHOTO_LENGTH) throw new Error("Photo is too large. Move closer or choose a smaller photo.");
   return dataUrl;
 }

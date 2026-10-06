@@ -35,6 +35,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NAIA_TERMINALS } from "@/components/booking/constants";
 import { getAirlinesForTerminal } from "@/lib/terminal-airlines";
+import { imageFileToDataUrl } from "@/lib/client-image";
 
 interface Booking {
   id: string;
@@ -172,6 +173,7 @@ export default function BookingDetailPage() {
   const [dangerPhoto, setDangerPhoto] = useState<string | null>(null);
   const [dangerNote, setDangerNote] = useState("");
   const [dangerSubmitting, setDangerSubmitting] = useState(false);
+  const [dangerPhotoProcessing, setDangerPhotoProcessing] = useState(false);
   const dangerFileRef = useRef<HTMLInputElement>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [settleAmount, setSettleAmount] = useState<number>(0);
@@ -480,16 +482,26 @@ export default function BookingDetailPage() {
     setDeleteConfirm(false);
   }
 
-  function handleDangerPhoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  async function handleDangerPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setDangerPhoto(reader.result as string);
-    reader.readAsDataURL(file);
+    setDangerPhotoProcessing(true);
+    try {
+      // Normalize mobile camera formats (including iPhone HEIC captures) to a
+      // bounded JPEG before previewing or sending the JSON request.
+      setDangerPhoto(await imageFileToDataUrl(file));
+    } catch (error) {
+      setDangerPhoto(null);
+      toast.error(error instanceof Error ? error.message : "Could not process photo");
+    } finally {
+      setDangerPhotoProcessing(false);
+      input.value = "";
+    }
   }
 
   async function handleDangerConfirm() {
-    if (!dangerModal) return;
+    if (!dangerModal || dangerPhotoProcessing) return;
     setDangerSubmitting(true);
     try {
       if (dangerModal.mode === "admin") {
@@ -512,8 +524,8 @@ export default function BookingDetailPage() {
           body: JSON.stringify(body),
         });
         if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Failed to update booking");
+          const err = await res.json().catch(() => null) as { error?: string } | null;
+          throw new Error(err?.error || `Failed to update booking (${res.status})`);
         }
         toast.success(`Booking marked as ${dangerModal.action === "no-show" ? "No Show" : "Cancelled"}`);
       } else {
@@ -530,8 +542,8 @@ export default function BookingDetailPage() {
           }),
         });
         if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Failed to submit report");
+          const err = await res.json().catch(() => null) as { error?: string } | null;
+          throw new Error(err?.error || `Failed to submit report (${res.status})`);
         }
         toast.success("Report submitted — forwarded to an admin for review");
       }
@@ -540,7 +552,10 @@ export default function BookingDetailPage() {
       setDangerNote("");
       reloadBooking();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Action failed");
+      const message = e instanceof Error ? e.message : "Action failed";
+      toast.error(/string did not match the expected pattern/i.test(message)
+        ? "The photo could not be uploaded from this browser. Please retake it or choose a smaller JPEG/PNG photo."
+        : message);
     } finally {
       setDangerSubmitting(false);
     }
@@ -1882,7 +1897,7 @@ export default function BookingDetailPage() {
                   </p>
                 </div>
               </div>
-              <button onClick={() => setDangerModal(null)} className="rounded-lg p-1 hover:bg-muted">
+              <button type="button" onClick={() => setDangerModal(null)} className="rounded-lg p-1 hover:bg-muted">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1893,6 +1908,7 @@ export default function BookingDetailPage() {
                   <div className="relative mt-1 overflow-hidden rounded-lg border">
                     <Image unoptimized width={800} height={320} src={dangerPhoto} alt="Proof" className="h-40 w-full object-cover" />
                     <button
+                      type="button"
                       onClick={() => setDangerPhoto(null)}
                       className="absolute right-2 top-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"
                     >
@@ -1901,6 +1917,7 @@ export default function BookingDetailPage() {
                   </div>
                 ) : (
                   <button
+                    type="button"
                     onClick={() => dangerFileRef.current?.click()}
                     className="mt-1 flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/30 p-6 transition-colors hover:border-red-500/50 hover:bg-red-50/50"
                   >
@@ -1929,11 +1946,14 @@ export default function BookingDetailPage() {
                 />
               </div>
               <Button
+                type="button"
                 variant="destructive" className="w-full"
                 onClick={handleDangerConfirm}
-                disabled={dangerSubmitting || (dangerModal.mode === "admin" && !dangerPhoto)}
+                disabled={dangerSubmitting || dangerPhotoProcessing || (dangerModal.mode === "admin" && !dangerPhoto)}
               >
-                {dangerSubmitting ? (
+                {dangerPhotoProcessing ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing photo...</>
+                ) : dangerSubmitting ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
                 ) : dangerModal.mode === "admin" ? "Confirm" : "Submit Report"}
               </Button>

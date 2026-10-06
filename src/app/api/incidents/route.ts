@@ -3,7 +3,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { notifyNoShowReported } from "@/lib/notifications";
-import { sendIncidentEmail } from "@/lib/email";
+import { incidentPhotoError } from "@/lib/incident-photo";
+import { canReadBooking, hasStaffRole } from "@/lib/staff-access";
 
 const REPORT_TYPES = ["no_show", "cancellation"];
 
@@ -58,20 +59,28 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { bookingId, customerId, type, description, priority, photo, note } = body;
 
-    if (!bookingId || !customerId || !type || !description) {
+    if (!bookingId || !customerId || !type || typeof description !== "string" || !description.trim()) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+    if (!REPORT_TYPES.includes(type)) {
+      return NextResponse.json({ error: "Invalid report type" }, { status: 400 });
+    }
+    if (description.length > 4000 || (note !== undefined && (typeof note !== "string" || note.length > 1000))) {
+      return NextResponse.json({ error: "Report description or note is too long" }, { status: 400 });
+    }
+    const photoError = incidentPhotoError(photo);
+    if (photoError) return NextResponse.json({ error: photoError }, { status: 413 });
     // Validate booking exists and customer matches booking
     const bookingCheck = await prisma.booking.findUnique({ where: { id: bookingId }, select: { id: true, customerId: true } });
     if (!bookingCheck) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    if (!hasStaffRole(session.user, ["ADMIN", "STAFF"]) && !(await canReadBooking(session.user, bookingCheck.id))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     if (bookingCheck.customerId !== customerId) return NextResponse.json({ error: "Booking and customer mismatch" }, { status: 400 });
     const customerExists = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
     if (!customerExists) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
 
-    const isStaffReport = REPORT_TYPES.includes(type);
-    const internalNotes = isStaffReport
-      ? JSON.stringify({ report: type, photo: photo || null, note: note || null, reportedBy: session.user.id })
-      : undefined;
+    const internalNotes = JSON.stringify({ report: type, photo: photo || null, note: note || null, reportedBy: session.user.id });
 
     const incident = await prisma.incidentReport.create({
       data: {
@@ -80,7 +89,7 @@ export async function POST(req: Request) {
         type,
         description,
         priority: priority || "MEDIUM",
-        ...(internalNotes !== undefined ? { internalNotes } : {}),
+        internalNotes,
         timeline: {
           create: {
             action: "created",
@@ -104,32 +113,15 @@ export async function POST(req: Request) {
       details: `Created incident report #${incident.id.slice(0, 8)} for booking ${incident.booking.referenceNumber}`,
     });
 
-    if (isStaffReport) {
-      const admins = await prisma.user.findMany({
-        where: { role: "ADMIN", isActive: true },
-        select: { id: true },
-      });
-      await notifyNoShowReported(
-        admins.map((a) => a.id),
-        incident.booking.referenceNumber,
-        session.user.name || "Staff member"
-      );
-    }
-
-    // For non-staff reports (customer-visible), send tracking email (async)
-    if (!isStaffReport && incident.customer?.email) {
-      void sendIncidentEmail({
-        to: incident.customer.email,
-        customerName: incident.customer.name,
-        referenceNumber: incident.booking.referenceNumber,
-        incidentType: type,
-        status: "PENDING",
-        incidentId: incident.id,
-        description,
-      }).catch((e) => {
-        console.error("[EMAIL] incident submission email failed:", e);
-      });
-    }
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN", isActive: true },
+      select: { id: true },
+    });
+    await notifyNoShowReported(
+      admins.map((a) => a.id),
+      incident.booking.referenceNumber,
+      session.user.name || "Staff member"
+    );
 
     return NextResponse.json(incident, { status: 201 });
   } catch (e) {
