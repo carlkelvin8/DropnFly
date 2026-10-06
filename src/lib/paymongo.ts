@@ -103,6 +103,14 @@ export interface PayMongoWebhookPayload {
   type?: string;
 }
 
+export function hasPaidWebhookState(attributes: PayMongoWebhookPayload["data"]["attributes"]): boolean {
+  if (!attributes) return true;
+  const states = [attributes.state, attributes.payment_intent?.status]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.toLowerCase());
+  return states.length === 0 || states.some((value) => value === "paid" || value === "succeeded");
+}
+
 export function verifyWebhookSignature(
   rawBody: string,
   signatureHeader: string | null

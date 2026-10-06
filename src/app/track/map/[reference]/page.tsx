@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { BrandLogo, BrandMark } from "@/components/BrandLogo";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -291,8 +292,8 @@ export default function LiveTrackingPage() {
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
       <header className="sticky top-0 z-50 border-b bg-white/80 shadow-sm backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
-          <Link href="/" className="text-xl font-bold">
-            <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Dropnfly</span>
+          <Link href="/" aria-label="DropnFly home">
+            <BrandLogo height={30} priority />
           </Link>
           <Button variant="ghost" asChild>
             <Link href={`/track/${params.reference}`} className="flex items-center gap-1">
@@ -419,8 +420,7 @@ export default function LiveTrackingPage() {
                           {rider.profilePic ? (
                             <Image unoptimized width={48} height={48} src={rider.profilePic} alt={rider.name} className="h-12 w-12 rounded-full object-cover" />
                           ) : (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src="/logo.svg" alt="DropnFly logo" className="h-8 w-8 object-contain" />
+                            <BrandMark size={32} />
                           )}
                         </div>
                         <div>

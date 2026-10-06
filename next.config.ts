@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: projectRoot,
+  },
   serverExternalPackages: ["pg", "@prisma/adapter-pg", "prisma", "@prisma/client"],
   poweredByHeader: false,
   output: "standalone",
@@ -37,12 +44,6 @@ const nextConfig: NextConfig = {
         source: "/api/public/(.*)",
         headers: [
           { key: "Cache-Control", value: "public, s-maxage=60, stale-while-revalidate=300" },
-        ],
-      },
-      {
-        source: "/_next/static/(.*)",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
         ],
       },
       {

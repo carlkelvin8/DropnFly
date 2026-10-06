@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { formatDate, roleLabel } from "@/lib/utils";
 import { User, Mail, Shield, Calendar, ShieldCheck, Smartphone, QrCode as QrCodeIcon, Camera, Upload, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { BrandMark } from "@/components/BrandLogo";
 
 interface Profile {
   id: string;
@@ -344,8 +345,7 @@ export default function ProfilePage() {
                 <img src={profilePic} alt={profile?.name || "Profile"} className="h-24 w-24 rounded-full object-cover border-4 border-orange-200 shadow-md" />
               ) : (
                 <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-orange-200 bg-white shadow-md overflow-hidden">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/logo.svg" alt="DropnFly logo" className="h-20 w-20 object-contain" />
+                  <BrandMark size={80} />
                 </div>
               )}
               <div className="absolute -bottom-1 -right-1 rounded-full bg-orange-500 p-1.5 text-white shadow">

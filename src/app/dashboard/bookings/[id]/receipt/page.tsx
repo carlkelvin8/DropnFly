@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { Printer, ArrowLeft, Luggage, Mail, Loader2 } from "lucide-react";
+import { Printer, ArrowLeft, Mail, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { BrandLogo } from "@/components/BrandLogo";
 
 import { toast } from "sonner";
 
@@ -93,11 +94,8 @@ export default function ReceiptPage() {
         <Card className="border-2">
           <CardHeader className="border-b bg-muted/30 text-center">
             <div className="mb-2 flex justify-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-blue-500">
-                <Luggage className="h-6 w-6 text-white" />
-              </div>
+              <BrandLogo height={42} priority />
             </div>
-            <CardTitle className="text-xl">Dropnfly</CardTitle>
             <p className="text-xs text-muted-foreground">Luggage Storage &amp; Delivery</p>
             <p className="text-xs text-muted-foreground">Metro Manila, Philippines</p>
           </CardHeader>

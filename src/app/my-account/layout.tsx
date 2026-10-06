@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "My Account - Dropnfly",
+  title: "My Account - DropnFly",
   description: "Manage your DropnFly account. View bookings, track deliveries, and update your profile.",
   openGraph: {
-    title: "My Account - Dropnfly",
+    title: "My Account - DropnFly",
     description: "Manage your DropnFly account and bookings.",
     type: "website",
   },

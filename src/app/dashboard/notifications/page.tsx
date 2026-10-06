@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Pagination } from "@/components/ui/pagination";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
 import { Bell, CheckCheck, ArrowLeft } from "lucide-react";
@@ -24,6 +25,8 @@ interface Notification {
   isRead: boolean;
   createdAt: string;
 }
+
+const PAGE_SIZE = 10;
 
 const typeIcons: Record<string, string> = {
   booking_created: "📦",
@@ -46,25 +49,50 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageRef = useRef(1);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function fn() {
-      try {
-        const res = await fetch("/api/notifications?limit=100");
+  const requestSeq = useRef(0);
+
+  // Fetch one page and apply it. Only the most recent request may update state,
+  // so a slow poll can never overwrite a page the user just navigated to.
+  const load = useCallback((requestedPage: number) => {
+    const seq = ++requestSeq.current;
+    return fetch(`/api/notifications?page=${requestedPage}&pageSize=${PAGE_SIZE}`, { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed");
         const data = await res.json();
-        if (cancelled) return;
+        if (seq !== requestSeq.current) return;
         setNotifications(data.notifications || []);
         setUnreadCount(data.unreadCount || 0);
-      } catch {
-        if (!cancelled) toast.error("Failed to load notifications");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    fn();
-    return () => { cancelled = true; };
+        setTotal(data.total || 0);
+        setTotalPages(data.totalPages || 1);
+        // The server clamps the page when the list shrinks (e.g. last page emptied).
+        setPage(data.page || 1);
+        pageRef.current = data.page || 1;
+      })
+      .catch(() => { if (seq === requestSeq.current) toast.error("Failed to load notifications"); })
+      .finally(() => { if (seq === requestSeq.current) setLoading(false); });
   }, []);
+
+  useEffect(() => {
+    void load(1);
+    // Keep counts/pages in sync when new notifications arrive.
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(pageRef.current);
+    }, 30000);
+    return () => window.clearInterval(id);
+  }, [load]);
+
+  function goToPage(next: number) {
+    pageRef.current = next;
+    setPage(next);
+    setLoading(true);
+    void load(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   async function markAllRead() {
     try {
@@ -178,6 +206,14 @@ export default function NotificationsPage() {
                 </div>
               </div>
             ))
+          )}
+          {!loading && total > 0 && (
+            <div className="pt-2">
+              <Pagination currentPage={page} totalPages={totalPages} onPageChange={goToPage} />
+              <p className="px-2 text-center text-xs text-muted-foreground sm:text-left">
+                Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total} notifications
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>

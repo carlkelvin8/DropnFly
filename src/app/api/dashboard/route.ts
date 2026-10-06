@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSystemSettings, setting } from "@/lib/settings";
+import { manilaDayRange, manilaMonthRange } from "@/lib/manila-time";
 
 export async function GET() {
   try {
@@ -11,9 +12,16 @@ export async function GET() {
     }
 
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { start: startOfToday, end: endOfToday } = manilaDayRange(now);
+    const startOfWeek = new Date(startOfToday.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const manilaToday = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "numeric",
+    }).formatToParts(now);
+    const year = Number(manilaToday.find((part) => part.type === "year")?.value);
+    const month = Number(manilaToday.find((part) => part.type === "month")?.value);
+    const { start: startOfMonth } = manilaMonthRange(year, month);
 
     const startOfDurations = new Date(now);
     startOfDurations.setFullYear(startOfDurations.getFullYear() - 1);
@@ -69,10 +77,10 @@ export async function GET() {
         where: { createdAt: { gte: startOfWeek } },
       }),
       prisma.booking.count({
-        where: { checkIn: { gte: startOfToday } },
+        where: { checkIn: { gte: startOfToday, lt: endOfToday } },
       }),
       prisma.booking.count({
-        where: { status: "DELIVERED", checkOut: { gte: startOfToday } },
+        where: { status: "DELIVERED", checkOut: { gte: startOfToday, lt: endOfToday } },
       }),
       prisma.booking.count({
         where: { status: "DELIVERED", checkOut: { gte: startOfWeek } },
@@ -80,7 +88,7 @@ export async function GET() {
       prisma.booking.count({
         where: {
           status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] },
-          checkOut: { gte: startOfToday },
+          checkOut: { gte: startOfToday, lt: endOfToday },
         },
       }),
     ]);

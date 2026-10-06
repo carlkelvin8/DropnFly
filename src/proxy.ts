@@ -7,6 +7,10 @@ import { getToken } from "next-auth/jwt";
 const protectedRoutes = ["/dashboard"];
 const publicRoutes = ["/", "/login", "/book", "/track", "/api/public", "/api/auth"];
 
+function matchesRoute(path: string, route: string): boolean {
+  return path === route || (route !== "/" && path.startsWith(`${route}/`));
+}
+
 const SESSION_COOKIES = [
   "authjs.session-token",
   "__Secure-authjs.session-token",
@@ -76,7 +80,7 @@ export default async function middleware(req: NextRequest) {
     // mutations must come from this deployment to limit cookie-based CSRF.
     // Require Origin or Referer for mutating API calls (curl without origin is still allowed for public APIs, but blocked for non-public).
     if (path !== "/api/payments/webhook") {
-      const isPublicApi = publicRoutes.some((r) => r !== "/" && path.startsWith(r));
+      const isPublicApi = publicRoutes.some((route) => route !== "/" && matchesRoute(path, route));
       if (!isPublicApi) {
         const origin = req.headers.get("origin");
         const referer = req.headers.get("referer");
@@ -103,12 +107,8 @@ export default async function middleware(req: NextRequest) {
       }
     }
   }
-  const isProtectedRoute = protectedRoutes.some((route) =>
-    path.startsWith(route)
-  );
-  const isPublicRoute = publicRoutes.some((route) =>
-    path.startsWith(route)
-  );
+  const isProtectedRoute = protectedRoutes.some((route) => matchesRoute(path, route));
+  const isPublicRoute = publicRoutes.some((route) => matchesRoute(path, route));
 
   // Keep operations users out of the customer-facing map even when they open
   // an old bookmark/history entry. The redirect happens before React renders,

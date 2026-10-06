@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { BrandLogo } from "@/components/BrandLogo";
 import { useState, useCallback } from "react";
-import { Luggage, Menu, X, ArrowRight } from "lucide-react";
+import { Menu, X, ArrowRight } from "lucide-react";
 import { MobileNav } from "./MobileNav";
 
 const navLinks = [
@@ -22,13 +23,8 @@ export function LandingNavbar() {
       style={{ animation: "slide-down 0.5s cubic-bezier(0.21, 0.47, 0.32, 0.98)" }}
     >
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500 shadow-lg">
-            <Luggage className="h-5 w-5 text-white" />
-          </div>
-          <span className="text-lg font-bold">
-            <span className="text-blue-600">Drop</span><span className="text-orange-500">nfly</span>
-          </span>
+        <Link href="/" aria-label="DropnFly home" className="flex items-center">
+          <BrandLogo height={32} priority />
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">

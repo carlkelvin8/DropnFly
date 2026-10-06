@@ -102,17 +102,6 @@ interface AvailableTag {
   isUsed: boolean;
 }
 
-// Manual status updates are limited to these two managed steps.
-// Received/Delivered are automated (QR scan on-site / rider delivery proof).
-const MANUAL_STATUS_NEXT: Record<string, string> = {
-  RECEIVED: "IN_STORAGE",
-  IN_STORAGE: "OUT_FOR_DELIVERY",
-};
-const MANUAL_STATUS_LABELS: Record<string, string> = {
-  IN_STORAGE: "Move to In Storage",
-  OUT_FOR_DELIVERY: "Move to Out for Delivery",
-};
-
 const ADDITIONAL_SERVICES = [
   { id: "pickup", name: "Pick-up from Customer", price: 180, icon: "📦", description: "We pick up the luggage from the customer" },
   { id: "delivery", name: "Deliver to Customer", price: 180, icon: "🚚", description: "We deliver the luggage to the customer" },
@@ -447,27 +436,6 @@ export default function BookingDetailPage() {
     setReviewing(null);
   }
 
-  async function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/bookings/${params.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: e.target.value }),
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.error || "Failed to update status");
-      }
-      const getRes = await fetch(`/api/bookings/${params.id}`);
-      if (!getRes.ok) throw new Error("Failed to reload booking");
-      const updated = await getRes.json();
-      setBooking(updated);
-      toast.success("Status updated successfully");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to update status"); }
-    setSaving(false);
-  }
-
   async function handleAssign(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
@@ -521,7 +489,8 @@ export default function BookingDetailPage() {
     setDangerPhotoProcessing(true);
     try {
       // Camera images can exceed the serverless request limit, especially on
-      // mobile. Resize/re-encode before embedding the proof in the report.
+      // mobile. Normalize camera formats and resize/re-encode before embedding
+      // the proof in the report.
       setDangerPhoto(await imageFileToDataUrl(file, 1280, 0.72));
     } catch (error) {
       setDangerPhoto(null);
@@ -533,7 +502,7 @@ export default function BookingDetailPage() {
   }
 
   async function handleDangerConfirm() {
-    if (!dangerModal) return;
+    if (!dangerModal || dangerPhotoProcessing) return;
     setDangerSubmitting(true);
     try {
       if (dangerModal.mode === "admin") {
@@ -556,8 +525,8 @@ export default function BookingDetailPage() {
           body: JSON.stringify(body),
         });
         if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Failed to update booking");
+          const err = await res.json().catch(() => null) as { error?: string } | null;
+          throw new Error(err?.error || `Failed to update booking (${res.status})`);
         }
         toast.success(`Booking marked as ${dangerModal.action === "no-show" ? "No Show" : "Cancelled"}`);
       } else {
@@ -574,7 +543,7 @@ export default function BookingDetailPage() {
           }),
         });
         if (!res.ok) {
-          const err = await res.json().catch(() => null);
+          const err = await res.json().catch(() => null) as { error?: string } | null;
           throw new Error(err?.error || (res.status === 413
             ? "Photo is too large to upload. Please choose a smaller image and try again."
             : `Failed to submit report (${res.status}). Please try again.`));
@@ -586,7 +555,10 @@ export default function BookingDetailPage() {
       setDangerNote("");
       reloadBooking();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Action failed");
+      const message = e instanceof Error ? e.message : "Action failed";
+      toast.error(/string did not match the expected pattern/i.test(message)
+        ? "The photo could not be uploaded from this browser. Please retake it or choose a smaller JPEG/PNG photo."
+        : message);
     } finally {
       setDangerSubmitting(false);
     }
@@ -1183,35 +1155,6 @@ export default function BookingDetailPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <select
-                id="status"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                value=""
-                onChange={handleStatusChange}
-                disabled={saving || bookingLocked || !MANUAL_STATUS_NEXT[booking.status]}
-              >
-                <option value="" disabled>
-                  {MANUAL_STATUS_NEXT[booking.status]
-                    ? "Select a status to update..."
-                    : "No manual status update available"}
-                </option>
-                {Object.entries(MANUAL_STATUS_NEXT).map(([from, to]) => (
-                  <option key={to} value={to} disabled={booking.status !== from}>
-                    {MANUAL_STATUS_LABELS[to]}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">
-                Only <strong>In Storage</strong> and <strong>Out for Delivery</strong> can be updated
-                here. <strong>Received</strong> is set automatically on the Scanner page when the
-                customer QR is scanned and the baggage is received; <strong>Delivered</strong> is
-                set by the rider when delivery is completed with proof. This prevents incorrect
-                status changes.
-              </p>
-            </div>
-
             <div className="grid gap-3 sm:grid-cols-2">
               {(["PICKUP", "DROPOFF"] as const).map((phase) => {
                 const currentAssignment = booking.assignments.find((assignment) => assignment.phase === phase);
@@ -1957,7 +1900,7 @@ export default function BookingDetailPage() {
                   </p>
                 </div>
               </div>
-              <button onClick={() => setDangerModal(null)} className="rounded-lg p-1 hover:bg-muted">
+              <button type="button" onClick={() => setDangerModal(null)} className="rounded-lg p-1 hover:bg-muted">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1968,6 +1911,7 @@ export default function BookingDetailPage() {
                   <div className="relative mt-1 overflow-hidden rounded-lg border">
                     <Image unoptimized width={800} height={320} src={dangerPhoto} alt="Proof" className="h-40 w-full object-cover" />
                     <button
+                      type="button"
                       onClick={() => setDangerPhoto(null)}
                       className="absolute right-2 top-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"
                     >
@@ -1976,6 +1920,7 @@ export default function BookingDetailPage() {
                   </div>
                 ) : (
                   <button
+                    type="button"
                     onClick={() => dangerFileRef.current?.click()}
                     className="mt-1 flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/30 p-6 transition-colors hover:border-red-500/50 hover:bg-red-50/50"
                   >
@@ -2004,6 +1949,7 @@ export default function BookingDetailPage() {
                 />
               </div>
               <Button
+                type="button"
                 variant="destructive" className="w-full"
                 onClick={handleDangerConfirm}
                 disabled={dangerSubmitting || dangerPhotoProcessing || (dangerModal.mode === "admin" && !dangerPhoto)}

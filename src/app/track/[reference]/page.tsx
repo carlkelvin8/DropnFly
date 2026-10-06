@@ -35,6 +35,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { PublicFooter } from "@/components/layout/PublicFooter";
+import { BrandMark } from "@/components/BrandLogo";
 import { roleLabel } from "@/lib/utils";
 
 interface BookingData {
@@ -400,8 +401,7 @@ export default function TrackResultPage() {
                   {rider.profilePic ? (
                     <Image unoptimized width={56} height={56} src={rider.profilePic} alt={rider.name} className="h-14 w-14 rounded-full object-cover" />
                   ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src="/logo.svg" alt="DropnFly logo" className="h-10 w-10 object-contain" />
+                    <BrandMark size={40} />
                   )}
                 </div>
                 <div className="flex-1">
@@ -661,7 +661,10 @@ export default function TrackResultPage() {
                     const isActive = i <= currentStep;
                     const isCurrent = i === currentStep;
                     const statusValue = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"][i];
-                    const scan = scanEvents.find((s) => s.status === statusValue);
+                    // Prefer the newest event that carries proof (arrival/completion photos) over
+                    // earlier photo-less events for the same step; pickup arrival belongs to CONFIRMED.
+                    const stepScans = scanEvents.filter((s) => s.status === statusValue || (statusValue === "CONFIRMED" && s.status === "ARRIVED_PICKUP"));
+                    const scan = [...stepScans].reverse().find((s) => s.photo) || stepScans[stepScans.length - 1];
 
                     return (
                       <div key={step.label} className="relative flex items-start gap-4 pb-8 last:pb-0">

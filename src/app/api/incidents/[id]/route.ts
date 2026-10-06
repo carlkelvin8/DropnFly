@@ -6,6 +6,22 @@ import { sendIncidentEmail } from "@/lib/email";
 import { notifyNoShowDecision, sendCustomerNotification } from "@/lib/notifications";
 
 const REPORT_TYPES = ["no_show", "cancellation"];
+const INCIDENT_STATUSES = ["PENDING", "INVESTIGATING", "RESOLVED", "CLOSED"];
+const INCIDENT_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+const ESCALATION_LEVELS = ["manager", "director", "executive"];
+
+function mergeInternalNote(current: string | null, note: string) {
+  try {
+    const parsed = current ? JSON.parse(current) : null;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return JSON.stringify({ ...parsed, note });
+    }
+  } catch {
+    // Older incidents stored a plain-text note. Replace that note while newer
+    // report metadata (including photo proof) remains intact when present.
+  }
+  return note;
+}
 
 async function getReporterUserId(incidentId: string) {
   const entry = await prisma.incidentTimeline.findFirst({
@@ -48,12 +64,17 @@ async function handleNoShowDecision({
   const targetStatus = incident.type === "no_show" ? "NO_SHOW" : "CANCELLED";
 
   if (action === "accept") {
-    await prisma.$transaction([
-      prisma.booking.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.booking.update({
         where: { id: incident.booking.id },
-        data: { status: targetStatus },
-      }),
-      prisma.incidentReport.update({
+        data: {
+          status: targetStatus,
+          pickupStartedAt: null,
+          deliveryArrivedAt: null,
+          checkoutLockedUntil: null,
+        },
+      });
+      await tx.incidentReport.update({
         where: { id },
         data: {
           status: "RESOLVED",
@@ -63,23 +84,35 @@ async function handleNoShowDecision({
               ? "No-show report accepted by admin. Booking marked as No Show."
               : "Cancellation report accepted by admin. Booking cancelled.",
         },
-      }),
-      prisma.incidentTimeline.create({
+      });
+      await tx.incidentTimeline.create({
         data: {
           incidentId: id,
           action: "status_change",
           description: `Report accepted by admin. Booking marked as ${targetStatus.replace(/_/g, " ")}.`,
           userId: session.user.id,
         },
-      }),
-    ]);
-
-    await sendCustomerNotification({
-      customerId: incident.booking.customerId,
-      type: "booking_cancelled",
-      title: incident.type === "no_show" ? "Booking Marked No Show" : "Booking Cancelled",
-      message: `Your booking ${incident.booking.referenceNumber} was ${incident.type === "no_show" ? "marked as no-show" : "cancelled"} after a staff report. Contact support if you have questions.`,
+      });
+      await tx.scanEvent.create({
+        data: {
+          bookingId: incident.booking.id,
+          userId: session.user.id,
+          status: targetStatus,
+          note: `Logistics task ended after admin accepted the ${incident.type.replace(/_/g, " ")} report`,
+        },
+      });
     });
+
+    try {
+      await sendCustomerNotification({
+        customerId: incident.booking.customerId,
+        type: "booking_cancelled",
+        title: incident.type === "no_show" ? "Booking Marked No Show" : "Booking Cancelled",
+        message: `Your booking ${incident.booking.referenceNumber} was ${incident.type === "no_show" ? "marked as no-show" : "cancelled"} after a staff report. Contact support if you have questions.`,
+      });
+    } catch (notificationError) {
+      console.warn(`[INCIDENT] Customer notification failed for ${id}:`, notificationError);
+    }
   } else {
     await prisma.$transaction([
       prisma.incidentReport.update({
@@ -101,18 +134,26 @@ async function handleNoShowDecision({
     ]);
   }
 
-  const reporterUserId = await getReporterUserId(id);
-  if (reporterUserId && reporterUserId !== session.user.id) {
-    await notifyNoShowDecision(reporterUserId, incident.booking.referenceNumber, action);
+  try {
+    const reporterUserId = await getReporterUserId(id);
+    if (reporterUserId && reporterUserId !== session.user.id) {
+      await notifyNoShowDecision(reporterUserId, incident.booking.referenceNumber, action);
+    }
+  } catch (notificationError) {
+    console.warn(`[INCIDENT] Reporter notification failed for ${id}:`, notificationError);
   }
 
-  await logActivity({
-    userId: session.user.id,
-    action: action === "accept" ? "ACCEPT" : "DISMISS",
-    entity: "IncidentReport",
-    entityId: id,
-    details: `Admin ${action === "accept" ? "accepted" : "dismissed"} no-show report for booking ${incident.booking.referenceNumber}`,
-  });
+  try {
+    await logActivity({
+      userId: session.user.id,
+      action: action === "accept" ? "ACCEPT" : "DISMISS",
+      entity: "IncidentReport",
+      entityId: id,
+      details: `Admin ${action === "accept" ? "accepted" : "dismissed"} no-show report for booking ${incident.booking.referenceNumber}`,
+    });
+  } catch (activityError) {
+    console.warn(`[INCIDENT] Decision activity log failed for ${id}:`, activityError);
+  }
 
   const updated = await prisma.incidentReport.findUnique({
     where: { id },
@@ -210,13 +251,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // concern so Internal Notes, Resolution, and Status never clobber each other.
     const updateData: Record<string, unknown> = {};
     if (action === "save_note") {
-      if (!String(internalNotes || "").trim()) return NextResponse.json({ error: "Internal note is required" }, { status: 400 });
-      updateData.internalNotes = String(internalNotes).trim();
+      const note = String(internalNotes || "").trim();
+      if (!note) return NextResponse.json({ error: "Internal note is required" }, { status: 400 });
+      if (note.length > 4000) return NextResponse.json({ error: "Internal note is too long" }, { status: 400 });
+      updateData.internalNotes = mergeInternalNote(existing.internalNotes, note);
     } else if (action === "save_resolution") {
-      if (!String(resolution || "").trim()) return NextResponse.json({ error: "Resolution message is required" }, { status: 400 });
-      updateData.resolution = String(resolution).trim();
+      const message = String(resolution || "").trim();
+      if (!message) return NextResponse.json({ error: "Resolution message is required" }, { status: 400 });
+      if (message.length > 4000) return NextResponse.json({ error: "Resolution message is too long" }, { status: 400 });
+      updateData.resolution = message;
     } else if (action === "save_status") {
       if (!status && !priority && escalatedTo === undefined) return NextResponse.json({ error: "No status fields to update" }, { status: 400 });
+      if (status && !INCIDENT_STATUSES.includes(status)) return NextResponse.json({ error: "Invalid incident status" }, { status: 400 });
+      if (priority && !INCIDENT_PRIORITIES.includes(priority)) return NextResponse.json({ error: "Invalid incident priority" }, { status: 400 });
+      if (escalatedTo !== undefined && escalatedTo !== null && !ESCALATION_LEVELS.includes(escalatedTo)) {
+        return NextResponse.json({ error: "Invalid escalation level" }, { status: 400 });
+      }
       if (status) updateData.status = status;
       if (priority) updateData.priority = priority;
       if (escalatedTo !== undefined) updateData.escalatedTo = escalatedTo;
@@ -225,11 +275,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     } else {
       return NextResponse.json({ error: "Invalid action — use save_note, save_resolution, or save_status" }, { status: 400 });
     }
-
-    await prisma.incidentReport.update({
-      where: { id },
-      data: updateData,
-    });
 
     // Senior: dedicated history — create separate timeline entries so admin can back-track
     const timelineCreates: { action: string; description: string }[] = [];
@@ -261,48 +306,52 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (timelineCreates.length === 0) {
       timelineCreates.push({ action: "note_added", description: "Incident updated" });
     }
-    for (const entry of timelineCreates) {
-      await prisma.incidentTimeline.create({
-        data: {
+    const changes = timelineCreates.map((e) => e.description);
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.incidentReport.update({ where: { id }, data: updateData });
+      await tx.incidentTimeline.createMany({
+        data: timelineCreates.map((entry) => ({
           incidentId: id,
           action: entry.action,
           description: entry.description,
           userId: session.user.id,
-        },
+        })),
       });
-    }
-    const changes = timelineCreates.map((e) => e.description);
-
-    await logActivity({
-      userId: session.user.id,
-      action: "UPDATE",
-      entity: "IncidentReport",
-      entityId: id,
-      details: `Updated incident #${id.slice(0, 8)}: ${changes.join(", ")}`,
-    });
-
-    const updated = await prisma.incidentReport.findUnique({
-      where: { id },
-      include: {
-        customer: { select: { name: true, email: true, phone: true } },
-        booking: {
-          select: {
-            referenceNumber: true,
-            pickupLocation: true,
-            dropOffLocation: true,
-            status: true,
-            checkIn: true,
-            checkOut: true,
-            totalPrice: true,
-            luggageDetails: true,
+      return tx.incidentReport.findUnique({
+        where: { id },
+        include: {
+          customer: { select: { name: true, email: true, phone: true } },
+          booking: {
+            select: {
+              referenceNumber: true,
+              pickupLocation: true,
+              dropOffLocation: true,
+              status: true,
+              checkIn: true,
+              checkOut: true,
+              totalPrice: true,
+              luggageDetails: true,
+            },
+          },
+          timeline: {
+            orderBy: { createdAt: "desc" },
+            include: { user: { select: { name: true } } },
           },
         },
-        timeline: {
-          orderBy: { createdAt: "desc" },
-          include: { user: { select: { name: true } } },
-        },
-      },
+      });
     });
+
+    try {
+      await logActivity({
+        userId: session.user.id,
+        action: "UPDATE",
+        entity: "IncidentReport",
+        entityId: id,
+        details: `Updated incident #${id.slice(0, 8)}: ${changes.join(", ")}`,
+      });
+    } catch (activityError) {
+      console.warn(`[INCIDENT] Activity log failed for ${id}:`, activityError);
+    }
 
     // Only email the customer when customer-visible fields actually changed
     const customerVisibleChange =
@@ -330,7 +379,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     return NextResponse.json({ ...updated, emailSent });
-  } catch {
+  } catch (error) {
+    console.error(`[INCIDENT] Failed to update ${id}:`, error);
     return NextResponse.json({ error: "Failed to update incident" }, { status: 500 });
   }
 }

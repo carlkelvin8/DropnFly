@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { BrandLogo } from "@/components/BrandLogo";
 
 export default function NotFound() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 px-4 text-center">
+      <BrandLogo height={38} priority />
       <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-orange-500/10 to-blue-500/10">
         <span className="text-5xl font-bold text-orange-500">404</span>
       </div>

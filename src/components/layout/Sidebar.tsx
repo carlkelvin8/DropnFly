@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { BrandLogo } from "@/components/BrandLogo";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Package,
   Users,
-  Luggage,
   LogOut,
   UserCog,
   Settings,
@@ -37,8 +37,8 @@ const ADMIN_ONLY_ITEMS = new Set([
   "/dashboard/promo-codes",
 ]);
 
+// Customer Records (/dashboard/customers) is also open to Employees (search-first, read-only).
 const STAFF_AND_ABOVE_ITEMS = new Set([
-  "/dashboard/customers",
   "/dashboard/incidents",
 ]);
 
@@ -88,8 +88,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   return (
     <aside className="flex h-full w-64 flex-col border-r bg-sidebar-background">
       <div className="flex h-14 min-h-14 shrink-0 items-center border-b px-6">
-        <Luggage className="mr-2 h-5 w-5" />
-        <span className="font-semibold"><span className="text-blue-600">Drop</span><span className="text-orange-500">nfly</span></span>
+        <BrandLogo height={27} priority />
       </div>
 
       <div className="border-b px-4 py-3">

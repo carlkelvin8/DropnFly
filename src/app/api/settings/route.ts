@@ -43,6 +43,13 @@ export async function PUT(req: Request) {
         return NextResponse.json({ error: "Fleet must contain registered vehicles with positive whole-number quantities." }, { status: 400 });
       }
     }
+    if (body.min_down_payment_percent !== undefined) {
+      const percent = Number(body.min_down_payment_percent);
+      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+        return NextResponse.json({ error: "Minimum down payment must be between 0 and 100 percent." }, { status: 400 });
+      }
+      body.min_down_payment_percent = String(percent);
+    }
     // Hourly scheduling is a business invariant, not a per-phase preference.
     for (const key of ["pickup_slot_duration", "delivery_slot_duration"]) {
       if (body[key] !== undefined) body[key] = "60";

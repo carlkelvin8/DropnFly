@@ -38,3 +38,15 @@ export function manilaDayRange(date: Date | string | number): { start: Date; end
 export function manilaDayStart(dateStr: string): Date {
   return new Date(dateStr + "T00:00:00+08:00");
 }
+
+export function manilaMonthRange(year: number, month: number): { start: Date; end: Date } {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    throw new RangeError("Invalid Manila calendar month");
+  }
+
+  const start = new Date(`${year}-${String(month).padStart(2, "0")}-01T00:00:00+08:00`);
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const end = new Date(`${nextYear}-${String(nextMonth).padStart(2, "0")}-01T00:00:00+08:00`);
+  return { start, end };
+}

@@ -3,7 +3,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { notifyNoShowReported } from "@/lib/notifications";
-import { sendIncidentEmail } from "@/lib/email";
+import { incidentPhotoError } from "@/lib/incident-photo";
+import { hasStaffRole } from "@/lib/staff-access";
 
 const REPORT_TYPES = ["no_show", "cancellation"];
 
@@ -58,32 +59,32 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { bookingId, customerId, type, description, priority, photo, note } = body;
 
-    if (!bookingId || !customerId || !type || !description) {
+    if (!bookingId || !customerId || !type || typeof description !== "string" || !description.trim()) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
-    if (photo != null && (typeof photo !== "string" || photo.length > 1_800_000)) {
-      return NextResponse.json({ error: "Photo is too large to upload. Please choose a smaller image." }, { status: 413 });
+    if (!REPORT_TYPES.includes(type)) {
+      return NextResponse.json({ error: "Invalid report type" }, { status: 400 });
     }
-    const isStaffReport = REPORT_TYPES.includes(type);
-    if (isStaffReport && !["ADMIN", "STAFF", "EMPLOYEE"].includes(session.user.role)) {
-      return NextResponse.json({ error: "Only operations staff can submit cancellation or no-show reports" }, { status: 403 });
+    if (description.length > 4000 || (note !== undefined && (typeof note !== "string" || note.length > 1000))) {
+      return NextResponse.json({ error: "Report description or note is too long" }, { status: 400 });
     }
-
-    // Include active task fields so a staff report can release its GPS slot.
+    const photoError = incidentPhotoError(photo);
+    if (photoError) return NextResponse.json({ error: photoError }, { status: 413 });
     const bookingCheck = await prisma.booking.findUnique({
       where: { id: bookingId },
       select: {
         id: true,
         customerId: true,
         status: true,
-        pickupStartedAt: true,
-        deliveryArrivedAt: true,
         assignments: { select: { userId: true, phase: true } },
       },
     });
     if (!bookingCheck) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     if (bookingCheck.customerId !== customerId) return NextResponse.json({ error: "Booking and customer mismatch" }, { status: 400 });
-    if (isStaffReport && session.user.role === "EMPLOYEE") {
+    if (!hasStaffRole(session.user, ["ADMIN", "STAFF"]) && session.user.role !== "EMPLOYEE") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (session.user.role === "EMPLOYEE") {
       const activePhase = bookingCheck.status === "OUT_FOR_DELIVERY" ? "DROPOFF" : "PICKUP";
       const assignedToActivePhase = bookingCheck.assignments.some((assignment) =>
         assignment.userId === session.user.id && assignment.phase === activePhase
@@ -95,9 +96,7 @@ export async function POST(req: Request) {
     const customerExists = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
     if (!customerExists) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
 
-    const internalNotes = isStaffReport
-      ? JSON.stringify({ report: type, photo: photo || null, note: note || null, reportedBy: session.user.id })
-      : undefined;
+    const internalNotes = JSON.stringify({ report: type, photo: photo || null, note: note || null, reportedBy: session.user.id });
 
     const incident = await prisma.$transaction(async (tx) => {
       const created = await tx.incidentReport.create({
@@ -107,7 +106,7 @@ export async function POST(req: Request) {
           type,
           description,
           priority: priority || "MEDIUM",
-          ...(internalNotes !== undefined ? { internalNotes } : {}),
+          internalNotes,
           timeline: {
             create: {
               action: "created",
@@ -123,26 +122,28 @@ export async function POST(req: Request) {
         },
       });
 
-      // The decision stays pending admin review; stop tracking and release the
-      // employee's active-task slot as soon as the report is accepted.
-      if (isStaffReport) {
-        await tx.booking.update({
-          where: { id: bookingId },
-          data: { pickupStartedAt: null, deliveryArrivedAt: null },
-        });
-      }
+      // The decision stays pending admin review; pause tracking immediately so
+      // the employee is not kept in an active trip while the admin reviews it.
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: { pickupStartedAt: null, deliveryArrivedAt: null },
+      });
       return created;
     });
 
-    await logActivity({
-      userId: session.user.id,
-      action: "CREATE",
-      entity: "IncidentReport",
-      entityId: incident.id,
-      details: `Created incident report #${incident.id.slice(0, 8)} for booking ${incident.booking.referenceNumber}`,
-    });
+    try {
+      await logActivity({
+        userId: session.user.id,
+        action: "CREATE",
+        entity: "IncidentReport",
+        entityId: incident.id,
+        details: `Created incident report #${incident.id.slice(0, 8)} for booking ${incident.booking.referenceNumber}`,
+      });
+    } catch (activityError) {
+      console.warn(`[INCIDENT] Creation activity log failed for ${incident.id}:`, activityError);
+    }
 
-    if (isStaffReport) {
+    try {
       const admins = await prisma.user.findMany({
         where: { role: "ADMIN", isActive: true },
         select: { id: true },
@@ -152,24 +153,11 @@ export async function POST(req: Request) {
         incident.booking.referenceNumber,
         session.user.name || "Staff member"
       );
+    } catch (notificationError) {
+      console.warn(`[INCIDENT] Admin notification failed for ${incident.id}:`, notificationError);
     }
 
-    // For non-staff reports (customer-visible), send tracking email (async)
-    if (!isStaffReport && incident.customer?.email) {
-      void sendIncidentEmail({
-        to: incident.customer.email,
-        customerName: incident.customer.name,
-        referenceNumber: incident.booking.referenceNumber,
-        incidentType: type,
-        status: "PENDING",
-        incidentId: incident.id,
-        description,
-      }).catch((e) => {
-        console.error("[EMAIL] incident submission email failed:", e);
-      });
-    }
-
-    return NextResponse.json({ ...incident, trackingStopped: isStaffReport }, { status: 201 });
+    return NextResponse.json({ ...incident, trackingStopped: true }, { status: 201 });
   } catch (e) {
     console.error("Failed to create incident report:", e);
     return NextResponse.json({ error: "Failed to create incident report" }, { status: 500 });

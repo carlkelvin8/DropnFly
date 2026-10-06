@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { BrandLogo } from "@/components/BrandLogo";
 
 function ActivationContent() {
   const params = useSearchParams();
@@ -24,7 +25,7 @@ function ActivationContent() {
     }).catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Activation failed"));
   }, [token, router]);
 
-  return <main className="min-h-screen bg-slate-950 flex items-center justify-center px-4"><div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-white"><h1 className="text-xl font-semibold">DropnFly account activation</h1><p className="mt-3 text-white/60">{token ? message : "Activation link is invalid."}</p></div></main>;
+  return <main className="min-h-screen bg-slate-950 flex items-center justify-center px-4"><div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-white"><BrandLogo height={38} priority className="mx-auto mb-6" /><h1 className="text-xl font-semibold">Account activation</h1><p className="mt-3 text-white/60">{token ? message : "Activation link is invalid."}</p></div></main>;
 }
 
 export default function ActivateCustomerPage() {

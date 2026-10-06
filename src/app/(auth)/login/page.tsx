@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, Suspense, useEffect } from "react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { signIn, getSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Luggage, Eye, EyeOff, LogIn, ShieldCheck, ExternalLink, AlertTriangle, Users } from "lucide-react";
+import { Eye, EyeOff, LogIn, ShieldCheck, ExternalLink, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -78,7 +79,8 @@ function LoginForm() {
   const [totpCode, setTotpCode] = useState("");
   const [existingSession, setExistingSession] = useState<{ email?: string; role?: string } | null>(null);
   const [alternateOrigin] = useState(() => {
-    if (typeof window === "undefined") return "";
+    // Development-only helper; never offered in production builds.
+    if (typeof window === "undefined" || process.env.NODE_ENV === "production") return "";
     const url = new URL(window.location.href);
     if (url.hostname === "localhost") url.hostname = "127.0.0.1";
     else if (url.hostname === "127.0.0.1") url.hostname = "localhost";
@@ -172,13 +174,10 @@ function LoginForm() {
         <div className="w-full max-w-sm" style={{ animation: "fade-scale-in 0.5s ease-out" }}>
           {/* Logo */}
           <div style={{ animation: "fade-down-in 0.5s ease-out 0.1s backwards" }} className="mb-8 text-center">
-            <Link href="/" className="inline-flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500 shadow-lg shadow-orange-500/25" style={{ animation: "logo-wiggle 0.5s ease-in-out 0.3s" }}>
-                <Luggage className="h-6 w-6 text-white" />
+            <Link href="/" aria-label="DropnFly home" className="inline-flex items-center">
+              <div style={{ animation: "logo-wiggle 0.5s ease-in-out 0.3s" }}>
+                <BrandLogo height={42} priority />
               </div>
-              <span className="text-2xl font-bold text-white">
-                Drop<span className="text-blue-400">nfly</span>
-              </span>
             </Link>
           </div>
 
@@ -308,7 +307,7 @@ function LoginForm() {
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
                 <div>
                   <p className="font-medium">Already logged in as {existingSession.email} ({existingSession.role})</p>
-                  <p className="mt-1 text-amber-200/80">This browser shares one staff session cookie. Logging in here will sign out {existingSession.email}. To keep both, use a different Chrome Profile, Incognito/Private window, or a second device.</p>
+                  <p className="mt-1 text-amber-200/80">Signing in here will sign out {existingSession.email} on this browser.</p>
                 </div>
               </div>
             )}
@@ -318,15 +317,10 @@ function LoginForm() {
             >
               Employee accounts are created by your administrator.
             </p>
-            {alternateOrigin ? (
+            {alternateOrigin && (
               <a href={alternateOrigin} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-1.5 text-xs text-blue-300 hover:text-blue-200">
                 <ExternalLink className="h-3.5 w-3.5" /> Open an independent login tab (localhost ↔ 127.0.0.1)
               </a>
-            ) : (
-              <div className="mt-3 rounded-lg border border-white/5 bg-white/[0.03] p-2.5 text-center">
-                <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-white/60"><Users className="h-3.5 w-3.5" /> Need admin + employee at the same time?</p>
-                <p className="mt-1 text-[11px] leading-relaxed text-white/40">Browsers share one staff cookie — use <span className="text-white/70">Chrome Profile</span> (Profile → Add), <span className="text-white/70">Incognito</span> (Ctrl+Shift+N), or a second browser/device. Example: Admin on Chrome Profile “Work”, Employee on “Incognito”.</p>
-              </div>
             )}
           </div>
         </div>

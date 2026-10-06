@@ -33,21 +33,24 @@ CONVERSATION RULES:
 - If asked about something outside Dropnfly's scope, politely redirect to Dropnfly services
 - Never invent pricing — tell users pricing varies by location and to book for a quote
 - Never make promises about specific delivery times — say it depends on location and availability
-- Always use natural, conversational Filipino-English (Taglish) tone — warm and approachable
-- Use "po" when appropriate for politeness
+- ALWAYS reply in clear, professional, easy-to-understand English. This is mandatory.
+- If the customer writes in Tagalog, Taglish, or any other language, or asks you to answer in another language, still reply in English (you may politely say that this assistant replies in English only)
+- Never use Tagalog, Taglish, or other non-English words or expressions in your replies
+- Keep a warm, polite, and approachable tone without slang
 - Booking references follow the format PREFIX-YYMMDD-XXXXXX (e.g., DROPFLY-250815-K7M3XQ). If a customer shares one, direct them to /track/<reference> for live status and tracking.
 - For account-specific, disputed, or complex inquiries, tell users to tap “Talk to an agent” in this chat. Do not claim to have accessed a booking or live database record.`;
 
+// Replies are always English; Tagalog keywords are only used to recognize the customer's intent.
 function faqFallback(message: unknown): string {
   const raw = String(message || "");
   const text = raw.toLowerCase();
   const reference = raw.toUpperCase().match(BOOKING_REFERENCE_PATTERN)?.[0];
   if (reference) return `You can track booking ${reference} at /track/${reference} to view its latest status, photos, timeline, and available live map.`;
   if (text.includes("book")) return "Open /book to create a booking. The form shows the current luggage, service, schedule, and price options before confirmation.";
-  if (text.includes("track") || text.includes("where")) return "Open /track and enter your booking reference. You can view the current status, verification photos, timeline, and live rider map once the assigned employee starts the task.";
-  if (text.includes("price") || text.includes("cost")) return "Pricing depends on luggage size, storage duration, and pickup or delivery services. The booking form calculates the exact total before confirmation.";
+  if (text.includes("track") || text.includes("where") || /\b(nasaan|saan)\b/.test(text)) return "Open /track and enter your booking reference. You can view the current status, verification photos, timeline, and live rider map once the assigned employee starts the task.";
+  if (/\b(prices?|costs?|how much|fees?|rates?|charges?|magkano|presyo|bayad)\b/.test(text)) return "Pricing depends on luggage size, storage duration, and pickup or delivery services. The booking form calculates the exact total before confirmation.";
   if (text.includes("tag") || text.includes("qr")) return "Your booking confirmation includes a reference and QR code. Staff assigns and verifies the physical baggage tag during the luggage handoff workflow.";
-  if (text.includes("human") || text.includes("agent") || text.includes("staff")) return "Tap “Talk to an agent” to start a live support conversation; no booking is required.";
+  if (text.includes("human") || text.includes("agent") || text.includes("staff") || /\b(tao|kausap)\b/.test(text)) return "Tap “Talk to an agent” to start a live support conversation; no booking is required.";
   return "I can help with booking, baggage tags, storage, pickup or delivery, and tracking. For account-specific help, tap “Talk to an agent.”";
 }
 
@@ -83,9 +86,9 @@ export async function POST(req: Request) {
 
     const contents = [
       { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
-      { role: "model", parts: [{ text: "Understood. I am the Dropnfly AI assistant ready to help customers with their luggage storage and delivery needs." }] },
+      { role: "model", parts: [{ text: "Understood. I am the Dropnfly AI assistant. I will always reply in clear, professional English, regardless of the language the customer uses." }] },
       ...sanitizedHistory,
-      { role: "user", parts: [{ text: message }] },
+      { role: "user", parts: [{ text: `${message}\n\n(Reply in English only.)` }] },
     ];
 
     const res = await fetch(

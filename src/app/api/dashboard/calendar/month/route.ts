@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-
-function toLocalDayKey(d: Date): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+import { manilaDateStr, manilaMonthRange } from "@/lib/manila-time";
 
 export async function GET(req: NextRequest) {
   try {
@@ -24,14 +18,13 @@ export async function GET(req: NextRequest) {
 
     const year = parseInt(yearParam, 10);
     const month = parseInt(monthParam, 10);
-    const startOfMonth = new Date(year, month - 1, 1);
-    const startOfNextMonth = new Date(year, month, 1);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+      return NextResponse.json({ error: "Invalid year or month" }, { status: 400 });
+    }
+    const { start: startOfMonth, end: startOfNextMonth } = manilaMonthRange(year, month);
 
     const bookings = await prisma.booking.findMany({
       where: {
-        ...(session.user.role === "EMPLOYEE"
-          ? { assignments: { some: { userId: session.user.id } } }
-          : {}),
         OR: [
           { checkIn: { gte: startOfMonth, lt: startOfNextMonth } },
           { checkOut: { gte: startOfMonth, lt: startOfNextMonth } },
@@ -43,11 +36,11 @@ export async function GET(req: NextRequest) {
     const dateMap: Record<string, number> = {};
     for (const b of bookings) {
       if (b.checkIn) {
-        const key = toLocalDayKey(b.checkIn);
+        const key = manilaDateStr(b.checkIn);
         dateMap[key] = (dateMap[key] || 0) + 1;
       }
       if (b.checkOut) {
-        const key = toLocalDayKey(b.checkOut);
+        const key = manilaDateStr(b.checkOut);
         dateMap[key] = (dateMap[key] || 0) + 1;
       }
     }

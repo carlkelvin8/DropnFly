@@ -59,6 +59,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid payment amount" }, { status: 400 });
     }
 
+    const manualPending = await prisma.payment.findFirst({
+      where: { bookingId: booking.id, status: "PENDING", gatewayRef: null },
+      select: { id: true },
+    });
+    if (manualPending) {
+      return NextResponse.json({ error: "A manual payment request for this booking is already pending review" }, { status: 409 });
+    }
+
     const pending = await prisma.payment.findFirst({
       where: { bookingId: booking.id, status: "PENDING", gatewayRef: { not: null } },
       select: { id: true, createdAt: true },

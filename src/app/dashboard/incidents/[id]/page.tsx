@@ -22,7 +22,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   Clock,
-  User,
   Flag,
   CheckCircle,
   Save,
@@ -144,8 +143,8 @@ export default function IncidentDetailPage() {
         body: JSON.stringify({ action }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to update report");
+        const err = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(err?.error || `Failed to update report (${res.status})`);
       }
       const updated = await res.json();
       setIncident(updated);
@@ -200,17 +199,23 @@ export default function IncidentDetailPage() {
     }
   }
 
-  const reportPhoto = (() => {
-    if (!incident?.internalNotes) return null;
+  const reportMetadata = (() => {
+    if (!incident?.internalNotes) return { photo: null, note: null };
     try {
-      const parsed = JSON.parse(incident.internalNotes);
-      return parsed && typeof parsed === "object" && "photo" in parsed && parsed.photo
-        ? String(parsed.photo)
-        : null;
+      const parsed = JSON.parse(incident.internalNotes) as { photo?: unknown; note?: unknown };
+      if (parsed && typeof parsed === "object") {
+        return {
+          photo: parsed.photo ? String(parsed.photo) : null,
+          note: typeof parsed.note === "string" && parsed.note.trim() ? parsed.note : null,
+        };
+      }
     } catch {
-      return null;
+      return { photo: null, note: incident.internalNotes };
     }
+    return { photo: null, note: null };
   })();
+  const reportPhoto = reportMetadata.photo;
+  const currentInternalNote = reportMetadata.note;
 
   if (loading) {
     return (
@@ -353,17 +358,16 @@ export default function IncidentDetailPage() {
             <CardContent>
               {(() => {
                 const notes = incident.timeline.filter((e) => e.action === "internal_note");
-                const current = incident.internalNotes ? [{ id: "current", action: "internal_note", description: `Current: ${incident.internalNotes}`, createdAt: incident.submittedAt, user: null }] : [];
                 const all = [...notes];
-                if (all.length === 0 && !incident.internalNotes) {
+                if (all.length === 0 && !currentInternalNote) {
                   return <p className="py-4 text-center text-xs text-muted-foreground">No internal notes yet. Add one in Admin Actions — it will appear here and stay for back-tracking.</p>;
                 }
                 return (
                   <div className="space-y-2">
-                    {incident.internalNotes && (
+                    {currentInternalNote && (
                       <div className="rounded-lg border bg-slate-50 p-3 dark:bg-slate-900/30">
                         <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Current internal note</p>
-                        <p className="mt-1 text-xs leading-relaxed">{incident.internalNotes}</p>
+                        <p className="mt-1 text-xs leading-relaxed">{currentInternalNote}</p>
                       </div>
                     )}
                     {all.length > 0 ? (

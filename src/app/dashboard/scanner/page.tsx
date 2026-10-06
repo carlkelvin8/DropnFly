@@ -146,6 +146,13 @@ export default function QrScannerPage() {
   const [intakeLoading, setIntakeLoading] = useState(false);
   const [intakeResult, setIntakeResult] = useState<IntakeResult | null>(null);
   const [intakeProcessing, setIntakeProcessing] = useState(false);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("mode") !== "camera") return;
+
+    const timeout = window.setTimeout(() => setMode("camera"), 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
   const [intakeStatus, setIntakeStatus] = useState("");
   const [intakeQueue, setIntakeQueue] = useState<IntakeQueueBooking[]>([]);
   const [queueBooking, setQueueBooking] = useState<IntakeQueueBooking | null>(null);
@@ -498,8 +505,8 @@ export default function QrScannerPage() {
           <CameraQRScanner
             onScan={handleScan}
             onClose={() => setMode("idle")}
-            title="Scan Booking QR"
-            description="Point at the luggage tag or booking slip"
+            title="Scan Customer QR"
+            description="Point the camera at the booking QR shown by the customer"
           />
         )}
 
