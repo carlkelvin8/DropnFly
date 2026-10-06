@@ -181,6 +181,14 @@ export async function PUT(
         }
       }
       data.status = body.status;
+      if (["CANCELLED", "NO_SHOW"].includes(body.status)) {
+        // End any active rider session immediately. The logistics task query
+        // excludes terminal statuses, while clearing these timestamps also
+        // stops stale tracking state on already-open staff devices.
+        data.pickupStartedAt = null;
+        data.deliveryArrivedAt = null;
+        data.checkoutLockedUntil = null;
+      }
     }
 
     const booking = await prisma.$transaction(async (tx) => {
