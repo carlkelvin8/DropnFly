@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { trackingResetForStatus } from "@/lib/logistics-workflow";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { normalizeReference } from "@/lib/utils";
@@ -49,12 +50,19 @@ export async function POST(
       );
     }
 
-    const [updatedBooking] = await Promise.all([
-      prisma.booking.update({
-        where: { id: booking.id },
+    const updatedBooking = await prisma.$transaction(async (tx) => {
+      // Claim RECEIVED -> IN_STORAGE atomically so a double submit cannot apply it twice.
+      const claimed = await tx.booking.updateMany({
+        where: { id: booking.id, status: "RECEIVED" },
+        data: { status: "IN_STORAGE", ...trackingResetForStatus("IN_STORAGE") },
+      });
+      if (claimed.count === 0) return null;
+      // Keep every physical item in the same phase as the booking (same as the scanner's storage intake).
+      await tx.luggageItem.updateMany({
+        where: { bookingId: booking.id, status: { notIn: ["CANCELLED", "DELIVERED"] } },
         data: { status: "IN_STORAGE" },
-      }),
-      prisma.scanEvent.create({
+      });
+      await tx.scanEvent.create({
         data: {
           bookingId: booking.id,
           userId: null,
@@ -64,8 +72,12 @@ export async function POST(
           latitude: latitude ?? null,
           longitude: longitude ?? null,
         },
-      }),
-    ]);
+      });
+      return tx.booking.findUniqueOrThrow({ where: { id: booking.id }, omit: { qrCode: true, luggagePhotos: true } });
+    });
+    if (!updatedBooking) {
+      return NextResponse.json({ error: "This drop-off was already verified" }, { status: 409 });
+    }
 
     await logActivity({
       userId: null,
