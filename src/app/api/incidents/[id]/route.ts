@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { releaseCancelledBaggage } from "@/lib/delivery-cleanup";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
@@ -81,6 +82,7 @@ async function handleNoShowDecision({
         },
       });
       if (claimed.count === 0) throw new AlreadyDecidedError();
+      await releaseCancelledBaggage(tx, [incident.booking.id]);
       await tx.booking.update({
         where: { id: incident.booking.id },
         data: {

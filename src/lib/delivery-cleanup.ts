@@ -16,3 +16,19 @@ export async function finalizeDeliveredBaggage(tx: Prisma.TransactionClient, boo
     data: { status: "AVAILABLE", bookingId: null, luggageItemId: null, assignedAt: null },
   });
 }
+
+/**
+ * Runs when bookings are CANCELLED or marked NO_SHOW, inside the same transaction as the status
+ * change. Luggage that was already received would otherwise keep its tags ASSIGNED forever.
+ */
+export async function releaseCancelledBaggage(tx: Prisma.TransactionClient, bookingIds: string[]) {
+  if (bookingIds.length === 0) return;
+  await tx.luggageItem.updateMany({
+    where: { bookingId: { in: bookingIds }, status: { notIn: ["CANCELLED", "DELIVERED"] } },
+    data: { status: "CANCELLED" },
+  });
+  await tx.baggageTag.updateMany({
+    where: { bookingId: { in: bookingIds }, status: "ASSIGNED" },
+    data: { status: "AVAILABLE", bookingId: null, luggageItemId: null, assignedAt: null },
+  });
+}

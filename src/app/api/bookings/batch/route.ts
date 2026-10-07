@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { releaseCancelledBaggage } from "@/lib/delivery-cleanup";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
@@ -76,9 +77,18 @@ export async function PATCH(req: Request) {
     }
 
     if (action === "cancel") {
-      const result = await prisma.booking.updateMany({
-        where: { id: { in: cappedIds }, status: { in: ["PENDING", "CONFIRMED", "RECEIVED"] } },
-        data: { status: "CANCELLED", pickupStartedAt: null, deliveryArrivedAt: null },
+      const result = await prisma.$transaction(async (tx) => {
+        const cancellable = await tx.booking.findMany({
+          where: { id: { in: cappedIds }, status: { in: ["PENDING", "CONFIRMED", "RECEIVED"] } },
+          select: { id: true },
+        });
+        const ids = cancellable.map((b) => b.id);
+        const updated = await tx.booking.updateMany({
+          where: { id: { in: ids } },
+          data: { status: "CANCELLED", pickupStartedAt: null, deliveryArrivedAt: null },
+        });
+        await releaseCancelledBaggage(tx, ids);
+        return updated;
       });
 
       await logActivity({
