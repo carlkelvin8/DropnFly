@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { intParam } from "@/lib/query-params";
 import { logisticsTaskType } from "@/lib/logistics-workflow";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -24,8 +25,8 @@ export async function GET(req: Request) {
   const status = searchParams.get("status");
   const priority = searchParams.get("priority");
   const type = searchParams.get("type");
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
-  const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "20")));
+  const page = intParam(searchParams.get("page"), 1, 1, 100_000);
+  const limit = intParam(searchParams.get("limit"), 20, 1, 100);
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;

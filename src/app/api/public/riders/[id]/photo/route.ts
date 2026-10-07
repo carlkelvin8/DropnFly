@@ -8,7 +8,7 @@ const ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/g
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await prisma.user.findFirst({
-    where: { id, role: "EMPLOYEE", isActive: true },
+    where: { id, role: "EMPLOYEE" },
     select: { profilePic: true },
   });
   const pic = user?.profilePic;

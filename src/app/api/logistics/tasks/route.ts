@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { photoVersions, riderPhotoUrl } from "@/lib/rider-photo";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { availableLogisticsActions, resolveTaskAssignment } from "@/lib/logistics-workflow";
 import { parseLuggageDetails } from "@/lib/pricing";
 
-interface RiderUser { id: string; name: string; isActive?: boolean; profilePic: string | null; vehicleType: string | null; plateNumber: string | null }
+interface RiderUser { id: string; name: string; isActive?: boolean; vehicleType: string | null; plateNumber: string | null }
 interface AssignmentRow { userId: string; phase: string; vehicleType?: string | null; vehiclePlate?: string | null; user: RiderUser }
 interface BookingRow {
   id: string;
@@ -70,7 +71,7 @@ export async function GET() {
       include: {
         customer: { select: { name: true, email: true, phone: true } },
         assignments: {
-          include: { user: { select: { id: true, name: true, profilePic: true, vehicleType: true, plateNumber: true, isActive: true } } },
+          include: { user: { select: { id: true, name: true, vehicleType: true, plateNumber: true, isActive: true } } },
           orderBy: { createdAt: "desc" },
         },
         scanEvents: {
@@ -100,7 +101,7 @@ export async function GET() {
       const ids = bookings.map((b) => b.id);
       const customers = await prisma.customer.findMany({ where: { id: { in: bookings.map((b) => b.customerId) } }, select: { id: true, name: true, email: true, phone: true } });
       const cmap = new Map(customers.map((c) => [c.id, c]));
-      const assigns = await prisma.bookingAssignment.findMany({ where: { bookingId: { in: ids } }, include: { user: { select: { id: true, name: true, profilePic: true, vehicleType: true, plateNumber: true, isActive: true } } } });
+      const assigns = await prisma.bookingAssignment.findMany({ where: { bookingId: { in: ids } }, include: { user: { select: { id: true, name: true, vehicleType: true, plateNumber: true, isActive: true } } } });
       const scanEvents = await prisma.scanEvent.findMany({
         where: { bookingId: { in: ids }, status: { in: ["ARRIVED_PICKUP", "PICKUP_COMPLETED"] } },
         select: { id: true, bookingId: true, status: true },
@@ -129,6 +130,7 @@ export async function GET() {
     (b.scanEvents as Array<{ status: string }> | undefined)?.some((event) => event.status === "PICKUP_COMPLETED")
   ));
 
+  const versions = await photoVersions(bookings.flatMap((b) => b.assignments.map((a) => a.userId)));
   const mapped = bookings.map((b) => {
     const services = parseLuggageDetails(b.luggageDetails || "").services;
     // A deactivated employee can no longer work the task, so treat it as unassigned
@@ -148,6 +150,7 @@ export async function GET() {
       ? {
           ...shownAssignment.user,
           id: shownAssignment.userId,
+          profilePic: riderPhotoUrl(shownAssignment.userId, versions.get(shownAssignment.userId)),
           vehicleType: shownAssignment.vehicleType || null,
           plateNumber: shownAssignment.vehiclePlate || null,
         }

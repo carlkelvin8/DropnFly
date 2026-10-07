@@ -41,7 +41,7 @@ export async function GET(req: Request) {
     include: {
       customer: { select: { name: true, email: true } },
       assignments: {
-        include: { user: { select: { name: true, email: true, profilePic: true, vehicleType: true, plateNumber: true } } },
+        include: { user: { select: { name: true, email: true, vehicleType: true, plateNumber: true } } },
         orderBy: { createdAt: "desc" },
         take: 1,
       },

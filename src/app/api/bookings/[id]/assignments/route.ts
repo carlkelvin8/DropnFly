@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { photoVersions, withPhotoUrl } from "@/lib/rider-photo";
 import { prisma } from "@/lib/prisma";
 import { canAccessBooking } from "@/lib/booking-access";
 
@@ -22,7 +23,6 @@ export async function GET(
           currentLat: true,
           currentLng: true,
           lastLocationUpdate: true,
-          profilePic: true,
           vehicleType: true,
           plateNumber: true,
         },
@@ -34,5 +34,6 @@ export async function GET(
   const activePhase = booking.status === "OUT_FOR_DELIVERY" || booking.status === "DELIVERED" ? "DROPOFF" : "PICKUP";
   assignments.sort((a, b) => Number(b.phase === activePhase) - Number(a.phase === activePhase));
 
-  return NextResponse.json(assignments);
+  const versions = await photoVersions(assignments.map((a) => a.user.id));
+  return NextResponse.json(assignments.map((a) => ({ ...a, user: withPhotoUrl(a.user, versions) })));
 }

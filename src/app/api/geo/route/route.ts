@@ -36,12 +36,15 @@ async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const fromLat = Number(sp.get("fromLat"));
-  const fromLng = Number(sp.get("fromLng"));
-  const toLat = Number(sp.get("toLat"));
-  const toLng = Number(sp.get("toLng"));
+  // Number(null) is 0, so a missing parameter must be rejected explicitly — otherwise the request
+  // was routed to (0, 0) at an external server and took up to 18s to fail.
+  const raw = ["fromLat", "fromLng", "toLat", "toLng"].map((name) => sp.get(name));
+  const [fromLat, fromLng, toLat, toLng] = raw.map((value) => (value === null || value.trim() === "" ? NaN : Number(value)));
 
-  if (![fromLat, fromLng, toLat, toLng].every((v) => Number.isFinite(v))) {
+  if (
+    ![fromLat, fromLng, toLat, toLng].every((v) => Number.isFinite(v)) ||
+    Math.abs(fromLat) > 90 || Math.abs(toLat) > 90 || Math.abs(fromLng) > 180 || Math.abs(toLng) > 180
+  ) {
     return NextResponse.json({ error: "Invalid coordinates" }, { status: 400, headers: cacheHeaders() });
   }
 

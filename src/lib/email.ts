@@ -197,8 +197,7 @@ export async function sendRiderAssignedEmail({
   customerName,
   referenceNumber,
   riderName,
-  riderProfilePic,
-  riderId,
+  riderPhotoPath,
   vehicleType,
   plateNumber,
   vehicleColor,
@@ -207,8 +206,8 @@ export async function sendRiderAssignedEmail({
   customerName: string;
   referenceNumber: string;
   riderName: string;
-  riderProfilePic?: string | null;
-  riderId?: string | null;
+  /** Site-relative URL of the rider photo route (see riderPhotoUrl), or null when there is no photo. */
+  riderPhotoPath?: string | null;
   vehicleType?: string | null;
   plateNumber?: string | null;
   vehicleColor?: string | null;
@@ -225,12 +224,7 @@ export async function sendRiderAssignedEmail({
   const defaultLogo = `${baseUrl}/brand-mark.png`;
   // Never embed a base64 photo: Gmail clips emails over ~102KB (hiding the rider details) and most
   // clients block data: images. Link to the hosted photo route instead.
-  const profilePicUrl =
-    riderProfilePic && riderProfilePic.startsWith("https://")
-      ? riderProfilePic
-      : riderProfilePic && riderId
-        ? `${baseUrl}/api/public/riders/${encodeURIComponent(riderId)}/photo`
-        : defaultLogo;
+  const profilePicUrl = riderPhotoPath ? `${baseUrl}${riderPhotoPath}` : defaultLogo;
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #ea7d3d; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { photoVersions, riderPhotoUrl } from "@/lib/rider-photo";
 import { getFleetVehicleColor } from "@/lib/fleet-vehicle";
 import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
@@ -37,7 +38,6 @@ export async function GET(
         select: {
           id: true,
           name: true,
-          profilePic: true,
           vehicleType: true,
           plateNumber: true,
           currentLat: true,
@@ -58,6 +58,7 @@ export async function GET(
   return NextResponse.json({
     rider: {
       ...assignment.user,
+      profilePic: riderPhotoUrl(assignment.user.id, (await photoVersions([assignment.user.id])).get(assignment.user.id)),
       vehicleType: assignment.vehicleType || assignment.user.vehicleType,
       plateNumber: assignment.vehiclePlate || assignment.user.plateNumber,
       vehicleColor: await getFleetVehicleColor(assignment.vehicleId),

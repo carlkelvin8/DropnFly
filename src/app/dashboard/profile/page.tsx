@@ -1,5 +1,6 @@
 "use client";
 
+import { imageFileToDataUrl } from "@/lib/client-image";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,25 +61,22 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       toast.error("Please select an image file");
       return;
     }
-    if (file.size > 2_500_000) {
-      toast.error("Image must be under 2.5MB");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setPicPreview(result);
-    };
-    reader.readAsDataURL(file);
     // reset input so same file can be re-selected
     e.target.value = "";
+    // A profile photo is shown at most ~100px wide. Resize so it stays small (tens of KB instead of
+    // megabytes) — large photos made every page that shows the rider slow to load.
+    try {
+      setPicPreview(await imageFileToDataUrl(file, 512, 0.8));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not read photo");
+    }
   }
 
   async function handleSavePic() {

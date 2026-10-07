@@ -12,8 +12,40 @@ function createPrismaClient() {
       "SUPABASE_URL is not set. Set it in your environment variables."
     );
   }
-  const adapter = new PrismaPg({ connectionString });
-  return new PrismaClient({ adapter });
+  // Without timeouts a query sent on a connection the Supabase pooler already closed waits forever,
+  // so a request hangs until the platform kills it (the client then sees "Load failed"). Fail fast
+  // and let the next request get a fresh connection instead.
+  const adapter = new PrismaPg({
+    connectionString,
+    connectionTimeoutMillis: 10_000,
+    query_timeout: 12_000,
+    idleTimeoutMillis: 10_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
+  });
+  // A query that timed out on a dead pooled connection succeeds right away on a fresh one. Retry
+  // read-only operations once; writes are never retried so nothing can be applied twice.
+  return new PrismaClient({ adapter }).$extends({
+    query: {
+      async $allOperations({ operation, args, query }) {
+        try {
+          return await query(args);
+        } catch (error) {
+          if (!READ_OPERATIONS.has(operation) || !isTimeout(error)) throw error;
+          return query(args);
+        }
+      },
+    },
+  }) as unknown as PrismaClient;
+}
+
+const READ_OPERATIONS = new Set([
+  "findUnique", "findUniqueOrThrow", "findFirst", "findFirstOrThrow", "findMany",
+  "count", "aggregate", "groupBy",
+]);
+
+function isTimeout(error: unknown) {
+  return /timeout|timed out|ETIMEDOUT|ECONNRESET|Connection terminated/i.test(String((error as Error)?.message ?? error));
 }
 
 function getPrisma() {

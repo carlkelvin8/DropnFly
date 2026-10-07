@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { intParam } from "@/lib/query-params";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -16,8 +17,8 @@ export async function GET(req: Request) {
     const entity = searchParams.get("entity");
     const action = searchParams.get("action");
     const search = searchParams.get("search");
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "30");
+    const page = intParam(searchParams.get("page"), 1, 1, 100_000);
+    const limit = intParam(searchParams.get("limit"), 30, 1, 200);
 
     const where: Record<string, unknown> = {};
     if (entity) where.entity = entity;

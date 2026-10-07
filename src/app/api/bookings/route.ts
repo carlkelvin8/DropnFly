@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { photoVersions, withPhotoUrl } from "@/lib/rider-photo";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateReferenceNumber } from "@/lib/reference";
@@ -43,7 +44,9 @@ export async function GET(req: Request) {
   let statusFilter: string[] | undefined;
   if (statusParam) {
     const key = statusParam.toLowerCase().replace(/\s+/g, "-");
-    statusFilter = statusGroups[key] || [statusParam.toUpperCase()];
+    const ALL_STATUSES = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW"];
+    // An unknown status matches nothing (empty list) instead of crashing the query.
+    statusFilter = statusGroups[key] || ALL_STATUSES.filter((status) => status === statusParam.toUpperCase());
   }
 
   const where: Record<string, unknown> = {};
@@ -93,7 +96,7 @@ export async function GET(req: Request) {
       location: { select: { name: true, city: true } },
       user: { select: { name: true } },
       assignments: {
-        include: { user: { select: { id: true, name: true, email: true, profilePic: true, vehicleType: true, plateNumber: true } } },
+        include: { user: { select: { id: true, name: true, email: true, vehicleType: true, plateNumber: true } } },
         orderBy: { createdAt: "desc" },
       },
       payments: { select: { amount: true, status: true, method: true, paidAt: true } },
@@ -117,6 +120,7 @@ export async function GET(req: Request) {
   const unreadChatMap = new Map(unreadChatStats.map((row) => [row.bookingId, row._count]));
   const staffChatMap = new Map(staffChatStats.map((row) => [row.bookingId, row]));
 
+  const versions = await photoVersions(bookings.flatMap((b) => b.assignments.map((a) => a.user.id)));
   const mapped = bookings.map((b) => {
     const totalPaid = b.payments
       .filter((p) => p.status === "PAID")
@@ -127,8 +131,10 @@ export async function GET(req: Request) {
     else if (totalPaid > 0) paymentStatus = "dp";
 
     const qrScanned = ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"].includes(b.status);
-    const pickupRider = b.assignments.find((a) => a.phase !== "DROPOFF")?.user || null;
-    const dropoffRider = b.assignments.find((a) => a.phase === "DROPOFF")?.user || null;
+    const pickupUser = b.assignments.find((a) => a.phase !== "DROPOFF")?.user;
+    const dropoffUser = b.assignments.find((a) => a.phase === "DROPOFF")?.user;
+    const pickupRider = pickupUser ? withPhotoUrl(pickupUser, versions) : null;
+    const dropoffRider = dropoffUser ? withPhotoUrl(dropoffUser, versions) : null;
     const rider = pickupRider || dropoffRider;
 
     return {

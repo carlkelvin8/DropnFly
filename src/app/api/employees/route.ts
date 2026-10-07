@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { photoVersions, withPhotoUrl } from "@/lib/rider-photo";
 import bcrypt from "bcryptjs";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -29,7 +30,6 @@ export async function GET(req: Request) {
       createdAt: true,
       vehicleType: true,
       plateNumber: true,
-      profilePic: true,
       currentLat: true,
       currentLng: true,
       lastLocationUpdate: true,
@@ -37,7 +37,8 @@ export async function GET(req: Request) {
     },
   });
 
-  return NextResponse.json(employees);
+  const versions = await photoVersions(employees.map((employee) => employee.id));
+  return NextResponse.json(employees.map((employee) => withPhotoUrl(employee, versions)));
 }
 
 export async function POST(req: Request) {

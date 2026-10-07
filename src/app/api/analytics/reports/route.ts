@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isoDayOrNull } from "@/lib/query-params";
 import { auth } from "@/lib/auth";
 import { generateReport } from "@/lib/gemini";
 import { prisma } from "@/lib/prisma";
@@ -20,10 +21,12 @@ export async function GET(req: Request) {
   const type = requestedType as "descriptive" | "predictive" | "financial";
   const period = searchParams.get("period") || "month";
   const days = period === "week" ? 7 : period === "year" ? 365 : 30;
-  const since = searchParams.get("from")
-    ? manilaDayStart(searchParams.get("from")!)
+  const fromParam = isoDayOrNull(searchParams.get("from"));
+  const toParam = isoDayOrNull(searchParams.get("to"));
+  const since = fromParam
+    ? manilaDayStart(fromParam)
     : new Date(manilaDayStart(manilaDateStr(new Date())).getTime() - (days - 1) * 86400000);
-  const until = searchParams.get("to") ? new Date(`${searchParams.get("to")}T23:59:59.999+08:00`) : new Date();
+  const until = toParam ? new Date(`${toParam}T23:59:59.999+08:00`) : new Date();
   const bookingWhere: Prisma.BookingWhereInput = { createdAt: { gte: since, lte: until } };
   const validBookingWhere: Prisma.BookingWhereInput = {
     ...bookingWhere,

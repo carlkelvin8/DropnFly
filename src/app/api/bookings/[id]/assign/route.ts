@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { photoVersions, riderPhotoUrl } from "@/lib/rider-photo";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
@@ -118,7 +119,6 @@ export async function POST(
           user: {
             select: {
               name: true,
-              profilePic: true,
               vehicleType: true,
               plateNumber: true,
             },
@@ -144,8 +144,7 @@ export async function POST(
         customerName: booking.customer.name,
         referenceNumber: booking.referenceNumber,
         riderName: assignment.user.name,
-        riderProfilePic: assignment.user.profilePic,
-        riderId: body.userId,
+        riderPhotoPath: riderPhotoUrl(body.userId, (await photoVersions([body.userId])).get(body.userId)),
         vehicleType: assignment.vehicleType,
         plateNumber: assignment.vehiclePlate,
         vehicleColor,

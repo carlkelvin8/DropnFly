@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isoDayOrNull } from "@/lib/query-params";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
@@ -16,8 +17,8 @@ export async function GET(req: Request) {
   const days =
     period === "week" ? 7 : period === "month" ? 30 : period === "year" ? 365 : 30;
 
-  const fromDate: string | null = searchParams.get("from");
-  const toDate: string | null = searchParams.get("to");
+  const fromDate: string | null = isoDayOrNull(searchParams.get("from"));
+  const toDate: string | null = isoDayOrNull(searchParams.get("to"));
 
   let since = new Date(manilaDayStart(manilaDateStr(new Date())).getTime() - (days - 1) * 86400000);
 

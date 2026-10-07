@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isoDayOrNull } from "@/lib/query-params";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
@@ -13,8 +14,8 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
+  const from = isoDayOrNull(searchParams.get("from"));
+  const to = isoDayOrNull(searchParams.get("to"));
   const createdAt = from || to
     ? {
         ...(from ? { gte: new Date(`${from}T00:00:00+08:00`) } : {}),
