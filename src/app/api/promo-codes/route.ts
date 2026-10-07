@@ -36,21 +36,39 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { code, description, type, value, maxUsage, minAmount, maxDiscount, expiresAt } = body;
 
-    if (!code || !type || value == null) {
+    if (typeof code !== "string" || !code.trim() || !type || value == null) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+    if (!["PERCENTAGE", "FIXED"].includes(type)) {
+      return NextResponse.json({ error: "Type must be PERCENTAGE or FIXED" }, { status: 400 });
+    }
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue) || numericValue <= 0 || (type === "PERCENTAGE" && numericValue > 100)) {
+      return NextResponse.json({ error: type === "PERCENTAGE" ? "Percentage must be between 0 and 100" : "Value must be greater than 0" }, { status: 400 });
+    }
+    if (maxUsage != null && (!Number.isInteger(Number(maxUsage)) || Number(maxUsage) < 1)) {
+      return NextResponse.json({ error: "Max usage must be a whole number of at least 1" }, { status: 400 });
+    }
+    for (const [label, amount] of [["Minimum amount", minAmount], ["Maximum discount", maxDiscount]] as const) {
+      if (amount != null && amount !== "" && (!Number.isFinite(Number(amount)) || Number(amount) < 0)) {
+        return NextResponse.json({ error: `${label} must be zero or more` }, { status: 400 });
+      }
+    }
+    if (expiresAt && Number.isNaN(new Date(expiresAt).getTime())) {
+      return NextResponse.json({ error: "Invalid expiry date" }, { status: 400 });
+    }
 
-    const existing = await prisma.promoCode.findUnique({ where: { code: code.toUpperCase() } });
+    const existing = await prisma.promoCode.findUnique({ where: { code: code.trim().toUpperCase() } });
     if (existing) {
       return NextResponse.json({ error: "Promo code already exists" }, { status: 409 });
     }
 
     const promo = await prisma.promoCode.create({
       data: {
-        code: code.toUpperCase(),
+        code: code.trim().toUpperCase(),
         description,
         type,
-        value,
+        value: numericValue,
         maxUsage: maxUsage || 100,
         minAmount: minAmount || 0,
         maxDiscount: maxDiscount || null,
