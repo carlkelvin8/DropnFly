@@ -189,5 +189,7 @@ export async function GET() {
     };
   });
 
-  return NextResponse.json(mapped);
+  // Employees only receive their own (active or upcoming) tasks. Bookings where they handled an
+  // earlier phase are not theirs to act on and would expose another employee's customer details.
+  return NextResponse.json(isAdmin || isStaff ? mapped : mapped.filter((task) => task.isAssignedToMe));
 }
