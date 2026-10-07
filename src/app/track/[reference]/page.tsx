@@ -63,6 +63,7 @@ interface RiderData {
   vehicleType: string | null;
   plateNumber: string | null;
   vehicleColor?: string | null;
+  phase?: "PICKUP" | "DROPOFF";
   currentLat: number | null;
   currentLng: number | null;
   lastLocationUpdate: string | null;
@@ -84,6 +85,7 @@ const statusConfig: Record<string, { label: string; color: "default" | "secondar
   OUT_FOR_DELIVERY: { label: "Out for Delivery", color: "default", step: 4 },
   DELIVERED: { label: "Delivered", color: "success", step: 5 },
   CANCELLED: { label: "Cancelled", color: "destructive", step: -1 },
+  NO_SHOW: { label: "No Show", color: "destructive", step: -1 },
 };
 
 const steps = [
@@ -370,7 +372,7 @@ export default function TrackResultPage() {
         </div>
 
         {/* Tracking inactive — before the employee starts, no rider info is exposed */}
-        {!showRider && !["PENDING", "CANCELLED", "DELIVERED"].includes(booking.status) && (
+        {!showRider && !["PENDING", "CANCELLED", "NO_SHOW", "DELIVERED"].includes(booking.status) && (
           <Card className="mb-6 border-t-4 border-amber-400 shadow-lg">
             <CardContent className="flex items-start gap-3 p-4">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100">
@@ -393,6 +395,9 @@ export default function TrackResultPage() {
               <CardTitle className="flex items-center gap-2 text-sm">
                 <User className="h-4 w-4 text-green-600" />
                 Your Rider
+                <span className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-bold ${rider.phase === "DROPOFF" ? "bg-violet-100 text-violet-700" : "bg-blue-100 text-blue-700"}`}>
+                  {rider.phase === "DROPOFF" ? "DROP-OFF RIDER" : "PICK-UP RIDER"}
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -713,10 +718,12 @@ export default function TrackResultPage() {
 
             {currentStep < 0 && (
               <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
-                <p className="text-sm font-medium text-red-600">This booking was cancelled.</p>
-                {scanEvents.filter((event) => event.status === "CANCELLED").map((event, index) => (
+                <p className="text-sm font-medium text-red-600">
+                  {booking.status === "NO_SHOW" ? "This booking was marked as No Show. The transaction has ended." : "This booking was cancelled."}
+                </p>
+                {scanEvents.filter((event) => event.status === "CANCELLED" || event.status === "NO_SHOW").map((event, index) => (
                   <div key={`${event.scannedAt}-${index}`} className="rounded-lg border border-red-200 bg-white p-3 text-left">
-                    <p className="text-xs font-semibold text-red-700">Cancellation proof</p>
+                    <p className="text-xs font-semibold text-red-700">{event.status === "NO_SHOW" ? "No-show record" : "Cancellation proof"}</p>
                     {event.note && <p className="mt-1 text-xs text-muted-foreground">{event.note}</p>}
                     {event.photo && <button className="mt-2" onClick={() => setShowPhotoModal(event.photo)}><Image unoptimized width={120} height={80} src={event.photo} alt="Cancellation proof" className="h-20 w-28 rounded object-cover" /></button>}
                   </div>

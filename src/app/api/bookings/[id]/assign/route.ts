@@ -145,6 +145,7 @@ export async function POST(
         referenceNumber: booking.referenceNumber,
         riderName: assignment.user.name,
         riderPhotoPath: riderPhotoUrl(body.userId, (await photoVersions([body.userId])).get(body.userId)),
+        phase,
         vehicleType: assignment.vehicleType,
         plateNumber: assignment.vehiclePlate,
         vehicleColor,

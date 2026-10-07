@@ -198,6 +198,7 @@ export async function sendRiderAssignedEmail({
   referenceNumber,
   riderName,
   riderPhotoPath,
+  phase,
   vehicleType,
   plateNumber,
   vehicleColor,
@@ -208,6 +209,8 @@ export async function sendRiderAssignedEmail({
   riderName: string;
   /** Site-relative URL of the rider photo route (see riderPhotoUrl), or null when there is no photo. */
   riderPhotoPath?: string | null;
+  /** Which leg this rider handles. */
+  phase?: "PICKUP" | "DROPOFF";
   vehicleType?: string | null;
   plateNumber?: string | null;
   vehicleColor?: string | null;
@@ -228,7 +231,7 @@ export async function sendRiderAssignedEmail({
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #ea7d3d; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
-        <h2 style="margin: 0;">Rider Assigned!</h2>
+        <h2 style="margin: 0;">${phase === "DROPOFF" ? "Drop-off" : "Pick-up"} Rider Assigned!</h2>
         <p style="margin: 8px 0 0; opacity: 0.9;">Reference: <strong>${referenceNumber}</strong></p>
       </div>
       <div style="background: #f8fafc; padding: 24px; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 8px 8px;">
@@ -242,6 +245,7 @@ export async function sendRiderAssignedEmail({
 
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
           <tr><td style="padding: 8px; color: #9ca3af;">Rider</td><td style="padding: 8px; font-weight: 600;">${sanitizeHtml(riderName)}</td></tr>
+          <tr style="background: #f1f5f9;"><td style="padding: 8px; color: #9ca3af;">Assigned for</td><td style="padding: 8px; font-weight: 600;">${phase === "DROPOFF" ? "Drop-off (delivery to you)" : "Pick-up (collecting your luggage)"}</td></tr>
           <tr style="background: #f1f5f9;"><td style="padding: 8px; color: #9ca3af;">Type of Vehicle</td><td style="padding: 8px; font-weight: 600;">${vehicleType ? sanitizeHtml(vehicleType) : "To be confirmed"}</td></tr>
           <tr><td style="padding: 8px; color: #9ca3af;">Plate Number</td><td style="padding: 8px; font-weight: 600;">${plateNumber ? sanitizeHtml(plateNumber) : "To be confirmed"}</td></tr>
           <tr style="background: #f1f5f9;"><td style="padding: 8px; color: #9ca3af;">Color of the Vehicle</td><td style="padding: 8px; font-weight: 600;">${vehicleColor ? sanitizeHtml(vehicleColor) : "To be confirmed"}</td></tr>
@@ -265,7 +269,7 @@ export async function sendRiderAssignedEmail({
   await (await getTransporter()).sendMail({
     from: config.from,
     to,
-    subject: `Rider Assigned - ${referenceNumber}`,
+    subject: `${phase === "DROPOFF" ? "Drop-off" : "Pick-up"} Rider Assigned - ${referenceNumber}`,
     html,
   });
 }

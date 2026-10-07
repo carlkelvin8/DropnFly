@@ -74,6 +74,7 @@ export async function GET(
         vehicleType: assignment.vehicleType || null,
         plateNumber: assignment.vehiclePlate || null,
         vehicleColor,
+        phase: assignment.phase,
       }
     : null;
 

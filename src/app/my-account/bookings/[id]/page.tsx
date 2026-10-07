@@ -64,6 +64,7 @@ const statusConfig: Record<string, { label: string; color: string; step: number 
   OUT_FOR_DELIVERY: { label: "Out for Delivery", color: "bg-orange-100 text-orange-800 border-orange-200", step: 4 },
   DELIVERED: { label: "Delivered", color: "bg-emerald-100 text-emerald-800 border-emerald-200", step: 5 },
   CANCELLED: { label: "Cancelled", color: "bg-red-100 text-red-800 border-red-200", step: -1 },
+  NO_SHOW: { label: "No Show", color: "bg-red-100 text-red-800 border-red-200", step: -1 },
 };
 
 const statusSteps = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"];
@@ -235,7 +236,7 @@ export default function CustomerBookingDetailPage() {
 
   const currentStep = statusSteps.indexOf(booking.status);
   const canCancel = ["PENDING", "CONFIRMED"].includes(booking.status);
-  const canExtend = !["CANCELLED", "DELIVERED"].includes(booking.status);
+  const canExtend = !["CANCELLED", "DELIVERED", "NO_SHOW"].includes(booking.status);
   const extraBags = Math.max(0, booking.numberOfBags - 3);
   const extraBagFee = extraBags * 100;
   const storageDays = booking.checkIn && booking.checkOut
@@ -317,6 +318,14 @@ export default function CustomerBookingDetailPage() {
             </div>
           </CardContent>
         </Card>
+
+        {booking.status === "NO_SHOW" && (
+          <Card className="border-t-4 border-red-500">
+            <CardContent className="p-4 text-sm text-red-700">
+              This booking was marked as <strong>No Show</strong> and the transaction has ended. Please contact support if you have questions.
+            </CardContent>
+          </Card>
+        )}
 
         {booking.status === "CANCELLED" && (
           <Card className="border-t-4 border-red-500">

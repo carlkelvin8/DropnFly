@@ -62,6 +62,7 @@ export async function GET(
       vehicleType: assignment.vehicleType || assignment.user.vehicleType,
       plateNumber: assignment.vehiclePlate || assignment.user.plateNumber,
       vehicleColor: await getFleetVehicleColor(assignment.vehicleId),
+      phase: assignment.phase,
     },
   });
 }

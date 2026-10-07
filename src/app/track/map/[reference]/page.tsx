@@ -41,6 +41,7 @@ interface Rider {
   vehicleType: string | null;
   plateNumber: string | null;
   vehicleColor?: string | null;
+  phase?: "PICKUP" | "DROPOFF";
 }
 
 interface BookingPublic {
@@ -457,6 +458,9 @@ export default function LiveTrackingPage() {
                         </div>
                         <div>
                           <p className="font-semibold">{rider.name}</p>
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${rider.phase === "DROPOFF" ? "bg-violet-100 text-violet-700" : "bg-blue-100 text-blue-700"}`}>
+                            {rider.phase === "DROPOFF" ? "DROP-OFF RIDER" : "PICK-UP RIDER"}
+                          </span>
                           {employeeLoc ? (
                             <Badge variant="success" className="shadow-sm text-[10px]">
                               <div className="mr-1 h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" /> {booking.status === "OUT_FOR_DELIVERY" ? "Delivering" : "On the way"}
