@@ -36,6 +36,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { NAIA_TERMINALS } from "@/components/booking/constants";
 import { getAirlinesForTerminal } from "@/lib/terminal-airlines";
 import { imageFileToDataUrl } from "@/lib/client-image";
+import { useSession } from "next-auth/react";
 
 interface Booking {
   id: string;
@@ -146,6 +147,7 @@ function toManilaDateTimeLocal(value: string | null): string {
 export default function BookingDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { data: session } = useSession();
   const [booking, setBooking] = useState<Booking | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [fleet, setFleet] = useState<{ id: string; type: string; plateNumber: string; color: string; count: number; icon: string }[]>([]);
@@ -166,7 +168,7 @@ export default function BookingDetailPage() {
 
   const [editDropOffTerminal, setEditDropOffTerminal] = useState("");
   const [editDropOffAirline, setEditDropOffAirline] = useState("");
-  const [editSessionName, setEditSessionName] = useState<string | null>(null);
+  const editSessionName = session?.user?.name || null;
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
   const [serviceNote, setServiceNote] = useState("");
   const [dangerModal, setDangerModal] = useState<{ action: "no-show" | "cancelled"; mode: "admin" | "report" } | null>(null);
@@ -175,7 +177,7 @@ export default function BookingDetailPage() {
   const [dangerNote, setDangerNote] = useState("");
   const [dangerSubmitting, setDangerSubmitting] = useState(false);
   const dangerFileRef = useRef<HTMLInputElement>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const userRole = session?.user?.role || null;
   const [settleAmount, setSettleAmount] = useState<number>(0);
   const [refundAmount, setRefundAmount] = useState(0);
   const [refundReason, setRefundReason] = useState("");
@@ -240,16 +242,6 @@ export default function BookingDetailPage() {
     }).catch(() => {});
     return () => abort.abort();
   }, [params.id]);
-
-  useEffect(() => {
-    fetch("/api/auth/session")
-      .then((r) => r.json())
-      .then((s) => {
-        setUserRole(s?.user?.role || null);
-        setEditSessionName(s?.user?.name || null);
-      })
-      .catch(() => setUserRole(null));
-  }, []);
 
   // Keep operational sections in sync with scanner/logistics/settings changes
   // made in another tab or by another staff member. Refresh immediately when

@@ -21,6 +21,7 @@ import { imageFileToDataUrl } from "@/lib/client-image";
 import { LOGISTICS_ACTION_META, type LogisticsAction } from "@/lib/logistics-workflow";
 import { manilaDateStr } from "@/lib/manila-time";
 import { coordinatesForLocation } from "@/lib/booking-location";
+import { useSession } from "next-auth/react";
 
 interface Employee {
   id: string;
@@ -62,6 +63,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function LogisticsPage() {
+  const { data: session } = useSession();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<string | null>(null);
@@ -69,8 +71,8 @@ export default function LogisticsPage() {
   const [processingAction, setProcessingAction] = useState(false);
   const [photoProof, setPhotoProof] = useState<string | null>(null);
   const [actionNote, setActionNote] = useState("");
-  const [userRole, setUserRole] = useState<string>("");
-  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const userRole = session?.user?.role || "";
+  const sessionUserId = session?.user?.id || null;
   const [myLoc, setMyLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [myAccuracy, setMyAccuracy] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"tasks" | "monitoring">("tasks");
@@ -111,20 +113,15 @@ export default function LogisticsPage() {
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/logistics/tasks").then(async (r) => {
-        if (!r.ok) {
-          const e = await r.json().catch(() => ({}));
-          throw new Error(e.error || `Tasks ${r.status}`);
-        }
-        const j = await r.json();
-        return Array.isArray(j) ? j : j.tasks || [];
-      }),
-      fetch("/api/auth/session").then((r) => r.json()),
-    ]).then(([tasksData, sessionData]) => {
+    fetch("/api/logistics/tasks").then(async (r) => {
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e.error || `Tasks ${r.status}`);
+      }
+      const j = await r.json();
+      return Array.isArray(j) ? j : j.tasks || [];
+    }).then((tasksData) => {
       setTasks(Array.isArray(tasksData) ? tasksData : []);
-      setUserRole(sessionData?.user?.role || "");
-      setSessionUserId(sessionData?.user?.id || null);
     }).catch((e) => {
       console.error("[Logistics] load failed:", e);
       toast.error(e instanceof Error ? e.message : "Failed to load tasks");

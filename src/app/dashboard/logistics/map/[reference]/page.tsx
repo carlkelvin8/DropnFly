@@ -9,6 +9,7 @@ import { LocationUpdater } from "@/components/tracking/LocationUpdater";
 import { EmployeeMapTools } from "@/components/tracking/EmployeeMapTools";
 import { ArrowLeft, Navigation, MapPin, Users, Activity } from "lucide-react";
 import { NAIA_TERMINAL_COORDS } from "@/components/booking/constants";
+import { useSession } from "next-auth/react";
 
 interface Task {
   id: string;
@@ -49,9 +50,8 @@ function formatManilaTime(iso: string | null) {
 export default function AdminFullMapPage() {
   const { reference } = useParams<{ reference: string }>();
   const router = useRouter();
+  const { data: session, status: sessionStatus } = useSession();
   const [task, setTask] = useState<Task | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isEmployee, setIsEmployee] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [liveLat, setLiveLat] = useState<number | null>(null);
@@ -62,19 +62,18 @@ export default function AdminFullMapPage() {
 
   const riderId = task?.rider?.id || null;
   const started = Boolean(task?.pickupStartedAt);
+  const isAdmin = ["ADMIN", "STAFF"].includes(session?.user?.role || "");
+  const isEmployee = session?.user?.role === "EMPLOYEE" && Boolean(task?.isAssignedToMe);
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      fetch("/api/auth/session").then((r) => r.json()),
-      fetch("/api/logistics/tasks", { cache: "no-store" }).then(async (r) => (r.ok ? r.json() : (await r.json().catch(() => ({}))).tasks || [])).catch(() => []),
-    ]).then(([sessionData, tasksData]) => {
+    fetch("/api/logistics/tasks", { cache: "no-store" })
+      .then(async (r) => (r.ok ? r.json() : (await r.json().catch(() => ({}))).tasks || [])).catch(() => [])
+      .then((tasksData) => {
       if (!active) return;
       const tasks: Task[] = Array.isArray(tasksData) ? tasksData : tasksData?.tasks || [];
       const found = tasks.find((t) => t.referenceNumber.toUpperCase() === reference.toUpperCase()) || null;
       setTask(found);
-      setIsAdmin(["ADMIN", "STAFF"].includes(sessionData?.user?.role));
-      setIsEmployee(sessionData?.user?.role === "EMPLOYEE" && Boolean(found?.isAssignedToMe));
       setNotFound(!found);
     }).finally(() => setLoading(false));
     return () => { active = false; };
@@ -132,7 +131,7 @@ export default function AdminFullMapPage() {
   const pickup = resolveCoords(task, "pickup");
   const dropoff = resolveCoords(task, "dropoff");
 
-  if (loading) {
+  if (loading || sessionStatus === "loading") {
     return (
       <div className="flex h-[70vh] items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />

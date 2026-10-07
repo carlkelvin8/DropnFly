@@ -28,6 +28,7 @@ import { NAIA_TERMINALS, FALLBACK_COUNTRIES, FALLBACK_CITIES, today } from "@/co
 import { getAirlinesForTerminal } from "@/lib/terminal-airlines";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import Image from "next/image";
+import { useSession } from "next-auth/react";
 
 interface TimeSlot {
   start: string;
@@ -48,9 +49,9 @@ function calcStorageDays(pickupDate: string, pickupSlot: string, deliveryDate: s
 
 export default function NewBookingPage() {
   const router = useRouter();
+  const { data: session, status: sessionStatus } = useSession();
   const submittingRef = useRef(false);
   const [loading, setLoading] = useState(false);
-  const [roleChecked, setRoleChecked] = useState(false);
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
 
@@ -100,14 +101,21 @@ export default function NewBookingPage() {
   const [slotRefreshTick, setSlotRefreshTick] = useState(0);
 
   useEffect(() => {
-    fetch("/api/auth/session").then(async (r) => {
-      if (!r.ok) { router.replace("/dashboard"); return; }
-      const s = await r.json().catch(() => null);
-      const role = s?.user?.role;
-      if (role !== "ADMIN" && role !== "STAFF" && role !== "EMPLOYEE") { router.replace("/dashboard/bookings"); }
-      else setRoleChecked(true);
-    }).catch(() => router.replace("/dashboard"));
-  }, [router]);
+    if (sessionStatus === "loading") return;
+    if (!session) {
+      router.replace("/dashboard");
+      return;
+    }
+    const role = session.user.role;
+    if (role !== "ADMIN" && role !== "STAFF" && role !== "EMPLOYEE") {
+      router.replace("/dashboard/bookings");
+      return;
+    }
+  }, [router, session, sessionStatus]);
+
+  const role = session?.user?.role;
+  const roleChecked = sessionStatus !== "loading"
+    && (role === "ADMIN" || role === "STAFF" || role === "EMPLOYEE");
 
   const totalBags = calcTotalBags(luggageQty);
   const storageDays = calcStorageDays(pickupDate, pickupSlot, deliveryDate, deliverySlot);
