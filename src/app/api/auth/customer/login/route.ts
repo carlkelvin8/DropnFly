@@ -4,6 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { signCustomerToken, setCustomerCookie } from "@/lib/customer-auth";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
 
+// A real bcrypt hash (cost 12) built once, used only to equalize timing for unknown emails.
+let dummyHashPromise: Promise<string> | null = null;
+function dummyHash() {
+  dummyHashPromise ??= bcrypt.hash("dropnfly-timing-equalizer", 12);
+  return dummyHashPromise;
+}
+
 export async function POST(req: Request) {
   try {
     const key = requestKey(req);
@@ -17,13 +24,15 @@ export async function POST(req: Request) {
 
     const { email, password } = await req.json();
 
-    if (!email || !password) {
+    if (!email || typeof password !== "string" || !password) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     const customer = await prisma.customer.findUnique({ where: { email: String(email).trim().toLowerCase() } });
 
     if (!customer || !customer.password) {
+      // Spend the same bcrypt time so response timing does not reveal which emails exist.
+      await bcrypt.compare(password, await dummyHash());
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
 

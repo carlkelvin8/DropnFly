@@ -105,8 +105,8 @@ export async function PATCH(
       }
     }
 
-    if (body.password && String(body.password).length < 8) {
-      return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
+    if (body.password !== undefined && (typeof body.password !== "string" || body.password.length < 10 || body.password.length > 128)) {
+      return NextResponse.json({ error: "Password must be between 10 and 128 characters" }, { status: 400 });
     }
     const passwordHash = body.password ? await bcrypt.hash(String(body.password), 12) : undefined;
 
