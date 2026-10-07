@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { finalizeDeliveredBaggage } from "@/lib/delivery-cleanup";
 import { trackingResetForStatus } from "@/lib/logistics-workflow";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -205,6 +206,7 @@ export async function PUT(
       // every physical baggage item in the same phase as the booking. This
       // mirrors the QR scanner's batch update and prevents one tag from being
       // left behind when staff advances the booking from the dashboard.
+      if (body.status === "DELIVERED" && existingBooking.status !== "DELIVERED") await finalizeDeliveredBaggage(tx, id);
       if (body.status === "IN_STORAGE" || body.status === "OUT_FOR_DELIVERY") {
         await tx.luggageItem.updateMany({
           where: { bookingId: id, status: { notIn: ["CANCELLED", "DELIVERED"] } },

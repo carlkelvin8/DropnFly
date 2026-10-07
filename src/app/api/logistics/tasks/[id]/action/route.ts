@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { finalizeDeliveredBaggage } from "@/lib/delivery-cleanup";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
@@ -138,6 +139,7 @@ export async function POST(
               : undefined,
         },
       });
+      if (newStatus === "DELIVERED") await finalizeDeliveredBaggage(tx, id);
       await tx.scanEvent.create({
         data: {
           bookingId: id,

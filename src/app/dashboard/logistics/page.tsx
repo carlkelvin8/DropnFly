@@ -20,6 +20,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { imageFileToDataUrl } from "@/lib/client-image";
 import { LOGISTICS_ACTION_META, type LogisticsAction } from "@/lib/logistics-workflow";
 import { manilaDateStr } from "@/lib/manila-time";
+import { TASK_DATE_FILTERS, matchesTaskDateFilter, taskDay, type TaskDateFilter } from "@/lib/task-date-filter";
 import { coordinatesForLocation } from "@/lib/booking-location";
 import { useSession } from "next-auth/react";
 
@@ -88,6 +89,7 @@ export default function LogisticsPage() {
   const [locationStatus, setLocationStatus] = useState<"requesting" | "active" | "denied" | "error" | "idle">("idle");
   const handleLocationStatus = useCallback((status: "requesting" | "active" | "denied" | "error") => setLocationStatus(status), []);
   const [selectedTrackedId, setSelectedTrackedId] = useState<string | null>(null);
+  const [employeeDateFilter, setEmployeeDateFilter] = useState<TaskDateFilter>("today");
   const [employeeTaskFilter, setEmployeeTaskFilter] = useState<"all" | "pickup" | "delivery">("all");
 
   function openTaskActions(taskId: string) {
@@ -269,13 +271,17 @@ export default function LogisticsPage() {
   const quickStartAction = (task: Task) =>
     task.isAssignedToMe ? task.availableActions.find((a) => a === "start-pickup" || a === "start-delivery") : undefined;
 
-  const employeeTasks = roleTasks.filter((task) =>
+  // Employees see what they must do today by default; the filter lets them look further ahead.
+  const todayManila = manilaDateStr(new Date());
+  const dateFilteredTasks = roleTasks.filter((task) => matchesTaskDateFilter(taskDay(task), employeeDateFilter, todayManila));
+  const employeeTasks = dateFilteredTasks.filter((task) =>
     employeeTaskFilter === "all" ? true : task.taskType === employeeTaskFilter
   );
-  const employeePending = roleTasks.filter((task) => !task.pickupStartedAt).length;
-  const employeeInProgress = roleTasks.filter((task) => Boolean(task.pickupStartedAt)).length;
-  const employeePickup = roleTasks.filter((task) => task.taskType === "pickup").length;
-  const employeeDelivery = roleTasks.filter((task) => task.taskType === "delivery").length;
+  const employeePending = dateFilteredTasks.filter((task) => !task.pickupStartedAt).length;
+  const employeeInProgress = dateFilteredTasks.filter((task) => Boolean(task.pickupStartedAt)).length;
+  const employeePickup = dateFilteredTasks.filter((task) => task.taskType === "pickup").length;
+  const employeeDelivery = dateFilteredTasks.filter((task) => task.taskType === "delivery").length;
+  const earlierOpenTasks = employeeDateFilter === "all" ? 0 : roleTasks.filter((task) => !task.isUpcoming && taskDay(task) < todayManila && !matchesTaskDateFilter(taskDay(task), employeeDateFilter, todayManila)).length;
 
   // Employee sees their own live dot on the guide map inside this page (kept
   // separate from the public customer tracker) by polling their booking location.
@@ -325,7 +331,7 @@ export default function LogisticsPage() {
                 { value: employeePending, label: "Pending", tone: "bg-sky-50 text-sky-900" },
                 { value: employeeInProgress, label: "In Progress", tone: "bg-amber-50 text-amber-900" },
                 { value: employeePickup, label: "Pick-up", tone: "bg-blue-50 text-blue-900" },
-                { value: roleTasks.length, label: "Total Tasks", tone: "bg-emerald-50 text-emerald-900" },
+                { value: dateFilteredTasks.length, label: "Total Tasks", tone: "bg-emerald-50 text-emerald-900" },
               ].map((item) => (
                 <div key={item.label} className={`rounded-xl px-4 py-3 text-center ${item.tone}`}>
                   <p className="text-2xl font-bold leading-none">{item.value}</p>
@@ -336,9 +342,35 @@ export default function LogisticsPage() {
           </div>
 
           <div className="p-4 sm:p-6">
+            <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter tasks by date">
+              {TASK_DATE_FILTERS.map(({ value, label }) => {
+                const count = roleTasks.filter((task) => matchesTaskDateFilter(taskDay(task), value, todayManila)).length;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setEmployeeDateFilter(value)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      employeeDateFilter === value
+                        ? "border-sky-600 bg-sky-600 text-white"
+                        : "bg-background text-muted-foreground hover:border-sky-300 hover:text-foreground"
+                    }`}
+                  >
+                    {label} <span className="ml-1 opacity-80">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {earlierOpenTasks > 0 && (
+              <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {earlierOpenTasks} earlier task{earlierOpenTasks === 1 ? "" : "s"} still open —{" "}
+                <button type="button" className="font-semibold underline" onClick={() => setEmployeeDateFilter("all")}>View All</button> to see {earlierOpenTasks === 1 ? "it" : "them"}.
+              </p>
+            )}
+
             <div className="mb-4 flex flex-wrap gap-2">
               {([
-                ["all", "All Tasks", roleTasks.length],
+                ["all", "All Tasks", dateFilteredTasks.length],
                 ["pickup", "To Pick-up", employeePickup],
                 ["delivery", "To Drop-off", employeeDelivery],
               ] as const).map(([value, label, count]) => (

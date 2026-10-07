@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { finalizeDeliveredBaggage } from "@/lib/delivery-cleanup";
 import { trackingResetForStatus } from "@/lib/logistics-workflow";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -583,13 +584,11 @@ export async function POST(req: Request) {
       // A booking status applies to the whole transaction. Keep every active
       // physical tag in that transaction in sync so multi-bag bookings do not
       // show only the scanned bag as out for delivery (or delivered).
-      if (["IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED"].includes(status)) {
+      if (status === "DELIVERED") await finalizeDeliveredBaggage(tx, booking.id);
+      if (["IN_STORAGE", "OUT_FOR_DELIVERY"].includes(status)) {
         await tx.luggageItem.updateMany({
           where: { bookingId: booking.id, status: { notIn: ["CANCELLED"] } },
-          data: {
-            status,
-            ...(status === "DELIVERED" ? { checkOutAt: new Date() } : {}),
-          },
+          data: { status },
         });
       }
 

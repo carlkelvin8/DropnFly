@@ -80,7 +80,11 @@ export function resolveTaskAssignment<T extends TaskAssignmentLike>(
   const activePhase = taskType === "delivery" ? "DROPOFF" : "PICKUP";
   const active = assignments.find((a) => a.phase === activePhase) || null;
   if (viewerIsOperator || active?.userId === viewerId) return { assignment: active, taskType, isUpcoming: false };
-  const upcoming = assignments.find((a) => a.userId === viewerId && a.phase !== activePhase) || null;
+  // Only a LATER phase is upcoming. An earlier phase the viewer already finished (e.g. their
+  // pick-up while the booking is now in delivery) is history, not a task to show.
+  const upcoming = activePhase === "PICKUP"
+    ? assignments.find((a) => a.userId === viewerId && a.phase === "DROPOFF") || null
+    : null;
   if (!upcoming) return { assignment: active, taskType, isUpcoming: false };
   return { assignment: upcoming, taskType: upcoming.phase === "DROPOFF" ? "delivery" : "pickup", isUpcoming: true };
 }
