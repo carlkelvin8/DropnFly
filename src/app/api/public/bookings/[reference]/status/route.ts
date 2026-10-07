@@ -12,6 +12,8 @@ export async function GET(
 
   const booking = await prisma.booking.findUnique({
     where: { referenceNumber: normalizeReference(reference) },
+    // The tracker polls this every few seconds and never reads these large base64 fields.
+    omit: { qrCode: true, luggagePhotos: true },
     include: { customer: { select: { name: true, email: true } } },
   });
 
