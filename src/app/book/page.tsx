@@ -67,7 +67,6 @@ export default function BookPage() {
   const [pickupMaxConcurrent, setPickupMaxConcurrent] = useState(1);
   const [pickupTerminal, setPickupTerminal] = useState("");
   const [pickupAirline, setPickupAirline] = useState("");
-  const [pickupPin, setPickupPin] = useState<{ lat: number; lng: number; accuracy: number | null } | null>(null);
   const [deliveryDate, setDeliveryDate] = useState("");
   const [deliverySlot, setDeliverySlot] = useState("");
   const [deliverySlots, setDeliverySlots] = useState<TimeSlot[]>([]);
@@ -287,8 +286,6 @@ export default function BookPage() {
       countryOfOrigin: selectedCountry || undefined,
       cityOfOrigin: selectedCity || undefined,
       pickupLocation: getPickupLocationText(),
-      pickupLat: pickupPin?.lat,
-      pickupLng: pickupPin?.lng,
       dropOffLocation: getDropOffLocationText(),
       numberOfBags: String(numBags),
       luggageDetails: luggageDetailsPayload,
@@ -433,7 +430,6 @@ export default function BookPage() {
                   <PickupStep
                     pickupTerminal={pickupTerminal} setPickupTerminal={setPickupTerminal}
                     setPickupAirline={setPickupAirline} pickupAirline={pickupAirline}
-                    pickupPin={pickupPin} setPickupPin={setPickupPin}
                     pickupDate={pickupDate} setPickupDate={updatePickupDate}
                     setPickupSlotsLoading={setPickupSlotsLoading}
                     pickupSlots={pickupSlots} pickupSlotsLoading={pickupSlotsLoading}

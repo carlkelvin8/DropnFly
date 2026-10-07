@@ -6,7 +6,7 @@ import { nearestAvailableSlots } from "@/lib/fleet-capacity";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, ArrowLeft, ArrowRight, Building2, Clock, LocateFixed, Loader2, MapPin, Package, Plane } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Building2, Clock, MapPin, Package, Plane } from "lucide-react";
 import { AIRLINES, NAIA_TERMINALS, today } from "./constants";
 
 interface TimeSlot {
@@ -22,8 +22,6 @@ interface PickupStepProps {
   setPickupTerminal: (v: string) => void;
   setPickupAirline: (v: string) => void;
   pickupAirline: string;
-  pickupPin: { lat: number; lng: number; accuracy: number | null } | null;
-  setPickupPin: (pin: { lat: number; lng: number; accuracy: number | null } | null) => void;
   pickupDate: string;
   setPickupDate: (v: string) => void;
   setPickupSlotsLoading: (v: boolean) => void;
@@ -52,7 +50,6 @@ interface PickupStepProps {
 
 export function PickupStep({
   pickupTerminal, setPickupTerminal, setPickupAirline, pickupAirline,
-  pickupPin, setPickupPin,
   pickupDate, setPickupDate, setPickupSlotsLoading,
   pickupSlots, pickupSlotsLoading, pickupMaxConcurrent, pickupSlot, setPickupSlot,
   deliveryTerminal, setDeliveryTerminal, deliveryAirline, setDeliveryAirline,
@@ -61,32 +58,7 @@ export function PickupStep({
   storageDays, error, onNext, onPrev,
 }: PickupStepProps) {
   const [fullRequest, setFullRequest] = useState<{ type: "pickup" | "delivery"; date: string; time: string } | null>(null);
-  const [locating, setLocating] = useState(false);
-  const [locationError, setLocationError] = useState("");
 
-  function capturePickupPin() {
-    if (!navigator.geolocation) {
-      setLocationError("Location is not supported by this browser.");
-      return;
-    }
-    setLocating(true);
-    setLocationError("");
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (position.coords.accuracy > 100) {
-          setLocationError(`GPS accuracy is only ±${Math.round(position.coords.accuracy)}m. Move near an open area and try again.`);
-        } else {
-          setPickupPin({ lat: position.coords.latitude, lng: position.coords.longitude, accuracy: position.coords.accuracy });
-        }
-        setLocating(false);
-      },
-      (error) => {
-        setLocationError(error.code === error.PERMISSION_DENIED ? "Allow Location access, then try again." : "Could not get an accurate location. Please try again.");
-        setLocating(false);
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
-    );
-  }
   const alternatives = (type: "pickup" | "delivery", date: string, slots: TimeSlot[], select: (value: string) => void) => {
     if (!fullRequest || fullRequest.type !== type || fullRequest.date !== date) return null;
     const nearest = nearestAvailableSlots(slots, fullRequest.time);
@@ -118,7 +90,6 @@ export function PickupStep({
           onChange={(e) => {
             setPickupTerminal(e.target.value);
             setPickupAirline("");
-            setPickupPin(null);
           }}
           className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           required
@@ -147,23 +118,6 @@ export function PickupStep({
               <option key={a} value={a}>{a}</option>
             ))}
           </select>
-        </div>
-      )}
-
-      {pickupTerminal && (
-        <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/60 p-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-blue-950">Exact customer pickup pin</p>
-              <p className="text-xs text-blue-800">Use your current GPS position so the rider sees your actual meeting point instead of only the terminal fallback.</p>
-            </div>
-            <Button type="button" size="sm" variant="outline" onClick={capturePickupPin} disabled={locating} className="shrink-0 bg-white">
-              {locating ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <LocateFixed className="mr-1.5 h-4 w-4" />}
-              {pickupPin ? "Update exact pin" : "Use my location"}
-            </Button>
-          </div>
-          {pickupPin && <p className="mt-2 text-xs font-medium text-emerald-700">Exact pin saved for this booking · accuracy ±{Math.round(pickupPin.accuracy || 0)}m</p>}
-          {locationError && <p className="mt-2 text-xs font-medium text-red-600">{locationError}</p>}
         </div>
       )}
 
