@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logisticsTaskType } from "@/lib/logistics-workflow";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
@@ -85,7 +86,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     if (session.user.role === "EMPLOYEE") {
-      const activePhase = bookingCheck.status === "OUT_FOR_DELIVERY" ? "DROPOFF" : "PICKUP";
+      const activePhase = logisticsTaskType(bookingCheck.status) === "delivery" ? "DROPOFF" : "PICKUP";
       const assignedToActivePhase = bookingCheck.assignments.some((assignment) =>
         assignment.userId === session.user.id && assignment.phase === activePhase
       );

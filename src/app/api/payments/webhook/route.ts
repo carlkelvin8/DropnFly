@@ -56,20 +56,33 @@ export async function POST(req: Request) {
         if (!hasPaidWebhookState(payload.data.attributes)) {
           return NextResponse.json({ received: true });
         }
-        const updated = await prisma.payment.updateMany({
-          where: { id: payment.id, status: { in: ["PENDING", "FAILED"] } },
-          data: { status: "PAID", paidAt: payment.paidAt || new Date() },
-        });
-        // If another webhook already flipped to PAID, updated.count ===0 => idempotent
-        if (updated.count === 0) return NextResponse.json({ received: true });
-
-        const booking = await prisma.booking.findUnique({ where: { id: payment.bookingId } });
-        if (booking && booking.status === "PENDING") {
-          const confirmed = await prisma.booking.update({
-            where: { id: booking.id },
-            data: { status: "CONFIRMED", checkoutLockedUntil: null },
-            include: { customer: { select: { name: true, email: true } } },
+        // Payment -> PAID and booking -> CONFIRMED must commit together. If the booking
+        // update failed after the payment was marked PAID, a retried webhook would hit the
+        // idempotency guard above and leave the booking PENDING forever.
+        const result = await prisma.$transaction(async (tx) => {
+          const updated = await tx.payment.updateMany({
+            where: { id: payment.id, status: { in: ["PENDING", "FAILED"] } },
+            data: { status: "PAID", paidAt: payment.paidAt || new Date() },
           });
+          // If another webhook already flipped to PAID, updated.count === 0 => idempotent
+          if (updated.count === 0) return { skipped: true as const };
+
+          const booking = await tx.booking.findUnique({ where: { id: payment.bookingId } });
+          if (booking && booking.status === "PENDING") {
+            const confirmed = await tx.booking.update({
+              where: { id: booking.id },
+              data: { status: "CONFIRMED", checkoutLockedUntil: null },
+              include: { customer: { select: { name: true, email: true } } },
+            });
+            return { skipped: false as const, confirmed };
+          }
+          if (booking) await tx.booking.update({ where: { id: booking.id }, data: { checkoutLockedUntil: null } });
+          return { skipped: false as const, confirmed: null };
+        });
+        if (result.skipped) return NextResponse.json({ received: true });
+
+        const confirmed = result.confirmed;
+        if (confirmed) {
           try {
             await sendConfirmationEmail({
               to: confirmed.customer.email,
@@ -92,8 +105,6 @@ export async function POST(req: Request) {
           } catch (error) {
             console.error("Paid booking confirmation email failed:", error);
           }
-        } else if (booking) {
-          await prisma.booking.update({ where: { id: booking.id }, data: { checkoutLockedUntil: null } });
         }
       }
     } else if (eventType === "checkout_session.payment_failed") {
