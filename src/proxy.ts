@@ -5,7 +5,7 @@ import { getToken } from "next-auth/jwt";
 // API-level role enforcement is handled in the API routes (e.g., /api/employees, /api/settings).
 // Page-level role checks are done client-side via useSession in the dashboard layout.
 const protectedRoutes = ["/dashboard"];
-const publicRoutes = ["/", "/login", "/book", "/track", "/api/public", "/api/auth"];
+const publicRoutes = ["/", "/login", "/book", "/track", "/feedback", "/api/public", "/api/auth"];
 
 function matchesRoute(path: string, route: string): boolean {
   return path === route || (route !== "/" && path.startsWith(`${route}/`));

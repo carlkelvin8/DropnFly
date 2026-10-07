@@ -24,7 +24,7 @@ export const viewport: Viewport = {
 
 // Routes that must stay accessible while maintenance mode is active so
 // administrators can still sign in and turn maintenance off.
-const allowedWhenMaintenance = ["/login", "/api", "/_next", "/dashboard", "/track"];
+const allowedWhenMaintenance = ["/login", "/api", "/_next", "/dashboard", "/track", "/feedback", "/my-account/feedback"];
 
 function isPublicRoute(pathname: string): boolean {
   if (!pathname) return false;

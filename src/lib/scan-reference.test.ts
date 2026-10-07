@@ -8,6 +8,10 @@ test("QR references normalize from plain text and tracking URLs", () => {
     normalizeScannedReference("https://dropnfly.example/track/DNF-260910-76CZ4P?source=email#status"),
     "DNF-260910-76CZ4P",
   );
+  assert.equal(
+    normalizeScannedReference("https://dropn-fly.vercel.app/feedback?reference=DNF-261007-ABC123"),
+    "DNF-261007-ABC123",
+  );
 });
 
 test("legacy QR references with a duplicated prefix are accepted", () => {

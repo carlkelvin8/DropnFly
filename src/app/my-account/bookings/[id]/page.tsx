@@ -841,7 +841,7 @@ export default function CustomerBookingDetailPage() {
           </Button>
           {booking.status === "DELIVERED" && !review && (
             <Button variant="outline" className="flex-1" asChild>
-              <Link href={`/my-account/feedback/${booking.id}`}>
+              <Link href={`/feedback?reference=${encodeURIComponent(booking.referenceNumber)}`}>
                 <Star className="mr-2 h-4 w-4" /> Write Feedback
               </Link>
             </Button>

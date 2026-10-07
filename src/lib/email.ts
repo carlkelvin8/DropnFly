@@ -548,13 +548,11 @@ export async function sendFeedbackInvitationEmail({
   customerName,
   referenceNumber,
   completionDate,
-  bookingId,
 }: {
   to: string;
   customerName: string;
   referenceNumber: string;
   completionDate: string;
-  bookingId: string;
 }) {
   const config = await getEmailConfig();
   if (!config.enabled) {
@@ -563,8 +561,11 @@ export async function sendFeedbackInvitationEmail({
     }
     return false;
   }
-  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
-  const feedbackUrl = `${baseUrl}/my-account/feedback/${encodeURIComponent(bookingId)}`;
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const feedbackUrl = `${baseUrl}/feedback?reference=${encodeURIComponent(referenceNumber)}`;
+  const QRCode = (await import("qrcode")).default;
+  const feedbackQrDataUrl = await QRCode.toDataURL(feedbackUrl, { width: 300, margin: 2 });
+  const feedbackQrBase64 = feedbackQrDataUrl.replace(/^data:image\/png;base64,/, "");
   const safeName = sanitizeHtml(customerName);
   const safeRef = sanitizeHtml(referenceNumber);
   const safeDate = sanitizeHtml(completionDate);
@@ -592,11 +593,16 @@ export async function sendFeedbackInvitationEmail({
              style="display: inline-block; background: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px;">
             Write Feedback
           </a>
-          <p style="margin: 12px 0 0; font-size: 12px; color: #6b7280;">Secure link — requires login. One review per transaction.</p>
+          <p style="margin: 12px 0 0; font-size: 12px; color: #6b7280;">No login required. Enter your transaction number and booking email. One review per transaction.</p>
           <p style="margin: 8px 0 0; font-size: 11px; color: #9ca3af; word-break: break-all;">${feedbackUrl}</p>
         </div>
 
-        <p style="font-size: 13px; color: #6b7280;">If the button doesn't work, copy and paste the link into your browser while logged into your DropnFly account.</p>
+        <div style="text-align: center; margin: 20px 0;">
+          <p style="font-size: 13px; color: #6b7280; margin-bottom: 10px;">Or scan this QR code to open the feedback page:</p>
+          <img src="cid:feedback-qr" alt="Feedback QR Code" style="width: 180px; height: 180px;" />
+        </div>
+
+        <p style="font-size: 13px; color: #6b7280;">If the button doesn't work, copy and paste the link into your browser. For security, the form verifies the transaction number against the booking email.</p>
 
         <hr style="border: none; border-top: 1px solid #d1d5db; margin: 24px 0;" />
         <p style="color: #9ca3af; font-size: 12px; text-align: center;">
@@ -611,6 +617,11 @@ export async function sendFeedbackInvitationEmail({
     to,
     subject: `How was your DropnFly experience? - ${referenceNumber}`,
     html,
+    attachments: [{
+      filename: `${referenceNumber}-feedback-qr.png`,
+      content: Buffer.from(feedbackQrBase64, "base64"),
+      cid: "feedback-qr",
+    }],
   });
   return true;
 }

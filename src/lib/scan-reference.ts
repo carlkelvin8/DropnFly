@@ -1,4 +1,15 @@
 export function normalizeScannedReference(raw: string): string {
+  const value = raw.trim();
+  try {
+    const parsed = new URL(value, "https://dropnfly.local");
+    const queryReference = parsed.searchParams.get("reference") || parsed.searchParams.get("ref");
+    if (queryReference) return normalizePlainReference(queryReference);
+  } catch { /* fall through to plain text/path parsing */ }
+
+  return normalizePlainReference(value);
+}
+
+function normalizePlainReference(raw: string): string {
   const withoutQuery = raw.split("?")[0].split("#")[0];
   const lastPathSegment = withoutQuery.includes("/")
     ? withoutQuery.split("/").filter(Boolean).pop() || ""

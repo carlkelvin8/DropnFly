@@ -83,7 +83,6 @@ export async function trySendFeedbackInvitation(booking: {
           customerName: fresh.customer.name,
           referenceNumber: fresh.referenceNumber,
           completionDate: formattedDate,
-          bookingId: fresh.id,
         });
       } catch (error) {
         lastError = error;
@@ -101,7 +100,7 @@ export async function trySendFeedbackInvitation(booking: {
   }
 
   try {
-    const link = `/my-account/feedback/${fresh.id}`;
+    const link = `/feedback?reference=${encodeURIComponent(fresh.referenceNumber)}`;
     const existingInvite = await prisma.customerNotification.findFirst({
       where: { customerId: fresh.customerId, type: "feedback_invite", link },
       select: { id: true },
