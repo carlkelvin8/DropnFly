@@ -105,7 +105,9 @@ export async function POST(
           where: {
             id: { not: id },
             pickupStartedAt: { not: null },
-            status: { in: ["CONFIRMED", "RECEIVED", "OUT_FOR_DELIVERY"] },
+            // Only a task whose active phase matches this one can block it. A pickup
+            // that someone else started must not stop a drop-off employee.
+            status: { in: phase === "DROPOFF" ? ["OUT_FOR_DELIVERY"] : ["CONFIRMED", "RECEIVED"] },
             assignments: { some: { userId: session.user.id, phase } },
           },
           select: { referenceNumber: true },

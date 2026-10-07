@@ -46,6 +46,7 @@ interface Task {
   taskType: string;
   rider: { id: string; name: string; profilePic: string | null; vehicleType: string | null; plateNumber: string | null } | null;
   isAssignedToMe: boolean;
+  isUpcoming?: boolean;
   createdAt: string;
   checkIn: string;
   checkOut: string | null;
@@ -372,7 +373,7 @@ export default function LogisticsPage() {
                               <p className="text-[11px] text-muted-foreground">Assigned task · {formatDate(task.createdAt)}</p>
                             </div>
                             <Badge variant="outline" className="ml-auto text-[10px] capitalize sm:ml-2">
-                              {isStarted ? "In Progress" : "Pending"}
+                              {task.isUpcoming ? "Upcoming" : isStarted ? "In Progress" : "Pending"}
                             </Badge>
                             <Badge className={`text-[10px] ${task.taskType === "delivery" ? "bg-violet-100 text-violet-700" : "bg-blue-100 text-blue-700"}`}>
                               {task.taskType === "delivery" ? "TO DROP-OFF" : "TO PICK-UP"}
@@ -412,9 +413,9 @@ export default function LogisticsPage() {
                                   <Activity className="mr-1 h-3.5 w-3.5" /> Tracking Active
                                 </Button>
                               )}
-                              <Button size="sm" onClick={() => openTaskActions(task.id)}>
+                              {task.availableActions.length > 0 && <Button size="sm" onClick={() => openTaskActions(task.id)}>
                                 <CheckCircle className="mr-1 h-3.5 w-3.5" /> {task.availableActions[0] ? LOGISTICS_ACTION_META[task.availableActions[0]].label : "Update Task"}
-                              </Button>
+                              </Button>}
                             </>
                           )}
                           <Button size="sm" variant="outline" asChild>

@@ -78,7 +78,7 @@ export async function PATCH(req: Request) {
     if (action === "cancel") {
       const result = await prisma.booking.updateMany({
         where: { id: { in: cappedIds }, status: { in: ["PENDING", "CONFIRMED", "RECEIVED"] } },
-        data: { status: "CANCELLED" },
+        data: { status: "CANCELLED", pickupStartedAt: null, deliveryArrivedAt: null },
       });
 
       await logActivity({
