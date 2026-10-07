@@ -1,5 +1,6 @@
 "use client";
 
+import { requestErrorMessage } from "@/lib/client-errors";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -185,13 +186,13 @@ export default function QrScannerPage() {
         ? { batchStore: true, referenceNumber: queueBooking.referenceNumber, photo: queuePhoto, note: `Batch storage intake from queue` }
         : { referenceNumber: queueBooking.referenceNumber, status: queueStatus, photo: queuePhoto, note: `Queue update to ${queueStatus}` };
       const res = await fetch("/api/qr/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Update failed");
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || (res.status === 413 ? "Photo too large. Retake a smaller photo." : "Update failed"));
       toast.success(queueStatus === "IN_STORAGE"
         ? `Stored ${json.storedCount || "?"} luggage item(s) — booking now in storage`
         : `Booking updated to ${queueStatus.replace(/_/g, " ")}`);
       setQueueBooking(null); setQueuePhoto(null); setQueueStatus(""); loadIntakeQueue();
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Update failed"); }
+    } catch (e) { toast.error(requestErrorMessage(e, "Update failed")); }
     finally { setIntakeProcessing(false); }
   }
 
@@ -306,8 +307,8 @@ export default function QrScannerPage() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Scan failed");
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || (res.status === 413 ? "Photo too large. Retake a smaller photo." : "Scan failed"));
       }
 
       const statusLabel = STATUS_FLOW.find((s) => s.value === selectedStatus)?.label;
@@ -329,8 +330,7 @@ export default function QrScannerPage() {
       setCustomerScanMode(false);
       setCustomerManualRef("");
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Failed to process scan";
-      toast.error(message);
+      toast.error(requestErrorMessage(e, "Failed to process scan"));
     }
     setProcessing(false);
   }
@@ -401,8 +401,8 @@ export default function QrScannerPage() {
           photo,
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Update failed");
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || (res.status === 413 ? "Photo too large. Retake a smaller photo." : "Update failed"));
       const targetLabel = LUGGAGE_FLOW.find((s) => s.value === target)?.label || target;
       toast.success(`✅ Luggage ${intakeResult.luggage.tagNumber} — ${targetLabel}`);
       setIntakeResult(null);
@@ -412,7 +412,7 @@ export default function QrScannerPage() {
       setPhoto(null);
       loadIntakeQueue();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Update failed");
+      toast.error(requestErrorMessage(e, "Update failed"));
     } finally {
       setIntakeProcessing(false);
     }

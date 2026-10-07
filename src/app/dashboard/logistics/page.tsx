@@ -1,5 +1,6 @@
 "use client";
 
+import { requestErrorMessage } from "@/lib/client-errors";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -203,11 +204,34 @@ export default function LogisticsPage() {
         }
       }
 
-      const res = await fetch(`/api/logistics/tasks/${taskId}/action`, {
+      // Mobile connections drop mid-upload (iOS shows "Load failed"). Retry automatically; if the
+      // first attempt actually reached the server, the retry gets 409 and we treat it as saved.
+      const send = () => fetch(`/api/logistics/tasks/${taskId}/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      let res: Response | null = null;
+      let retried = false;
+      for (let attempt = 1; attempt <= 3 && !res; attempt++) {
+        try {
+          res = await send();
+        } catch (networkError) {
+          if (attempt === 3) throw networkError;
+          retried = true;
+          await new Promise((resolve) => window.setTimeout(resolve, 1500 * attempt));
+        }
+      }
+      if (!res) throw new TypeError("Load failed");
+      if (retried && res.status === 409) {
+        void refreshTasks();
+        toast.success(`${LOGISTICS_ACTION_META[action as LogisticsAction]?.label ?? "Task"} — update saved`);
+        setActiveTask(null);
+        setActiveAction(null);
+        setPhotoProof(null);
+        setActionNote("");
+        return;
+      }
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
         if (res.status === 409) {
@@ -239,12 +263,8 @@ export default function LogisticsPage() {
       setActionNote("");
       void refreshTasks();
     } catch (error) {
-      // Browsers report a dropped connection as a bare TypeError ("Load failed" on iOS Safari,
-      // "Failed to fetch" elsewhere). Say what happened; the photo and note are kept for a retry.
-      const networkFailure = error instanceof TypeError || (error instanceof Error && /load failed|failed to fetch|network/i.test(error.message));
-      toast.error(networkFailure
-        ? "Connection problem — your update was not saved. Check your signal and tap Confirm Update again."
-        : error instanceof Error ? error.message : "Failed to process action");
+      // The photo and note are kept so the employee can simply tap Confirm Update again.
+      toast.error(requestErrorMessage(error, "Failed to process action"));
     } finally {
       setProcessingAction(false);
     }
