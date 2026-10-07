@@ -1,6 +1,6 @@
 import { MAX_INCIDENT_PHOTO_LENGTH } from "./incident-photo";
 
-export async function imageFileToDataUrl(file: File, maxDimension = 1600, quality = 0.82): Promise<string> {
+export async function imageFileToDataUrl(file: File, maxDimension = 1280, quality = 0.72): Promise<string> {
   if (!file.type.startsWith("image/")) throw new Error("Please choose an image file");
   let source: ImageBitmap | HTMLImageElement | null = null;
   if (typeof createImageBitmap === "function") {

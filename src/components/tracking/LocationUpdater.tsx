@@ -52,11 +52,11 @@ export function LocationUpdater({ enabled, bookingId, onStatusChange }: Location
 
       const now = Date.now();
       const last = lastSentRef.current;
-      // throttle: require either 10s elapsed or 10m moved
+      // throttle: require either 5s elapsed or 10m moved, so the customer map is at most a few seconds behind
       if (last) {
         const dt = now - last.time;
         const dist = haversine(last.lat, last.lng, position.coords.latitude, position.coords.longitude);
-        if (dt < 10000 && dist < 10) return;
+        if (dt < 5000 && dist < 10) return;
       }
 
       // backoff after 429: skip until interval elapsed

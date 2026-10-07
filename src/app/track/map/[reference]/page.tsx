@@ -129,22 +129,53 @@ export default function LiveTrackingPage() {
     return () => { cancelled = true; };
   }, [params.reference]);
 
-  const hasStarted = Boolean(booking?.pickupStartedAt);
+  const hasStarted = Boolean(booking?.pickupStartedAt) || Boolean(rider);
+
+  // The rider is only revealed once the employee taps Start, which can happen after the customer
+  // already opened this page. Keep checking, otherwise live tracking would never begin (or end)
+  // until the customer reloads.
+  useEffect(() => {
+    if (!booking) return;
+    let active = true;
+    const check = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await fetch(`/api/public/bookings/${encodeURIComponent(String(params.reference))}/rider`, { cache: "no-store" });
+        if (!res.ok || !active) return;
+        const j = await res.json();
+        const next: Rider | null = j.rider || null;
+        setRider((prev) => {
+          if (!next) return prev === null ? prev : null;
+          // Keep the same object when nothing visible changed so dependent effects do not restart.
+          return prev && prev.id === next.id && prev.vehicleType === next.vehicleType && prev.plateNumber === next.plateNumber && prev.vehicleColor === next.vehicleColor ? prev : next;
+        });
+        if (!next) setEmployeeLoc(null);
+      } catch {}
+    };
+    const interval = setInterval(check, 5000);
+    return () => { active = false; clearInterval(interval); };
+  }, [booking, params.reference]);
 
   // Poll the rider's live location only after the employee started the leg.
   useEffect(() => {
     if (!hasStarted || !rider?.id) return;
-    const interval = setInterval(async () => {
+    let active = true;
+    const poll = async () => {
+      if (document.visibilityState !== "visible") return;
       try {
-        const res = await fetch(`/api/tracking/location/${rider.id}?reference=${encodeURIComponent(String(params.reference))}`);
-        if (!res.ok) return;
+        const res = await fetch(`/api/tracking/location/${rider.id}?reference=${encodeURIComponent(String(params.reference))}`, { cache: "no-store" });
+        if (!res.ok || !active) return;
         const loc = await res.json();
         if (loc.currentLat != null && loc.currentLng != null) {
           setEmployeeLoc({ lat: loc.currentLat, lng: loc.currentLng });
         }
       } catch {}
-    }, 5000);
-    return () => clearInterval(interval);
+    };
+    void poll();
+    const interval = setInterval(poll, 4000);
+    const onVisible = () => { if (document.visibilityState === "visible") void poll(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { active = false; clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
   }, [hasStarted, rider?.id, params.reference]);
 
   useEffect(() => {

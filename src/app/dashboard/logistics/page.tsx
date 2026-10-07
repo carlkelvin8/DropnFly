@@ -239,7 +239,12 @@ export default function LogisticsPage() {
       setActionNote("");
       void refreshTasks();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to process action");
+      // Browsers report a dropped connection as a bare TypeError ("Load failed" on iOS Safari,
+      // "Failed to fetch" elsewhere). Say what happened; the photo and note are kept for a retry.
+      const networkFailure = error instanceof TypeError || (error instanceof Error && /load failed|failed to fetch|network/i.test(error.message));
+      toast.error(networkFailure
+        ? "Connection problem — your update was not saved. Check your signal and tap Confirm Update again."
+        : error instanceof Error ? error.message : "Failed to process action");
     } finally {
       setProcessingAction(false);
     }
