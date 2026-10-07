@@ -438,7 +438,9 @@ export async function POST(req: Request) {
       const isPickupRider = pickupAssignments.some((a) => a.userId === session.user.id);
 
       if (["OUT_FOR_DELIVERY", "DELIVERED"].includes(status)) {
-        if (dropoffAssignments.length > 0 && !isDropoffRider) {
+        // Without an assigned drop-off employee nobody on the employee side may hand over
+        // the luggage; a pickup employee must not complete the delivery by default.
+        if (!isDropoffRider) {
           return NextResponse.json(
             { error: "Only the assigned drop-off employee can update this booking." },
             { status: 403 }
