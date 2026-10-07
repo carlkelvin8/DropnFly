@@ -5,6 +5,8 @@ import { notifyBookingCancelled } from "@/lib/notifications";
 import { decimalsToNumbers } from "@/lib/serialize";
 import { getSystemSettings, setting } from "@/lib/settings";
 
+class AlreadyChangedError extends Error {}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -88,47 +90,58 @@ export async function PATCH(
       );
     }
 
-    const paidPayments = await prisma.payment.findMany({
-      where: { bookingId: id, status: "PAID", refundedAt: null },
-    });
+    let refundedCount = 0;
+    try {
+      refundedCount = await prisma.$transaction(async (tx) => {
+        // Claim the cancellation first. A second concurrent request finds nothing to
+        // claim, so refunds can never be created twice.
+        const claimed = await tx.booking.updateMany({
+          where: { id, status: { in: ["PENDING", "CONFIRMED"] } },
+          // Also stop any live tracking the assigned employee may already have started.
+          data: { status: "CANCELLED", pickupStartedAt: null, deliveryArrivedAt: null },
+        });
+        if (claimed.count === 0) throw new AlreadyChangedError();
 
-    await prisma.$transaction([
-      prisma.booking.update({
-        where: { id },
-        data: { status: "CANCELLED" },
-      }),
-      prisma.scanEvent.create({
-        data: {
-          bookingId: id,
-          status: "CANCELLED",
-          note: "Cancelled by the customer through My Account",
-        },
-      }),
-      prisma.payment.updateMany({
-        where: { bookingId: id, status: "PENDING" },
-        data: { status: "FAILED" },
-      }),
-      ...paidPayments.map((p) =>
-        prisma.payment.update({
-          where: { id: p.id },
-          data: { status: "REFUNDED", refundedAt: new Date() },
-        })
-      ),
-      ...paidPayments.map((p) =>
-        prisma.payment.create({
+        const paidPayments = await tx.payment.findMany({
+          where: { bookingId: id, status: "PAID", refundedAt: null },
+        });
+        await tx.scanEvent.create({
           data: {
             bookingId: id,
-            customerId: booking.customerId,
-            amount: -Math.abs(Number(p.amount)),
-            method: p.method,
-            status: "REFUNDED",
-            reference: `RFND-${booking.referenceNumber}-${Date.now().toString(36).toUpperCase()}`,
-            paidAt: new Date(),
-            refundedAt: new Date(),
+            status: "CANCELLED",
+            note: "Cancelled by the customer through My Account",
           },
-        })
-      ),
-    ]);
+        });
+        await tx.payment.updateMany({
+          where: { bookingId: id, status: "PENDING" },
+          data: { status: "FAILED" },
+        });
+        for (const [index, p] of paidPayments.entries()) {
+          await tx.payment.update({
+            where: { id: p.id },
+            data: { status: "REFUNDED", refundedAt: new Date() },
+          });
+          await tx.payment.create({
+            data: {
+              bookingId: id,
+              customerId: booking.customerId,
+              amount: -Math.abs(Number(p.amount)),
+              method: p.method,
+              status: "REFUNDED",
+              reference: `RFND-${booking.referenceNumber}-${Date.now().toString(36).toUpperCase()}-${index + 1}`,
+              paidAt: new Date(),
+              refundedAt: new Date(),
+            },
+          });
+        }
+        return paidPayments.length;
+      });
+    } catch (error) {
+      if (error instanceof AlreadyChangedError) {
+        return NextResponse.json({ error: "This booking was already updated. Please refresh." }, { status: 409 });
+      }
+      throw error;
+    }
 
     const staff = await prisma.user.findMany({
       where: { role: { in: ["ADMIN", "STAFF"] }, isActive: true },
@@ -138,7 +151,7 @@ export async function PATCH(
 
     return NextResponse.json({
       success: true,
-      message: paidPayments.length > 0 ? "Booking cancelled and payment refunded" : "Booking cancelled",
+      message: refundedCount > 0 ? "Booking cancelled and payment refunded" : "Booking cancelled",
     });
   }
 
