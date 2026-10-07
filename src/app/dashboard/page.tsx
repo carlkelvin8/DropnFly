@@ -168,11 +168,35 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.capacityUsage.percent}%</div>
-            <p className="text-xs text-muted-foreground">{data.capacityUsage.used} of {data.capacityUsage.total} slots used</p>
-            <div className="mt-3 h-2 w-full rounded-full bg-muted">
-              <div className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all" style={{ width: `${data.capacityUsage.percent}%` }} />
-            </div>
+            {(() => {
+              const { used, total } = data.capacityUsage;
+              if (total <= 0) {
+                return (
+                  <>
+                    <div className="text-2xl font-bold">No limit</div>
+                    <p className="text-xs text-muted-foreground">{used} bag{used === 1 ? "" : "s"} in storage</p>
+                  </>
+                );
+              }
+              // Usage can exceed the configured capacity; keep the figures and bar inside 0-100%.
+              const usedPercent = Math.min(100, Math.max(0, Math.round((used / total) * 100)));
+              const available = Math.max(0, total - used);
+              const full = used >= total;
+              return (
+                <>
+                  <div className="text-2xl font-bold">{100 - usedPercent}%</div>
+                  <p className="text-xs text-muted-foreground">
+                    {available} of {total} bags available{used > total ? ` (${used - total} over capacity)` : ""}
+                  </p>
+                  <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`h-2 rounded-full transition-all ${full ? "bg-red-500" : "bg-gradient-to-r from-cyan-400 to-blue-500"}`}
+                      style={{ width: `${usedPercent}%` }}
+                    />
+                  </div>
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
 

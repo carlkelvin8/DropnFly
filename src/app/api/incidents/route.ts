@@ -94,6 +94,14 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Only the assigned employee can report this task" }, { status: 403 });
       }
     }
+    // One open no-show/cancellation report per booking; a second tap must not alert every admin again.
+    const openReport = await prisma.incidentReport.findFirst({
+      where: { bookingId, type: { in: REPORT_TYPES }, status: { in: ["PENDING", "INVESTIGATING"] } },
+      select: { id: true },
+    });
+    if (openReport) {
+      return NextResponse.json({ error: "A report for this booking is already waiting for admin review" }, { status: 409 });
+    }
     const customerExists = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
     if (!customerExists) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
 

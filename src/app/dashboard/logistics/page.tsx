@@ -343,24 +343,33 @@ export default function LogisticsPage() {
           </div>
 
           <div className="p-4 sm:p-6">
-            <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter tasks by date">
-              {TASK_DATE_FILTERS.map(({ value, label }) => {
-                const count = roleTasks.filter((task) => matchesTaskDateFilter(taskDay(task), value, todayManila)).length;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setEmployeeDateFilter(value)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                      employeeDateFilter === value
-                        ? "border-sky-600 bg-sky-600 text-white"
-                        : "bg-background text-muted-foreground hover:border-sky-300 hover:text-foreground"
-                    }`}
-                  >
-                    {label} <span className="ml-1 opacity-80">{count}</span>
-                  </button>
-                );
-              })}
+            <div className="mb-3 grid gap-2 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                When
+                <select
+                  value={employeeDateFilter}
+                  onChange={(e) => setEmployeeDateFilter(e.target.value as TaskDateFilter)}
+                  className="h-10 rounded-lg border bg-background px-3 text-sm font-normal normal-case text-foreground"
+                >
+                  {TASK_DATE_FILTERS.map(({ value, label }) => (
+                    <option key={value} value={value}>
+                      {label === "Today" ? "Task Today" : label === "View All" ? "View All Tasking" : label} ({roleTasks.filter((task) => matchesTaskDateFilter(taskDay(task), value, todayManila)).length})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase text-muted-foreground">
+                Type
+                <select
+                  value={employeeTaskFilter}
+                  onChange={(e) => setEmployeeTaskFilter(e.target.value as "all" | "pickup" | "delivery")}
+                  className="h-10 rounded-lg border bg-background px-3 text-sm font-normal normal-case text-foreground"
+                >
+                  <option value="all">All Tasks ({dateFilteredTasks.length})</option>
+                  <option value="pickup">To Pick-up ({employeePickup})</option>
+                  <option value="delivery">To Drop-off ({employeeDelivery})</option>
+                </select>
+              </label>
             </div>
             {earlierOpenTasks > 0 && (
               <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -368,27 +377,6 @@ export default function LogisticsPage() {
                 <button type="button" className="font-semibold underline" onClick={() => setEmployeeDateFilter("all")}>View All</button> to see {earlierOpenTasks === 1 ? "it" : "them"}.
               </p>
             )}
-
-            <div className="mb-4 flex flex-wrap gap-2">
-              {([
-                ["all", "All Tasks", dateFilteredTasks.length],
-                ["pickup", "To Pick-up", employeePickup],
-                ["delivery", "To Drop-off", employeeDelivery],
-              ] as const).map(([value, label, count]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setEmployeeTaskFilter(value)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    employeeTaskFilter === value
-                      ? "border-orange-500 bg-orange-500 text-white"
-                      : "bg-background text-muted-foreground hover:border-orange-300 hover:text-foreground"
-                  }`}
-                >
-                  {label} <span className="ml-1 opacity-80">{count}</span>
-                </button>
-              ))}
-            </div>
 
             {locationStatus !== "idle" && (
               <div className={`mb-4 rounded-xl border px-4 py-3 text-xs ${locationStatus === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : locationStatus === "requesting" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>

@@ -44,6 +44,18 @@ export async function sendNotification({
   link,
   sendEmail = false,
 }: SendNotificationParams) {
+  // The same event can be triggered twice (double tap, retry). Skip an identical notification
+  // sent to the same user moments ago so the recipient is not alerted repeatedly.
+  try {
+    const duplicate = await prisma.notification.findFirst({
+      where: { userId, type, title, message: message ?? null, createdAt: { gte: new Date(Date.now() - 60_000) } },
+      select: { id: true },
+    });
+    if (duplicate) return;
+  } catch (e) {
+    console.warn("Notification duplicate check failed:", e);
+  }
+
   try {
     await prisma.notification.create({
       data: { userId, type, title, message, link },
@@ -176,7 +188,6 @@ export async function notifyNoShowReported(adminUserIds: string[], bookingRef: s
       title: "No-Show Report Pending Review",
       message: `${reporterName} reported booking ${bookingRef} as no-show/cancelled. Awaiting admin decision.`,
       link: `/dashboard/incidents`,
-      sendEmail: true,
     });
   }
 }
@@ -188,7 +199,6 @@ export async function notifyNoShowDecision(reporterUserId: string, bookingRef: s
     title: `No-Show Report ${decision === "accept" ? "Accepted" : "Dismissed"}`,
     message: `Admin ${decision === "accept" ? "accepted" : "dismissed"} your no-show report for booking ${bookingRef}.`,
     link: `/dashboard/bookings`,
-    sendEmail: true,
   });
 }
 
