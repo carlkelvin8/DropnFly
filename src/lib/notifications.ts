@@ -126,7 +126,7 @@ export async function notifyTaskAssigned(userId: string, bookingRef: string) {
     type: "task_assigned",
     title: "New Task Assigned",
     message: `You have been assigned to booking ${bookingRef}`,
-    link: `/dashboard/my`,
+    link: `/dashboard/logistics`,
     sendEmail: true,
   });
 }
@@ -137,7 +137,7 @@ export async function notifyPickupStarted(userId: string, bookingRef: string) {
     type: "pickup_started",
     title: "Pickup Started",
     message: `Pickup for booking ${bookingRef} has started. Your live location is now shared with the customer for tracking.`,
-    link: `/dashboard/my`,
+    link: `/dashboard/logistics`,
     sendEmail: true,
   });
 }

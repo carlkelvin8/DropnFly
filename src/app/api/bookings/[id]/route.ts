@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { trackingResetForStatus } from "@/lib/logistics-workflow";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
@@ -197,7 +198,8 @@ export async function PUT(
         ...(data.checkOut && (data.checkOut as Date).getTime() !== existingBooking.checkOut?.getTime() ? [data.checkOut as Date] : []),
       ];
       if (changedDates.length) await assertScheduleCapacity(tx, changedDates, id);
-      const updated = await tx.booking.update({ where: { id }, data: data as { status?: BookingStatus; [key: string]: unknown } });
+      const trackingReset = body.status && body.status !== existingBooking.status ? trackingResetForStatus(body.status) : {};
+      const updated = await tx.booking.update({ where: { id }, data: { ...data, ...trackingReset } as { status?: BookingStatus; [key: string]: unknown } });
 
       // A manual status transition represents the whole transaction, so keep
       // every physical baggage item in the same phase as the booking. This

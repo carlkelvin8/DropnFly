@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { trackingResetForStatus } from "@/lib/logistics-workflow";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
@@ -165,7 +166,7 @@ async function handleLuggageIntake({
     updatedBooking = await prisma.$transaction(async (tx) => {
       const updated = await tx.booking.update({
         where: { id: booking.id },
-        data: { status: bookingStatus },
+        data: { status: bookingStatus, ...trackingResetForStatus(bookingStatus) },
       });
       if (target === "OUT_FOR_DELIVERY") {
         await tx.luggageItem.updateMany({
@@ -299,7 +300,7 @@ async function handleBatchLuggageStore({
     }
     await tx.booking.update({
       where: { id: booking.id },
-      data: { status: "IN_STORAGE" },
+      data: { status: "IN_STORAGE", ...trackingResetForStatus("IN_STORAGE") },
     });
     await tx.scanEvent.createMany({
       data: unstoredItems.map((item) => ({

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { availableLogisticsActions, logisticsTaskType } from "@/lib/logistics-workflow";
+import { availableLogisticsActions, resolveTaskAssignment } from "@/lib/logistics-workflow";
 import { parseLuggageDetails } from "@/lib/pricing";
 
 export async function GET() {
@@ -101,22 +101,22 @@ export async function GET() {
   ));
 
   const mapped = bookings.map((b: any) => {
-    const taskType = logisticsTaskType(b.status);
-    const activePhase = taskType === "delivery" ? "DROPOFF" : "PICKUP";
     const services = parseLuggageDetails(b.luggageDetails || "").services;
-    const requiredService = activePhase === "PICKUP" ? "Pick-up from Customer" : "Deliver to Customer";
     const validAssignments = (b.assignments as any[]).filter((assignment: any) =>
       (assignment.phase === "PICKUP" && services.includes("Pick-up from Customer")) ||
       (assignment.phase === "DROPOFF" && services.includes("Deliver to Customer"))
     );
-    const activeAssignment = validAssignments.find((assignment: any) => assignment.phase === activePhase) || null;
+    const { assignment: shownAssignment, taskType: shownTaskType, isUpcoming } = resolveTaskAssignment(
+      validAssignments, b.status, session.user.id, isAdmin || isStaff
+    );
     // Reflect only a registered fleet vehicle. Legacy employee profile vehicle
     // fields are intentionally ignored for assignment and logistics display.
-    const rider = activeAssignment
+    const rider = shownAssignment
       ? {
-          ...activeAssignment.user,
-          vehicleType: activeAssignment.vehicleType || null,
-          plateNumber: activeAssignment.vehiclePlate || null,
+          ...shownAssignment.user,
+          id: shownAssignment.userId,
+          vehicleType: shownAssignment.vehicleType || null,
+          plateNumber: shownAssignment.vehiclePlate || null,
         }
       : null;
 
@@ -136,15 +136,17 @@ export async function GET() {
       dropOffLat: (b as unknown as { dropOffLat?: number | null }).dropOffLat ?? null,
       dropOffLng: (b as unknown as { dropOffLng?: number | null }).dropOffLng ?? null,
       status: b.status,
-      taskType,
+      taskType: shownTaskType,
       rider,
-      isAssignedToMe: rider?.id === session.user.id && services.includes(requiredService),
+      isAssignedToMe: rider?.id === session.user.id,
+      isUpcoming,
       createdAt: b.createdAt,
       checkIn: b.checkIn,
       checkOut: b.checkOut,
-      pickupStartedAt: b.pickupStartedAt,
-      deliveryArrivedAt: b.deliveryArrivedAt,
-      availableActions: availableLogisticsActions(
+      // Upcoming (not yet active) tasks must not look started or trigger GPS publishing.
+      pickupStartedAt: isUpcoming || b.status === "IN_STORAGE" ? null : b.pickupStartedAt,
+      deliveryArrivedAt: isUpcoming ? null : b.deliveryArrivedAt,
+      availableActions: isUpcoming ? [] : availableLogisticsActions(
         b.status,
         Boolean(b.pickupStartedAt),
         Boolean(b.deliveryArrivedAt),
