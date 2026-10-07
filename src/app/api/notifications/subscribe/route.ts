@@ -17,7 +17,8 @@ export async function POST(req: Request) {
 
     await prisma.pushSubscription.upsert({
       where: { endpoint },
-      update: { p256dh, auth: authKey, userAgent: req.headers.get("user-agent") || null },
+      // A device endpoint belongs to whoever subscribed last; otherwise a previous user keeps receiving this device's pushes.
+      update: { userId: session.user.id, customerId: null, p256dh, auth: authKey, userAgent: req.headers.get("user-agent") || null },
       create: {
         userId: session.user.id,
         endpoint,
