@@ -89,6 +89,10 @@ export async function POST(
       );
     }
 
+    if ((action === "start-pickup" || action === "start-delivery") && session.user.role !== "EMPLOYEE") {
+      return NextResponse.json({ error: "Only the assigned employee can start tracking" }, { status: 403 });
+    }
+
     if (session.user.role === "EMPLOYEE") {
       const phase = action.includes("delivery") ? "DROPOFF" : "PICKUP";
       const assigned = booking.assignments.some((assignment) => assignment.userId === session.user.id && assignment.phase === phase);

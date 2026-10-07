@@ -45,6 +45,13 @@ export async function POST(
     }
 
     if (action === "start") {
+      // Live tracking may only be started by the employee assigned to this booking.
+      // Admin/staff or unassigned users must not flip a task to "started" for them.
+      const isAssignedEmployee = session.user.role === "EMPLOYEE" &&
+        booking.assignments.some((assignment) => assignment.user.id === session.user.id);
+      if (!isAssignedEmployee) {
+        return NextResponse.json({ error: "Only the assigned employee can start tracking" }, { status: 403 });
+      }
       if (booking.pickupStartedAt) {
         return NextResponse.json({ error: "Pickup has already been started" }, { status: 400 });
       }
