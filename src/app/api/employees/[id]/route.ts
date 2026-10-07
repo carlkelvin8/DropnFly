@@ -90,6 +90,21 @@ export async function PATCH(
       );
     }
 
+    if (body.role !== undefined && !["ADMIN", "STAFF", "EMPLOYEE"].includes(body.role)) {
+      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+    }
+    if (id === session.user.id && body.role !== undefined && body.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "You cannot change your own role. Ask another administrator." },
+        { status: 400 }
+      );
+    }
+    for (const flag of ["isActive", "isApproved"] as const) {
+      if (body[flag] !== undefined && typeof body[flag] !== "boolean") {
+        return NextResponse.json({ error: `${flag} must be true or false` }, { status: 400 });
+      }
+    }
+
     if (body.password && String(body.password).length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
     }

@@ -103,6 +103,8 @@ export default function LogisticsPage() {
   }, []);
 
   useEffect(() => {
+    // Rider locations are admin/staff only; employees would just get a 403.
+    if (userRole !== "ADMIN" && userRole !== "STAFF") return;
     fetch("/api/riders?includeLocation=true", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
@@ -111,7 +113,7 @@ export default function LogisticsPage() {
         if (emps.length > 0) setSelectedEmpId(emps[0].id);
       })
       .catch(() => {});
-  }, []);
+  }, [userRole]);
 
   useEffect(() => {
     fetch("/api/logistics/tasks").then(async (r) => {
