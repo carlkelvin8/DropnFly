@@ -314,7 +314,7 @@ export async function POST(req: Request) {
     let discount = 0;
     let promoCodeId: string | null = null;
 
-    if (promoCode && orderAmount > 0) {
+    if (typeof promoCode === "string" && promoCode && orderAmount > 0) {
       const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.toUpperCase() } });
       if (promo && promo.isActive && promo.usedCount < promo.maxUsage && (!promo.expiresAt || new Date() <= promo.expiresAt) && orderAmount >= Number(promo.minAmount)) {
         if (promo.type === "PERCENTAGE") {
