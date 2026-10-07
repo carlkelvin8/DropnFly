@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,20 +20,12 @@ interface SupportChatListItem {
 }
 
 export default function SupportChatListPage() {
-  const { data: session, status: sessionStatus } = useSession();
-  const router = useRouter();
-  const allowed = session?.user?.role === "ADMIN" || session?.user?.role === "STAFF";
   const [chats, setChats] = useState<SupportChatListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
-    if (sessionStatus === "authenticated" && !allowed) router.replace("/dashboard");
-  }, [sessionStatus, allowed, router]);
-
-  useEffect(() => {
-    if (sessionStatus === "loading" || !allowed) return;
     let active = true;
     const load = () =>
       fetch("/api/support-chats", { cache: "no-store" })
@@ -56,7 +46,7 @@ export default function SupportChatListPage() {
       active = false;
       window.clearInterval(poll);
     };
-  }, [sessionStatus, allowed]);
+  }, []);
 
   const filtered = chats.filter((c) => {
     const q = search.toLowerCase();
@@ -65,8 +55,6 @@ export default function SupportChatListPage() {
       c.customerName.toLowerCase().includes(q)
     );
   });
-
-  if (sessionStatus !== "loading" && !allowed) return null;
 
   return (
     <div className="space-y-6">
