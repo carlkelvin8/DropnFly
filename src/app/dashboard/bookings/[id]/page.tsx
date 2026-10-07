@@ -1,5 +1,6 @@
 "use client";
 
+import { BookingFeedbackCard } from "@/components/feedback/BookingFeedbackCard";
 import { isSelfPickup } from "@/lib/booking-services";
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -1463,6 +1464,8 @@ export default function BookingDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {booking && <BookingFeedbackCard bookingId={booking.id} status={booking.status} />}
 
       <Card>
         <CardHeader><CardTitle>Luggage Photos</CardTitle><CardDescription>Submitted photos are read-only. Employees add verification photos only while updating luggage status.</CardDescription></CardHeader>

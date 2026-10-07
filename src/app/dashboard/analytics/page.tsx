@@ -1,5 +1,6 @@
 "use client";
 
+import { RecentFeedback } from "@/components/feedback/RecentFeedback";
 import { useEffect, useState } from "react";
 import {
   Card,
@@ -727,6 +728,8 @@ function FinancialTab({
       )}
 
       {/* THIRD ROW — CUSTOMER TRENDS (full width) */}
+      {showCustomer && <RecentFeedback />}
+
       {showCustomer && customerTrends && (
         <Card className="border-t-2 border-t-amber-500">
           <CardHeader>
