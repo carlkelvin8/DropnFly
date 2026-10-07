@@ -40,7 +40,6 @@ const ADMIN_ONLY_ITEMS = new Set([
 // Customer Records (/dashboard/customers) is also open to Employees (search-first, read-only).
 const STAFF_AND_ABOVE_ITEMS = new Set([
   "/dashboard/incidents",
-  "/dashboard/support",
 ]);
 
 const allNavItems = [
