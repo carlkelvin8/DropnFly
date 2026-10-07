@@ -75,7 +75,7 @@ export default function NewEmployeePage() {
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <div className="relative">
-                  <Input id="password" name="password" type={showPassword ? "text" : "password"} minLength={8} className="pr-10" required />
+                  <Input id="password" name="password" type={showPassword ? "text" : "password"} minLength={10} maxLength={128} className="pr-10" required />
                   <button
                     type="button"
                     onClick={() => setShowPassword((visible) => !visible)}

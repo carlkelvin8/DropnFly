@@ -71,8 +71,8 @@ export const locationSchema = z.object({
 export const employeeSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.string().optional(),
+  password: z.string().min(10, "Password must be at least 10 characters").max(128, "Password must be at most 128 characters"),
+  role: z.enum(["ADMIN", "STAFF", "EMPLOYEE"]).optional(),
 });
 
 export const settingsSchema = z.record(z.string(), z.string());

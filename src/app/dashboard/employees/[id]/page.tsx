@@ -223,8 +223,8 @@ export default function EmployeeDetailPage() {
             <CardContent className="space-y-4">
               <div className="space-y-1.5"><Label htmlFor="edit-name">Name</Label><Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} /></div>
               <div className="space-y-1.5"><Label htmlFor="edit-email">Username / Email</Label><Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} /></div>
-              <div className="space-y-1.5"><Label htmlFor="edit-password">New Password</Label><Input id="edit-password" type="password" minLength={8} value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="Leave blank to keep current password" /></div>
-              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button><Button disabled={saving || !editName.trim() || !editEmail.trim() || (!!editPassword && editPassword.length < 8)} onClick={() => updateEmployee({ name: editName, email: editEmail, ...(editPassword ? { password: editPassword } : {}) })}>Save Details</Button></div>
+              <div className="space-y-1.5"><Label htmlFor="edit-password">New Password</Label><Input id="edit-password" type="password" minLength={10} maxLength={128} value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="Leave blank to keep current password" /></div>
+              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button><Button disabled={saving || !editName.trim() || !editEmail.trim() || (!!editPassword && editPassword.length < 10)} onClick={() => updateEmployee({ name: editName, email: editEmail, ...(editPassword ? { password: editPassword } : {}) })}>Save Details</Button></div>
             </CardContent>
           </Card>
         </div>

@@ -70,8 +70,9 @@ export const config = {
         const attempt = await rateLimit(attemptKey, 5, 15 * 60 * 1000);
         if (!attempt.allowed) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { email: String(credentials.email).trim().toLowerCase() },
+        // Case-insensitive so accounts created before emails were lowercased can still sign in.
+        const user = await prisma.user.findFirst({
+          where: { email: { equals: identifier, mode: "insensitive" } },
         });
 
         if (!user) return null;

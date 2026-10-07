@@ -54,13 +54,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
-    const { name, email, password, role } = body;
+    // Login looks accounts up by lowercase email, so store it that way.
+    const name = parsed.data.name.trim();
+    const email = parsed.data.email.trim().toLowerCase();
+    const { password, role } = parsed.data;
 
-    if (!name || !email || !password) {
+    if (!name) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
     if (existing) {
       return NextResponse.json({ error: "Email already in use" }, { status: 409 });
     }
