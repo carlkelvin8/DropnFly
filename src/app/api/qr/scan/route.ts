@@ -344,6 +344,13 @@ async function handleBatchLuggageStore({
   });
 }
 
+class StaleStatusError extends Error {}
+class TagUnavailableError extends Error {
+  constructor(readonly tag: string) {
+    super("Tag unavailable");
+  }
+}
+
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) {
@@ -523,9 +530,21 @@ export async function POST(req: Request) {
         const invalid = tagList.filter((tag) => !available.has(tag));
         return NextResponse.json({ error: `Tag number(s) unavailable or not in inventory: ${invalid.join(", ")}` }, { status: 400 });
       }
+    }
 
-      // Atomic tag assignment — avoids partial inventory if one tag fails
-      await prisma.$transaction(async (tx) => {
+    let updatedBooking;
+    try {
+    updatedBooking = await prisma.$transaction(async (tx) => {
+      // Claim the transition atomically so a double scan cannot apply it twice.
+      const claimed = await tx.booking.updateMany({
+        where: { id: booking.id, status: booking.status },
+        data: { status: status as BookingStatus },
+      });
+      if (claimed.count === 0) throw new StaleStatusError();
+
+      // Tags are assigned in the same transaction as the status change: if either
+      // fails, nothing is committed and the scan can simply be retried.
+      if (status === "RECEIVED" && tagList.length > 0) {
         for (const tag of tagList) {
           const item = await tx.luggageItem.create({
             data: {
@@ -537,8 +556,8 @@ export async function POST(req: Request) {
           });
           createdItems.push({ id: item.id, tagNumber: item.tagNumber, bookingId: item.bookingId });
 
-          await tx.baggageTag.update({
-            where: { tagNumber: tag },
+          const tagClaim = await tx.baggageTag.updateMany({
+            where: { tagNumber: tag, status: "AVAILABLE", bookingId: null, luggageItemId: null },
             data: {
               status: "ASSIGNED",
               bookingId: booking.id,
@@ -546,15 +565,15 @@ export async function POST(req: Request) {
               assignedAt: new Date(),
             },
           });
+          if (tagClaim.count !== 1) throw new TagUnavailableError(tag);
         }
-      });
-    }
+      }
 
-    const updatedBooking = await prisma.$transaction(async (tx) => {
       const updated = await tx.booking.update({
         where: { id: booking.id },
         data: {
           status: status as BookingStatus,
+          ...trackingResetForStatus(status),
           ...(status === "RECEIVED" && photo && booking.luggagePhotos.length < 10
             ? { luggagePhotos: [...booking.luggagePhotos, photo] }
             : {}),
@@ -594,6 +613,15 @@ export async function POST(req: Request) {
       });
       return updated;
     });
+    } catch (txError) {
+      if (txError instanceof StaleStatusError) {
+        return NextResponse.json({ error: "This booking was just updated by someone else. Refresh and try again." }, { status: 409 });
+      }
+      if (txError instanceof TagUnavailableError) {
+        return NextResponse.json({ error: `Tag number ${txError.tag} is no longer available` }, { status: 409 });
+      }
+      throw txError;
+    }
 
     await logActivity({
       userId: session.user.id,
@@ -624,7 +652,8 @@ export async function POST(req: Request) {
       if (!existingPoints) {
         const pointsEarned = Math.floor(Number(updatedBooking.totalPrice) / 10);
         if (pointsEarned > 0) {
-          await Promise.all([
+          // One transaction: points balance and ledger must never diverge.
+          await prisma.$transaction([
             prisma.customer.update({
               where: { id: booking.customerId },
               data: { points: { increment: pointsEarned } },
