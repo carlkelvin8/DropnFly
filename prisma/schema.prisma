@@ -146,6 +146,8 @@ model Booking {
   incidentReports  IncidentReport[]
   locationUpdates  LocationUpdate[]
   feedbackInviteSentAt DateTime?
+  countryOfOriginSnapshot String?
+  cityOfOriginSnapshot    String?
 
   @@index([status])
   @@index([customerId])

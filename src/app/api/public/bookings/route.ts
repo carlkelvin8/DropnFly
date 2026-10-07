@@ -328,6 +328,9 @@ export async function POST(req: Request) {
             customerNameSnapshot: String(name).trim(),
             customerEmailSnapshot: normalizedEmail,
             customerPhoneSnapshot: String(phone).trim(),
+            // Origin entered for THIS booking; the shared customer row only keeps the first one.
+            countryOfOriginSnapshot: safeCountry || bookingCustomer.countryOfOrigin || null,
+            cityOfOriginSnapshot: safeCity || bookingCustomer.cityOfOrigin || null,
             pickupLocation,
             pickupLat: pickupCoords?.lat ?? null,
             pickupLng: pickupCoords?.lng ?? null,

@@ -462,6 +462,9 @@ export async function POST(req: Request) {
           customerNameSnapshot: snapName || customer.name,
           customerEmailSnapshot: customer.email,
           customerPhoneSnapshot: snapPhone || customer.phone,
+          // Origin of this booking (the customer row was refreshed with what staff typed just before).
+          countryOfOriginSnapshot: customer.countryOfOrigin || null,
+          cityOfOriginSnapshot: customer.cityOfOrigin || null,
           locationId: locationId || null,
           pickupLocation: body.pickupLocation || "",
           pickupLat: pickupCoords?.lat ?? null,

@@ -31,7 +31,8 @@ function createPrismaClient() {
         try {
           return await query(args);
         } catch (error) {
-          if (!READ_OPERATIONS.has(operation) || !isTimeout(error)) throw error;
+          const readOnly = READ_OPERATIONS.has(operation) || (operation === "$queryRaw" && isSelectSql(args));
+          if (!readOnly || !isTimeout(error)) throw error;
           return query(args);
         }
       },
@@ -43,6 +44,14 @@ const READ_OPERATIONS = new Set([
   "findUnique", "findUniqueOrThrow", "findFirst", "findFirstOrThrow", "findMany",
   "count", "aggregate", "groupBy",
 ]);
+
+/** Raw queries are retried only when they are plain SELECTs (rate-limit uses $queryRaw for an upsert). */
+function isSelectSql(args: unknown) {
+  const first = Array.isArray(args) ? args[0] : args;
+  const strings = (first as { strings?: readonly string[] } | null)?.strings;
+  const text = Array.isArray(strings) ? strings.join("?") : typeof first === "string" ? first : "";
+  return /^\s*(SELECT|WITH)\b/i.test(text) && !/\b(INSERT|UPDATE|DELETE)\b/i.test(text);
+}
 
 function isTimeout(error: unknown) {
   return /timeout|timed out|ETIMEDOUT|ECONNRESET|Connection terminated/i.test(String((error as Error)?.message ?? error));

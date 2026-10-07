@@ -89,8 +89,11 @@ interface FinancialMetrics {
   totalBagsStoredMonthly: number;
   storageUtilization: number;
   outstandingBalance: number;
+  outstandingBookings?: number;
   refundsIssued: number;
   refundsAmount: number;
+  grossRevenue?: number;
+  netRevenue?: number;
   canceledNoShow: number;
   customerSatisfaction: number;
 }
@@ -112,6 +115,7 @@ interface Analytics {
   bagBreakdown: { name: string; value: number }[];
   cityDistribution: { name: string; value: number }[];
   countryDistribution: { name: string; value: number }[];
+  heatmap?: { date: string; count: number }[];
   financialMetrics: FinancialMetrics;
 }
 
@@ -312,9 +316,11 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
     bagBreakdown,
     cityDistribution,
     countryDistribution,
+    heatmap,
   } = data;
   const maxEmployee = Math.max(...employeePerformance.map((e) => e.totalAssigned), 1);
-  const heatmapSource = bookingsByDay.slice(-84);
+  // Server sends a fixed 12-week series (independent of the period filter); older payloads fall back.
+  const heatmapSource = heatmap && heatmap.length ? heatmap : bookingsByDay.slice(-84);
   const heatmapCounts = new Map(heatmapSource.map((day) => [day.date, day.count]));
   const latestHeatmapDate = heatmapSource.length
     ? new Date(`${heatmapSource[heatmapSource.length - 1].date}T00:00:00`)
@@ -342,7 +348,7 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
   const heatmapTotal = heatmapSource.reduce((sum, day) => sum + day.count, 0);
   const heatmapDayCount = Math.max(heatmapSource.length, 1);
   const heatmapActiveDays = heatmapSource.filter((day) => day.count > 0).length;
-  const heatmapPeakDay = heatmapSource.reduce<DayData | null>(
+  const heatmapPeakDay = heatmapSource.reduce<{ date: string; count: number } | null>(
     (peak, day) => (!peak || day.count > peak.count ? day : peak),
     null,
   );
@@ -531,7 +537,7 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
         <CardHeader className="gap-5 pb-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle className="text-sm font-semibold">Booking Activity Heatmap</CardTitle>
-            <CardDescription className="mt-1">Bookings per day — up to the latest 12 weeks in the selected period</CardDescription>
+            <CardDescription className="mt-1">Bookings created per day over the last 12 weeks (cancelled and no-show excluded)</CardDescription>
           </div>
           <div className="grid grid-cols-3 gap-6 text-center sm:gap-9">
             <div><p className="text-xl font-bold text-orange-500">{heatmapPeak}</p><p className="text-[10px] text-muted-foreground">Peak Bookings</p></div>
@@ -600,8 +606,11 @@ function FinancialTab({
   // Authoritative revenue: use overview total (PAID + paidAt filtered by period) if available, otherwise payments sum filtered by PAID+paidAt
   const authoritativeRevenue = overview?.totalRevenue ?? payments.filter((p) => p.status === "PAID" && p.paidAt).reduce((s, p) => s + p.amount, 0);
   const paidPayments = payments.filter((p) => p.status === "PAID" && p.paidAt);
-  const refundedPayments = payments.filter((p) => p.status === "REFUNDED");
-  const collectibleAmount = authoritativeRevenue + pendingPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  // Refunds are negative ledger entries; the server already de-duplicates them and computes the
+  // real outstanding balance (bookings' unpaid amounts), so use its figures here.
+  const refundedAmount = metrics?.refundsAmount ?? payments.filter((p) => p.status === "REFUNDED" && p.amount < 0).reduce((sum, p) => sum + Math.abs(p.amount), 0);
+  const outstandingAmount = metrics?.outstandingBalance ?? pendingPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const collectibleAmount = authoritativeRevenue + outstandingAmount;
 
   const today = new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric" });
   const monthLabel = new Date().toLocaleDateString("en-PH", { month: "long" });
@@ -801,7 +810,7 @@ function FinancialTab({
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(metrics?.outstandingBalance || 0)}</div>
-                  <p className="mt-1 text-xs text-muted-foreground">all open (pending) payments</p>
+                  <p className="mt-1 text-xs text-muted-foreground">unpaid balance of {metrics?.outstandingBookings ?? 0} active booking{metrics?.outstandingBookings === 1 ? "" : "s"}</p>
                 </CardContent>
               </Card>
               <Card className="border-t-2 border-t-rose-500">
@@ -894,14 +903,16 @@ function FinancialTab({
               <span className="font-bold text-emerald-600">{formatCurrency(authoritativeRevenue)}</span>
             </div>
             <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
-              <span className="text-muted-foreground">Outstanding (PENDING)</span>
-              <span className="font-bold text-amber-600">
-                {formatCurrency(pendingPayments.reduce((sum, p) => sum + p.amount, 0))}
-              </span>
+              <span className="text-muted-foreground">Outstanding (unpaid balance of active bookings)</span>
+              <span className="font-bold text-amber-600">{formatCurrency(outstandingAmount)}</span>
             </div>
             <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
-              <span className="text-muted-foreground">Refunded</span>
-              <span className="font-bold text-red-600">{formatCurrency(refundedPayments.reduce((sum, payment) => sum + payment.amount, 0))}</span>
+              <span className="text-muted-foreground">Refunded (selected period)</span>
+              <span className="font-bold text-red-600">{formatCurrency(refundedAmount)}</span>
+            </div>
+            <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+              <span className="text-muted-foreground">Net revenue (collected − refunds)</span>
+              <span className="font-bold">{formatCurrency(authoritativeRevenue - refundedAmount)}</span>
             </div>
             <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
               <span className="text-muted-foreground">Collection rate</span>

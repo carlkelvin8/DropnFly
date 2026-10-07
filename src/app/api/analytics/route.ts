@@ -91,12 +91,14 @@ export async function GET(req: Request) {
       select: { id: true, name: true, email: true },
     }),
     prisma.$queryRaw<Array<{ city: string | null; country: string | null; count: bigint }>>`
-      SELECT c."cityOfOrigin" as city, c."countryOfOrigin" as country, COUNT(b.id) as count
+      SELECT COALESCE(b."cityOfOriginSnapshot", c."cityOfOrigin") as city,
+             COALESCE(b."countryOfOriginSnapshot", c."countryOfOrigin") as country,
+             COUNT(b.id) as count
       FROM "Booking" b
       INNER JOIN "Customer" c ON c.id = b."customerId"
       WHERE b."createdAt" >= ${since}${until ? Prisma.sql` AND b."createdAt" <= ${until}` : Prisma.empty}
         AND b.status NOT IN ('CANCELLED', 'NO_SHOW')
-      GROUP BY c."cityOfOrigin", c."countryOfOrigin"
+      GROUP BY 1, 2
     `,
   ]);
 
@@ -155,6 +157,20 @@ export async function GET(req: Request) {
     const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", hour: "2-digit", hourCycle: "h23" }).formatToParts(b.checkIn);
     const hour = Number(parts.find((p) => p.type === "hour")?.value || "0");
     hourlyDistribution[hour] = (hourlyDistribution[hour] || 0) + 1;
+  }
+
+  // Heatmap always covers the last 12 weeks (84 Manila days) regardless of the selected period;
+  // using the period data left older weeks at 0 even when they had bookings.
+  const heatmapStart = new Date(manilaDayStart(manilaDateStr(new Date())).getTime() - 83 * 86400000);
+  const heatmapRows = await prisma.booking.findMany({
+    where: { createdAt: { gte: heatmapStart }, status: { notIn: ["CANCELLED", "NO_SHOW"] } },
+    select: { createdAt: true },
+  });
+  const heatmapCounts: Record<string, number> = {};
+  for (let i = 0; i < 84; i++) heatmapCounts[manilaDateStr(new Date(heatmapStart.getTime() + i * 86400000 + 12 * 3600000))] = 0;
+  for (const row of heatmapRows) {
+    const day = manilaDateStr(row.createdAt);
+    if (day in heatmapCounts) heatmapCounts[day] += 1;
   }
 
   const employeeNameMap = new Map(employeeUsers.map((u) => [u.id, u]));
@@ -243,14 +259,31 @@ export async function GET(req: Request) {
       },
       _sum: { numberOfBags: true },
     }),
-    prisma.payment.aggregate({
-      where: { status: "PENDING" },
-      _sum: { amount: true },
-    }),
-    prisma.payment.aggregate({
-      where: { status: "REFUNDED" },
-      _count: true,
-      _sum: { amount: true },
+    // Outstanding = what active bookings still owe: total price minus net paid (payments minus refunds).
+    // Online bookings create no PENDING payment row, so counting PENDING rows reported 0.
+    prisma.$queryRaw<Array<{ outstanding: number; count: number }>>`
+      SELECT COALESCE(SUM(GREATEST(b."totalPrice" - COALESCE(p.net, 0), 0)), 0)::float8 AS outstanding,
+             COUNT(*) FILTER (WHERE b."totalPrice" - COALESCE(p.net, 0) > 0)::int AS count
+      FROM "Booking" b
+      LEFT JOIN (
+        SELECT "bookingId",
+               SUM(CASE WHEN status = 'PAID' THEN amount WHEN status = 'REFUNDED' AND amount < 0 THEN amount ELSE 0 END) AS net
+        FROM "Payment" GROUP BY "bookingId"
+      ) p ON p."bookingId" = b.id
+      WHERE b.status NOT IN ('CANCELLED', 'NO_SHOW')
+    `,
+    // Refunds are the negative ledger entries. The original payment of a cancelled booking is also
+    // marked REFUNDED (positive amount); counting both doubled the count and cancelled out the sum.
+    prisma.payment.findMany({
+      where: {
+        status: "REFUNDED",
+        amount: { lt: 0 },
+        OR: [
+          { refundedAt: { gte: since, ...(until ? { lte: until } : {}) } },
+          { refundedAt: null, createdAt: { gte: since, ...(until ? { lte: until } : {}) } },
+        ],
+      },
+      select: { amount: true },
     }),
     prisma.booking.count({
       where: { status: { in: ["CANCELLED", "NO_SHOW"] }, ...periodFilter },
@@ -261,6 +294,7 @@ export async function GET(req: Request) {
     }),
   ]);
 
+  const refundsAmount = refundAgg.reduce((sum, refund) => sum + Math.abs(Number(refund.amount)), 0);
   const ongoingBagsCount = ongoingBags._sum.numberOfBags || 0;
   const storageUtilization = totalCapacity > 0 ? (ongoingBagsCount / totalCapacity) * 100 : 0;
 
@@ -270,9 +304,12 @@ export async function GET(req: Request) {
     bagsStoredToday: bagsStoredToday._sum.numberOfBags || 0,
     totalBagsStoredMonthly: totalBagsStoredMonthly._sum.numberOfBags || 0,
     storageUtilization,
-    outstandingBalance: Number(outstandingAgg._sum.amount || 0),
-    refundsIssued: refundAgg._count,
-    refundsAmount: Number(refundAgg._sum.amount || 0),
+    outstandingBalance: Number(outstandingAgg[0]?.outstanding || 0),
+    outstandingBookings: Number(outstandingAgg[0]?.count || 0),
+    refundsIssued: refundAgg.length,
+    refundsAmount: refundsAmount,
+    grossRevenue: totalRevenue,
+    netRevenue: totalRevenue - refundsAmount,
     canceledNoShow,
     customerSatisfaction: satisfactionAgg._avg.rating || 0,
   };
@@ -327,6 +364,7 @@ export async function GET(req: Request) {
       .sort((a, b) => b.value - a.value),
     cityDistribution,
     countryDistribution,
+    heatmap: Object.entries(heatmapCounts).map(([date, count]) => ({ date, count })),
     financialMetrics,
     storageUtilization,
   });
