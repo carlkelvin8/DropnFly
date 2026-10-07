@@ -4,8 +4,6 @@ import { prisma } from "@/lib/prisma";
 
 const ACTIVE_STATUSES = ["CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] as const;
 
-type ActiveStatus = (typeof ACTIVE_STATUSES)[number];
-
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {

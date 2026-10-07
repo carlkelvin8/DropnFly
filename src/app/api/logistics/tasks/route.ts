@@ -4,6 +4,33 @@ import { prisma } from "@/lib/prisma";
 import { availableLogisticsActions, resolveTaskAssignment } from "@/lib/logistics-workflow";
 import { parseLuggageDetails } from "@/lib/pricing";
 
+interface RiderUser { id: string; name: string; profilePic: string | null; vehicleType: string | null; plateNumber: string | null }
+interface AssignmentRow { userId: string; phase: string; vehicleType?: string | null; vehiclePlate?: string | null; user: RiderUser }
+interface BookingRow {
+  id: string;
+  referenceNumber: string;
+  customerId: string;
+  customer: { name: string; email: string; phone: string };
+  customerNameSnapshot?: string | null;
+  customerEmailSnapshot?: string | null;
+  customerPhoneSnapshot?: string | null;
+  luggageDetails?: string | null;
+  pickupLocation: string;
+  dropOffLocation: string;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
+  dropOffLat?: number | null;
+  dropOffLng?: number | null;
+  status: string;
+  createdAt: Date;
+  checkIn: Date;
+  checkOut: Date | null;
+  pickupStartedAt: Date | null;
+  deliveryArrivedAt: Date | null;
+  assignments: AssignmentRow[];
+  scanEvents?: Array<{ status: string }>;
+}
+
 export async function GET() {
   const session = await auth();
   if (!session?.user) {
@@ -33,9 +60,9 @@ export async function GET() {
     };
   }
 
-  let bookings: any[] = [];
+  let bookings: BookingRow[] = [];
   try {
-    bookings = await prisma.booking.findMany({
+    bookings = (await prisma.booking.findMany({
       where,
       orderBy: { createdAt: "desc" },
       include: {
@@ -49,10 +76,10 @@ export async function GET() {
           select: { id: true, status: true },
         },
       },
-    });
+    })) as unknown as BookingRow[];
   } catch (e) {
     console.warn("[logistics/tasks] fallback due to missing columns:", (e as Error).message);
-    bookings = await prisma.$queryRaw<any[]>`
+    bookings = await prisma.$queryRaw<BookingRow[]>`
       SELECT b.*
       FROM "Booking" b
       WHERE b.status IN ('CONFIRMED','RECEIVED','IN_STORAGE','OUT_FOR_DELIVERY')
@@ -68,8 +95,8 @@ export async function GET() {
     // hydrate customer/assignments manually minimal for fallback (avoid extra query complexity, return basic)
     // fallback simple: fetch customers/assignments separately if needed but return minimal mapped
     if (bookings.length) {
-      const ids = bookings.map((b: any) => b.id);
-      const customers = await prisma.customer.findMany({ where: { id: { in: bookings.map((b: any) => b.customerId) } }, select: { id: true, name: true, email: true, phone: true } });
+      const ids = bookings.map((b) => b.id);
+      const customers = await prisma.customer.findMany({ where: { id: { in: bookings.map((b) => b.customerId) } }, select: { id: true, name: true, email: true, phone: true } });
       const cmap = new Map(customers.map((c) => [c.id, c]));
       const assigns = await prisma.bookingAssignment.findMany({ where: { bookingId: { in: ids } }, include: { user: { select: { id: true, name: true, profilePic: true, vehicleType: true, plateNumber: true } } } });
       const scanEvents = await prisma.scanEvent.findMany({
@@ -80,7 +107,7 @@ export async function GET() {
       for (const a of assigns) { const arr = amap.get(a.bookingId) || []; arr.push(a); amap.set(a.bookingId, arr); }
       const emap = new Map<string, typeof scanEvents>();
       for (const event of scanEvents) { const arr = emap.get(event.bookingId) || []; arr.push(event); emap.set(event.bookingId, arr); }
-      bookings = bookings.map((b: any) => ({
+      bookings = bookings.map((b) => ({
         ...b,
         customer: cmap.get(b.customerId) || { name: "", email: "", phone: "" },
         assignments: amap.get(b.id) || [],
@@ -88,7 +115,7 @@ export async function GET() {
       }));
       // filter employee manually if needed
       if (!isAdmin && !isStaff) {
-        bookings = bookings.filter((b: any) => (b.assignments as any[]).some((a) => a.userId === session.user.id));
+        bookings = bookings.filter((b) => b.assignments.some((a) => a.userId === session.user.id));
       }
     }
   }
@@ -100,9 +127,9 @@ export async function GET() {
     (b.scanEvents as Array<{ status: string }> | undefined)?.some((event) => event.status === "PICKUP_COMPLETED")
   ));
 
-  const mapped = bookings.map((b: any) => {
+  const mapped = bookings.map((b) => {
     const services = parseLuggageDetails(b.luggageDetails || "").services;
-    const validAssignments = (b.assignments as any[]).filter((assignment: any) =>
+    const validAssignments = b.assignments.filter((assignment) =>
       (assignment.phase === "PICKUP" && services.includes("Pick-up from Customer")) ||
       (assignment.phase === "DROPOFF" && services.includes("Deliver to Customer"))
     );

@@ -632,9 +632,6 @@ export default function LiveMapInner({
     else { const h = Math.floor(etaMinutes / 60); const m = etaMinutes % 60; eta = m ? `${h}h ${m}m` : `${h}h`; }
   }
 
-  // Fallback placeholder (no external DNS) – show pins text when map fails
-  const fbCenterLat = [employeeLat, pickupLat, dropoffLat].filter((v): v is number => v != null).reduce((a, b, _, arr) => a + b / arr.length, 0) || 14.5995;
-  const fbCenterLng = [employeeLng, pickupLng, dropoffLng].filter((v): v is number => v != null).reduce((a, b, _, arr) => a + b / arr.length, 0) || 120.9842;
 
   return (
     <div className="relative">

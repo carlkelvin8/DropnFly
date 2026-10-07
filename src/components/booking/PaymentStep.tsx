@@ -58,7 +58,6 @@ export function PaymentStep({
   ];
   const servicesCost = servicesList.filter((s) => selectedServices[s.id]).reduce((sum, s) => sum + s.price, 0);
   const estimatedTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
-  const amountPaid = 0;
   const remainingBalance = estimatedTotal;
 
   function getPickupLocationText() {
