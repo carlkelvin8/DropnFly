@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { manilaDateRange } from "@/lib/manila-time";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasStaffRole } from "@/lib/staff-access";
@@ -15,12 +16,11 @@ export async function GET(req: Request) {
 
   const where: Record<string, unknown> = {};
   if (from || to) {
-    if ((from && !isIsoDate(from)) || (to && !isIsoDate(to))) {
+    const range = manilaDateRange(from, to);
+    if (!range) {
       return NextResponse.json({ error: "Dates must use YYYY-MM-DD format" }, { status: 400 });
     }
-    where.createdAt = {};
-    if (from) (where.createdAt as Record<string, unknown>).gte = new Date(from);
-    if (to) (where.createdAt as Record<string, unknown>).lte = new Date(to + "T23:59:59.999Z");
+    where.createdAt = range;
   }
 
   const bookings = await prisma.booking.findMany({
@@ -66,10 +66,4 @@ export async function GET(req: Request) {
 function escapeCsv(val: string) {
   const safe = /^[=+\-@\t\r]/.test(val) ? `'${val}` : val;
   return `"${safe.replace(/"/g, '""')}"`;
-}
-
-function isIsoDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
 }

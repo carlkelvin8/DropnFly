@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasStaffRole } from "@/lib/staff-access";
 import { escapeCsvCell } from "@/lib/csv";
+import { manilaDayRange, manilaDayStart, manilaMonthRange } from "@/lib/manila-time";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -19,28 +20,24 @@ export async function GET(req: Request) {
 
   const where: Record<string, unknown> = {};
 
-  if (type === "day" && date) {
-    const dayStart = new Date(date);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setHours(23, 59, 59, 999);
-    where.createdAt = { gte: dayStart, lte: dayEnd };
-  } else if (type === "month" && month) {
+  // Day and month boundaries are Manila calendar days, not the server's (UTC) clock.
+  const validDay = (value: string | null): value is string => Boolean(value) && /^\d{4}-\d{2}-\d{2}$/.test(value as string) && !isNaN(new Date(`${value}T00:00:00+08:00`).getTime());
+  if (type === "day" && validDay(date)) {
+    const { start, end } = manilaDayRange(manilaDayStart(date));
+    where.createdAt = { gte: start, lt: end };
+  } else if (type === "month" && month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     const [year, mon] = month.split("-").map(Number);
-    const monthStart = new Date(year, mon - 1, 1);
-    const monthEnd = new Date(year, mon, 0, 23, 59, 59, 999);
-    where.createdAt = { gte: monthStart, lte: monthEnd };
-  } else if (type === "range" && from && to) {
-    const fromDate = new Date(from);
-    fromDate.setHours(0, 0, 0, 0);
-    const toDate = new Date(to);
-    toDate.setHours(23, 59, 59, 999);
-    where.createdAt = { gte: fromDate, lte: toDate };
+    const { start, end } = manilaMonthRange(year, mon);
+    where.createdAt = { gte: start, lt: end };
+  } else if (type === "range" && validDay(from) && validDay(to)) {
+    where.createdAt = { gte: manilaDayStart(from), lt: manilaDayRange(manilaDayStart(to)).end };
   }
 
   const bookings = await prisma.booking.findMany({
     where,
     orderBy: { createdAt: "desc" },
+    // Large base64 fields the CSV never uses.
+    omit: { qrCode: true, luggagePhotos: true },
     include: {
       customer: { select: { name: true, email: true } },
       assignments: {

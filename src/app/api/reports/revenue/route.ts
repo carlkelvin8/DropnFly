@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { manilaDateRange } from "@/lib/manila-time";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { escapeCsvCell } from "@/lib/csv";
@@ -13,9 +14,9 @@ export async function GET(req: Request) {
 
   const where: Record<string, unknown> = {};
   if (from || to) {
-    where.paidAt = {};
-    if (from) (where.paidAt as Record<string, unknown>).gte = new Date(from + "T00:00:00");
-    if (to) (where.paidAt as Record<string, unknown>).lte = new Date(to + "T23:59:59.999");
+    const range = manilaDateRange(from, to);
+    if (!range) return NextResponse.json({ error: "Dates must use YYYY-MM-DD format" }, { status: 400 });
+    where.paidAt = range;
   }
 
   const payments = await prisma.payment.findMany({

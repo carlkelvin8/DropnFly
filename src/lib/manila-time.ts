@@ -50,3 +50,28 @@ export function manilaMonthRange(year: number, month: number): { start: Date; en
   const end = new Date(`${nextYear}-${String(nextMonth).padStart(2, "0")}-01T00:00:00+08:00`);
   return { start, end };
 }
+
+/**
+ * Turns optional YYYY-MM-DD `from`/`to` query values into a [gte, lt) range covering whole Manila
+ * calendar days (both ends inclusive). Returns `null` when a value is present but not a real date,
+ * so callers can answer 400 instead of crashing on an Invalid Date.
+ */
+export function manilaDateRange(from?: string | null, to?: string | null): { gte?: Date; lt?: Date } | null {
+  const parse = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const date = new Date(`${value}T00:00:00+08:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+  const range: { gte?: Date; lt?: Date } = {};
+  if (from) {
+    const start = parse(from);
+    if (!start) return null;
+    range.gte = start;
+  }
+  if (to) {
+    const end = parse(to);
+    if (!end) return null;
+    range.lt = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return range;
+}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { manilaDateRange } from "@/lib/manila-time";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 
@@ -13,12 +14,10 @@ export async function GET(req: Request) {
   const dateFilter: Record<string, unknown> = {};
   const paidAtFilter: Record<string, unknown> = {};
   if (from || to) {
-    dateFilter.createdAt = {};
-    if (from) (dateFilter.createdAt as Record<string, unknown>).gte = new Date(from);
-    if (to) (dateFilter.createdAt as Record<string, unknown>).lte = new Date(to + "T23:59:59.999Z");
-    paidAtFilter.paidAt = {};
-    if (from) (paidAtFilter.paidAt as Record<string, unknown>).gte = new Date(from + "T00:00:00.000Z");
-    if (to) (paidAtFilter.paidAt as Record<string, unknown>).lte = new Date(to + "T23:59:59.999Z");
+    const range = manilaDateRange(from, to);
+    if (!range) return NextResponse.json({ error: "Dates must use YYYY-MM-DD format" }, { status: 400 });
+    dateFilter.createdAt = range;
+    paidAtFilter.paidAt = range;
   }
 
   const totalBookings = await prisma.booking.count({ where: dateFilter });
