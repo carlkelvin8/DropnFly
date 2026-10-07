@@ -70,3 +70,12 @@ test("task date filter covers today, week (Mon-Sun), month and all", async () =>
   assert.equal(taskDay({ ...t, taskType: "pickup" }), "2026-10-07");
   assert.equal(taskDay({ ...t, taskType: "delivery" }), "2026-10-09");
 });
+
+test("self-pickup is detected from the booking services", async () => {
+  const { isSelfPickup, bookingStatusLabel } = await import("./booking-services");
+  assert.equal(isSelfPickup(JSON.stringify([{ type: "Small", qty: 1 }, { services: ["Pick-up from Customer"] }])), true);
+  assert.equal(isSelfPickup(JSON.stringify([{ type: "Small", qty: 1 }, { services: ["Deliver to Customer"] }])), false);
+  assert.equal(isSelfPickup(null), true);
+  assert.equal(bookingStatusLabel("DELIVERED", true), "Claimed by Customer");
+  assert.equal(bookingStatusLabel("OUT_FOR_DELIVERY"), "Out For Delivery");
+});

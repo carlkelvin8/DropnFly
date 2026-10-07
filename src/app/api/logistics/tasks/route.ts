@@ -130,6 +130,15 @@ export async function GET() {
     (b.scanEvents as Array<{ status: string }> | undefined)?.some((event) => event.status === "PICKUP_COMPLETED")
   ));
 
+  // Only transport legs the customer paid for are logistics tasks. Without pick-up the customer brings
+  // the luggage to storage; without delivery the customer claims it there (recorded in the scanner).
+  // (Employees are filtered by their own assignments below, which keeps upcoming drop-offs visible.)
+  if (isAdmin || isStaff) bookings = bookings.filter((b) => {
+    const services = parseLuggageDetails(b.luggageDetails || "").services;
+    const deliveryPhase = b.status === "IN_STORAGE" || b.status === "OUT_FOR_DELIVERY";
+    return services.includes(deliveryPhase ? "Deliver to Customer" : "Pick-up from Customer");
+  });
+
   const versions = await photoVersions(bookings.flatMap((b) => b.assignments.map((a) => a.userId)));
   const mapped = bookings.map((b) => {
     const services = parseLuggageDetails(b.luggageDetails || "").services;

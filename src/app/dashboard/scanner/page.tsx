@@ -34,7 +34,10 @@ const LUGGAGE_FLOW = [
   { value: "DELIVERED", label: "Delivered", icon: CheckCircle, color: "bg-emerald-500" },
 ];
 
-type VerificationType = "pickup" | "dropoff" | "status";
+// Customer did not avail delivery: they claim the luggage at the storage facility (final step).
+const CLAIM_STATUS = { value: "CLAIMED", label: "Claimed & Picked up by Customer", icon: CheckCircle, color: "bg-emerald-500" };
+
+type VerificationType = "pickup" | "dropoff" | "status" | "claim";
 
 interface LuggageItemSummary {
   id: string;
@@ -57,6 +60,7 @@ interface ScanResult {
   location?: { name?: string; city?: string } | null;
   luggageItems?: LuggageItemSummary[];
   scannedTag?: string;
+  selfPickup?: boolean;
 }
 
 interface IntakeResult {
@@ -93,6 +97,7 @@ interface IntakeQueueBooking {
   checkIn: string;
   rider: { name: string } | null;
   luggageItems: LuggageItemSummary[];
+  selfPickup?: boolean;
 }
 
 function matchesIntakeSearch(booking: IntakeQueueBooking, search: string) {
@@ -180,17 +185,25 @@ export default function QrScannerPage() {
       toast.error("Take a luggage verification photo before storage intake");
       return;
     }
+    if (queueStatus === "CLAIMED" && !queuePhoto) {
+      toast.error("Take a photo of the customer claiming the luggage");
+      return;
+    }
     setIntakeProcessing(true);
     try {
       const body = queueStatus === "IN_STORAGE"
         ? { batchStore: true, referenceNumber: queueBooking.referenceNumber, photo: queuePhoto, note: `Batch storage intake from queue` }
-        : { referenceNumber: queueBooking.referenceNumber, status: queueStatus, photo: queuePhoto, note: `Queue update to ${queueStatus}` };
+        : queueStatus === "CLAIMED"
+          ? { selfPickupClaim: true, referenceNumber: queueBooking.referenceNumber, photo: queuePhoto }
+          : { referenceNumber: queueBooking.referenceNumber, status: queueStatus, photo: queuePhoto, note: `Queue update to ${queueStatus}` };
       const res = await fetch("/api/qr/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || (res.status === 413 ? "Photo too large. Retake a smaller photo." : "Update failed"));
       toast.success(queueStatus === "IN_STORAGE"
         ? `Stored ${json.storedCount || "?"} luggage item(s) — booking now in storage`
-        : `Booking updated to ${queueStatus.replace(/_/g, " ")}`);
+        : queueStatus === "CLAIMED"
+          ? `Luggage claimed by customer — ${queueBooking.referenceNumber}`
+          : `Booking updated to ${queueStatus.replace(/_/g, " ")}`);
       setQueueBooking(null); setQueuePhoto(null); setQueueStatus(""); loadIntakeQueue();
     } catch (e) { toast.error(requestErrorMessage(e, "Update failed")); }
     finally { setIntakeProcessing(false); }
@@ -250,6 +263,7 @@ export default function QrScannerPage() {
         location: booking.location,
         luggageItems: booking.luggageItems || [],
         scannedTag,
+        selfPickup: Boolean(booking.selfPickup),
       });
       setTagNumbers(
         Array.from({ length: slots }, () => "")
@@ -258,11 +272,14 @@ export default function QrScannerPage() {
       setCustomerScanMode(false);
       // Auto-select next status
       const currentIdx = STATUS_FLOW.findIndex((s) => s.value === booking.status);
-      if (currentIdx < STATUS_FLOW.length - 1) {
+      if (booking.status === "IN_STORAGE" && booking.selfPickup) {
+        setSelectedStatus(CLAIM_STATUS.value);
+      } else if (currentIdx < STATUS_FLOW.length - 1) {
         setSelectedStatus(STATUS_FLOW[currentIdx + 1].value);
       }
       // Auto-detect verification type
-      if (booking.status === "CONFIRMED") setVerificationType("pickup");
+      if (booking.status === "IN_STORAGE" && booking.selfPickup) setVerificationType("claim");
+      else if (booking.status === "CONFIRMED") setVerificationType("pickup");
       else if (booking.status === "OUT_FOR_DELIVERY") setVerificationType("dropoff");
       else setVerificationType("status");
 
@@ -278,11 +295,13 @@ export default function QrScannerPage() {
     if (!scanResult || !selectedStatus) return;
     setProcessing(true);
     try {
-      const body: Record<string, unknown> = {
-        referenceNumber: scanResult.referenceNumber,
-        status: selectedStatus,
-        note: note || `${verificationType} verification`,
-      };
+      const body: Record<string, unknown> = selectedStatus === CLAIM_STATUS.value
+        ? { selfPickupClaim: true, referenceNumber: scanResult.referenceNumber, ...(note ? { note } : {}) }
+        : {
+            referenceNumber: scanResult.referenceNumber,
+            status: selectedStatus,
+            note: note || `${verificationType} verification`,
+          };
       if (photo) body.photo = photo;
       if (customerVerified) body.customerVerified = true;
       if (verificationType === "pickup" && tagNumbers.length > 0) {
@@ -313,7 +332,9 @@ export default function QrScannerPage() {
 
       const statusLabel = STATUS_FLOW.find((s) => s.value === selectedStatus)?.label;
       toast.success(
-        verificationType === "pickup"
+        selectedStatus === CLAIM_STATUS.value
+          ? `✅ Luggage claimed by customer — ${scanResult.referenceNumber}`
+          : verificationType === "pickup"
           ? `✅ Luggage collected — ${scanResult.referenceNumber}`
           : verificationType === "dropoff"
           ? `✅ Delivery confirmed — ${scanResult.referenceNumber}`
@@ -559,7 +580,7 @@ export default function QrScannerPage() {
             <Card>
               <CardHeader><CardTitle className="text-base">Waiting to be delivered</CardTitle></CardHeader>
               <CardContent className="max-h-72 space-y-2 overflow-y-auto">
-                {intakeQueue.filter((b) => b.status === "IN_STORAGE" && matchesIntakeSearch(b, queueSearch)).map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.rider?.name || "Unassigned"} · In storage</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); setQueueStatus("OUT_FOR_DELIVERY"); }}>Update</Button></div>)}
+                {intakeQueue.filter((b) => b.status === "IN_STORAGE" && matchesIntakeSearch(b, queueSearch)).map((b) => <div key={b.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border p-3"><div><p className="font-mono text-sm font-semibold">{b.referenceNumber}</p><p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} · {b.selfPickup ? "Customer will claim at storage" : b.rider?.name || "Unassigned"} · In storage</p></div><Button size="sm" onClick={() => { setQueueBooking(b); setQueuePhoto(null); setQueueStatus(b.selfPickup ? "CLAIMED" : "OUT_FOR_DELIVERY"); }}>Update</Button></div>)}
                 {intakeQueue.every((b) => b.status !== "IN_STORAGE") && <p className="py-4 text-center text-sm text-muted-foreground">No luggage waiting for delivery</p>}
               </CardContent>
             </Card>
@@ -746,7 +767,10 @@ export default function QrScannerPage() {
                 </div>
                 <div>
                   <p className="mb-2 text-sm font-medium">Choose new luggage status</p>
-                  {LUGGAGE_FLOW.filter((status) => status.value === (queueBooking.status === "RECEIVED" ? "IN_STORAGE" : "OUT_FOR_DELIVERY")).map((status) => {
+                  {(queueBooking.status === "IN_STORAGE" && queueBooking.selfPickup
+                    ? [CLAIM_STATUS]
+                    : LUGGAGE_FLOW.filter((status) => status.value === (queueBooking.status === "RECEIVED" ? "IN_STORAGE" : "OUT_FOR_DELIVERY"))
+                  ).map((status) => {
                     const Icon = status.icon;
                     return (
                       <button
@@ -764,7 +788,7 @@ export default function QrScannerPage() {
                 </div>
 
                 <div>
-                  <p className="mb-2 text-sm font-medium">Take a picture as proof {queueStatus === "IN_STORAGE" ? "(required)" : "(optional)"}</p>
+                  <p className="mb-2 text-sm font-medium">Take a picture as proof {queueStatus === "IN_STORAGE" || queueStatus === "CLAIMED" ? "(required)" : "(optional)"}</p>
                   {queuePhoto ? (
                     <div className="relative overflow-hidden rounded-xl border">
                       <Image unoptimized width={800} height={220} src={queuePhoto} alt="Luggage verification proof" className="h-36 w-full object-cover" />
@@ -781,7 +805,7 @@ export default function QrScannerPage() {
 
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => { setQueueBooking(null); setQueuePhoto(null); setQueueStatus(""); }}>Cancel</Button>
-                  <Button disabled={intakeProcessing || !queueStatus || (queueStatus === "IN_STORAGE" && !queuePhoto)} onClick={updateQueuedBooking}>
+                  <Button disabled={intakeProcessing || !queueStatus || ((queueStatus === "IN_STORAGE" || queueStatus === "CLAIMED") && !queuePhoto)} onClick={updateQueuedBooking}>
                     {intakeProcessing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating…</> : "Confirm Update"}
                   </Button>
                 </div>
@@ -809,7 +833,9 @@ export default function QrScannerPage() {
   const currentIdx = STATUS_FLOW.findIndex((s) => s.value === scanResult.currentStatus);
   // Scanner updates are sequential and irreversible: expose only the immediate
   // next step instead of showing later (or previous) statuses in the UI.
-  const nextStatuses = currentIdx >= 0 ? STATUS_FLOW.slice(currentIdx + 1, currentIdx + 2) : [];
+  const nextStatuses = scanResult.currentStatus === "IN_STORAGE" && scanResult.selfPickup
+    ? [CLAIM_STATUS]
+    : currentIdx >= 0 ? STATUS_FLOW.slice(currentIdx + 1, currentIdx + 2) : [];
   const isCollection = verificationType === "pickup";
   const existingTags = scanResult.luggageItems || [];
   const tagSlots = tagNumbers.length;
@@ -825,7 +851,8 @@ export default function QrScannerPage() {
         <div>
           <h1 className="text-lg font-bold">
             {isCollection ? "Luggage Collection" :
-             verificationType === "dropoff" ? "Delivery Confirmation" : "Status Update"}
+             verificationType === "dropoff" ? "Delivery Confirmation" :
+             verificationType === "claim" ? "Customer Claim at Storage" : "Status Update"}
           </h1>
           <p className="text-xs text-muted-foreground">
             {isCollection ? "Collect luggage and assign physical tags" : "Verify and confirm the action"}
@@ -989,7 +1016,7 @@ export default function QrScannerPage() {
         <Card className="border-emerald-200 bg-emerald-50">
           <CardContent className="flex items-center gap-3 p-4">
             <CheckCircle className="h-6 w-6 text-emerald-600" />
-            <p className="text-sm font-medium text-emerald-800">This booking is already completed</p>
+            <p className="text-sm font-medium text-emerald-800">{scanResult.currentStatus === "DELIVERED" && scanResult.selfPickup ? "Luggage already claimed by the customer" : "This booking is already completed"}</p>
           </CardContent>
         </Card>
       )}
@@ -1132,6 +1159,7 @@ export default function QrScannerPage() {
               <p className="text-sm text-muted-foreground">
                 {isCollection ? "Photo confirmation of the luggage being collected" :
                  verificationType === "dropoff" ? "Photo of handover to customer" :
+                 verificationType === "claim" ? "Photo of the customer claiming the luggage" :
                  "Capture photo proof"}
               </p>
             </button>
@@ -1174,6 +1202,8 @@ export default function QrScannerPage() {
           <><Package className="mr-2 h-5 w-5" /> {tagSlots > 0 ? "Confirm Collection & Tags" : "Confirm Collection"}</>
         ) : verificationType === "dropoff" ? (
           <><Truck className="mr-2 h-5 w-5" /> Confirm Delivery</>
+        ) : verificationType === "claim" ? (
+          <><CheckCircle className="mr-2 h-5 w-5" /> Confirm Customer Claim</>
         ) : (
           <><CheckCircle className="mr-2 h-5 w-5" /> Update Status</>
         )}

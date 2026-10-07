@@ -1,5 +1,6 @@
 "use client";
 
+import { isSelfPickup } from "@/lib/booking-services";
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
@@ -859,7 +860,7 @@ export default function BookingDetailPage() {
             booking.status === "PENDING" ? "bg-yellow-500" :
             "bg-blue-500"
           }`} />
-          {booking.status === "NO_SHOW" ? "No Show" : booking.status.replace("_", " ")}
+          {booking.status === "NO_SHOW" ? "No Show" : booking.status === "DELIVERED" && isSelfPickup(booking.luggageDetails) ? "Claimed by Customer" : booking.status.replace("_", " ")}
         </span>
       </div>
 

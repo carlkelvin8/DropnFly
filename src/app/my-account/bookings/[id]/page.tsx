@@ -1,5 +1,6 @@
 "use client";
 
+import { isSelfPickup } from "@/lib/booking-services";
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -291,10 +292,10 @@ export default function CustomerBookingDetailPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-blue-100">Booking Status</p>
-                <p className="text-lg font-bold text-white">{statusConfig[booking.status]?.label || booking.status}</p>
+                <p className="text-lg font-bold text-white">{booking.status === "DELIVERED" && isSelfPickup(booking.luggageDetails) ? "Claimed by Customer" : statusConfig[booking.status]?.label || booking.status}</p>
               </div>
               <Badge className={`${statusConfig[booking.status]?.color || ""} border`}>
-                {statusConfig[booking.status]?.label || booking.status}
+                {booking.status === "DELIVERED" && isSelfPickup(booking.luggageDetails) ? "Claimed by Customer" : statusConfig[booking.status]?.label || booking.status}
               </Badge>
             </div>
           </div>

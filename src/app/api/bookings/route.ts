@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSelfPickup } from "@/lib/booking-services";
 import { photoVersions, withPhotoUrl } from "@/lib/rider-photo";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -155,6 +156,8 @@ export async function GET(req: Request) {
       checkOut: b.checkOut,
       location: b.location,
       luggageItems: b.luggageItems,
+      // No delivery service: the customer claims the luggage at the storage facility.
+      selfPickup: isSelfPickup(b.luggageDetails),
       qrScanned,
       paymentStatus,
       totalPaid,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSelfPickup } from "@/lib/booking-services";
 import { finalizeDeliveredBaggage } from "@/lib/delivery-cleanup";
 import { trackingResetForStatus } from "@/lib/logistics-workflow";
 import { auth } from "@/lib/auth";
@@ -65,6 +66,7 @@ async function handleLuggageIntake({
           status: true,
           customerId: true,
           pickupLocation: true,
+          luggageDetails: true,
         },
       },
     },
@@ -110,6 +112,9 @@ async function handleLuggageIntake({
     if (!photo) {
       return NextResponse.json({ error: "A luggage verification photo is required for storage intake" }, { status: 400 });
     }
+  }
+  if (["OUT_FOR_DELIVERY", "DELIVERED"].includes(target) && isSelfPickup(booking.luggageDetails)) {
+    return NextResponse.json({ error: "The customer will claim this luggage at the storage facility. Use \"Claimed by Customer\" instead." }, { status: 400 });
   }
   if (target === "OUT_FOR_DELIVERY") {
     if (item.status !== "IN_STORAGE") {
@@ -355,6 +360,117 @@ async function handleBatchLuggageStore({
   });
 }
 
+/**
+ * Customer did not avail delivery and claims the luggage at the storage facility. The booking goes
+ * IN_STORAGE -> DELIVERED ("Claimed by Customer") with photo proof. Any admin, staff or employee may
+ * record it, because no delivery employee is assigned to this kind of booking.
+ */
+async function handleSelfPickupClaim({
+  session,
+  referenceNumber,
+  photo,
+  note,
+  latitude,
+  longitude,
+}: {
+  session: { user: { id: string } };
+  referenceNumber?: string;
+  photo?: string;
+  note?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}) {
+  if (!referenceNumber) return NextResponse.json({ error: "Reference number is required" }, { status: 400 });
+  if (!photo || typeof photo !== "string") {
+    return NextResponse.json({ error: "A photo of the customer claiming the luggage is required" }, { status: 400 });
+  }
+  if (photo.length > 2_000_000) return NextResponse.json({ error: "Photo too large. Retake a smaller photo." }, { status: 413 });
+
+  const booking = await prisma.booking.findUnique({
+    where: { referenceNumber: normalizeReference(referenceNumber) },
+    select: { id: true, referenceNumber: true, status: true, customerId: true, luggageDetails: true },
+  });
+  if (!booking) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+  if (!isSelfPickup(booking.luggageDetails)) {
+    return NextResponse.json({ error: "This booking has delivery service. Use Out for Delivery instead." }, { status: 400 });
+  }
+  if (booking.status !== "IN_STORAGE") {
+    return NextResponse.json({ error: `Luggage can only be claimed while it is in storage (current: ${booking.status.replace(/_/g, " ").toLowerCase()})` }, { status: 409 });
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.booking.updateMany({
+      where: { id: booking.id, status: "IN_STORAGE" },
+      data: { status: "DELIVERED", ...trackingResetForStatus("DELIVERED") },
+    });
+    if (claimed.count === 0) return null;
+    await finalizeDeliveredBaggage(tx, booking.id);
+    await tx.scanEvent.create({
+      data: {
+        bookingId: booking.id,
+        userId: session.user.id,
+        status: "DELIVERED",
+        photo,
+        note: note ? `${note} — Claimed and picked up by customer at the storage facility` : "Claimed and picked up by customer at the storage facility",
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
+      },
+    });
+    return tx.booking.findUniqueOrThrow({ where: { id: booking.id }, omit: { qrCode: true, luggagePhotos: true } });
+  });
+  if (!updated) {
+    return NextResponse.json({ error: "This booking was just updated by someone else. Refresh and try again." }, { status: 409 });
+  }
+
+  await logActivity({
+    userId: session.user.id,
+    action: "SCAN",
+    entity: "Booking",
+    entityId: booking.id,
+    details: `Luggage claimed by customer at storage for ${booking.referenceNumber}`,
+  });
+
+  try {
+    await sendCustomerNotification({
+      customerId: booking.customerId,
+      type: "qr_scan_update",
+      title: "Luggage Claimed",
+      message: `Your luggage for booking ${booking.referenceNumber} has been claimed at the storage facility. Thank you for using Dropnfly!`,
+      link: `/my-account/bookings/${booking.id}`,
+    });
+  } catch (notificationError) {
+    console.warn("[SCAN] claim notification failed:", notificationError);
+  }
+
+  const existingPoints = await prisma.pointsTransaction.findFirst({ where: { reference: booking.id, type: "EARNED" } });
+  if (!existingPoints) {
+    const pointsEarned = Math.floor(Number(updated.totalPrice) / 10);
+    if (pointsEarned > 0) {
+      await prisma.$transaction([
+        prisma.customer.update({ where: { id: booking.customerId }, data: { points: { increment: pointsEarned } } }),
+        prisma.pointsTransaction.create({
+          data: { customerId: booking.customerId, points: pointsEarned, type: "EARNED", reference: booking.id, description: `Earned from booking ${booking.referenceNumber}` },
+        }),
+      ]);
+    }
+  }
+  try {
+    const { trySendFeedbackInvitation } = await import("@/lib/feedback");
+    await trySendFeedbackInvitation({
+      id: updated.id,
+      referenceNumber: updated.referenceNumber,
+      customerId: booking.customerId,
+      status: updated.status,
+      updatedAt: updated.updatedAt,
+      feedbackInviteSentAt: (updated as { feedbackInviteSentAt?: Date | null }).feedbackInviteSentAt ?? null,
+    });
+  } catch (e) {
+    console.warn("[FEEDBACK] invite failed after claim", e);
+  }
+
+  return NextResponse.json({ success: true, claimed: true, status: "DELIVERED", booking: updated, message: `Luggage claimed by customer — ${booking.referenceNumber}` });
+}
+
 class StaleStatusError extends Error {}
 class TagUnavailableError extends Error {
   constructor(readonly tag: string) {
@@ -380,6 +496,7 @@ export async function POST(req: Request) {
       tagNumbers,
       luggageScan,
       batchStore,
+      selfPickupClaim,
       tagNumber,
     } = await req.json();
 
@@ -394,6 +511,10 @@ export async function POST(req: Request) {
         latitude,
         longitude,
       });
+    }
+
+    if (selfPickupClaim) {
+      return handleSelfPickupClaim({ session, referenceNumber, photo, note, latitude, longitude });
     }
 
     if (batchStore) {
@@ -435,6 +556,7 @@ export async function POST(req: Request) {
         numberOfBags: true,
         pickupLocation: true,
         luggagePhotos: true,
+        luggageDetails: true,
         assignments: { select: { userId: true, phase: true } },
       },
     });
@@ -445,6 +567,10 @@ export async function POST(req: Request) {
 
     if (booking.status === "CANCELLED" || booking.status === "NO_SHOW") {
       return NextResponse.json({ error: "Cannot update a cancelled or no-show booking" }, { status: 400 });
+    }
+    // Without delivery service the customer claims the luggage at storage; there is no delivery leg.
+    if (["OUT_FOR_DELIVERY", "DELIVERED"].includes(status) && isSelfPickup(booking.luggageDetails)) {
+      return NextResponse.json({ error: "The customer will claim this luggage at the storage facility. Use \"Claimed by Customer\" instead." }, { status: 400 });
     }
 
     // === Assignment enforcement: employees may only scan bookings they are assigned to ===

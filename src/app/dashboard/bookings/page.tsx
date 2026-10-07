@@ -39,6 +39,7 @@ interface Rider {
 interface Booking {
   id: string;
   referenceNumber: string;
+  selfPickup?: boolean;
   customer: { name: string; email: string };
   pickupLocation: string;
   dropOffLocation: string;
@@ -358,7 +359,8 @@ export default function BookingsPage() {
                     </TableCell>
                     <TableCell>
                       <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge[booking.status] || "bg-muted text-muted-foreground"}`}>
-                        {booking.status === "OUT_FOR_DELIVERY" ? "Out for Delivery" :
+                        {booking.status === "DELIVERED" && booking.selfPickup ? "Claimed by Customer" :
+                         booking.status === "OUT_FOR_DELIVERY" ? "Out for Delivery" :
                          booking.status === "IN_STORAGE" ? "In Storage" :
                          booking.status === "NO_SHOW" ? "No Show" :
                          booking.status.replace("_", " ")}

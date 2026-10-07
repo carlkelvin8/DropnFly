@@ -1,5 +1,6 @@
 "use client";
 
+import { isSelfPickup } from "@/lib/booking-services";
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -342,6 +343,12 @@ export default function TrackResultPage() {
 
   const config = statusConfig[booking.status] || statusConfig.PENDING;
   const currentStep = config.step;
+  // Without delivery service the customer claims the luggage at the storage facility.
+  const selfPickup = isSelfPickup(booking.luggageDetails);
+  const statusLabel = booking.status === "DELIVERED" && selfPickup ? "Claimed by Customer" : config.label;
+  const timelineSteps = selfPickup
+    ? steps.map((step, i) => (i === 4 ? { ...step, label: "Ready for Claim at Storage" } : i === 5 ? { ...step, label: "Claimed by Customer" } : step))
+    : steps;
   // Security: rider identity + live tracking only appear once the employee started the leg.
   const showRider = Boolean(rider && booking.pickupStartedAt);
 
@@ -625,7 +632,7 @@ export default function TrackResultPage() {
           <CardContent>
             <div className="mb-6 text-center">
               <Badge variant={config.color} className="px-4 py-1.5 text-sm shadow-sm">
-                {config.label}
+                {statusLabel}
               </Badge>
             </div>
 
@@ -633,7 +640,7 @@ export default function TrackResultPage() {
               <div className="relative">
                 <div className="absolute left-[23px] top-2 h-[calc(100%-16px)] w-0.5 bg-gradient-to-b from-blue-500 to-border" />
                 <div className="space-y-0">
-                  {steps.map((step, i) => {
+                  {timelineSteps.map((step, i) => {
                     const Icon = step.icon;
                     const isActive = i <= currentStep;
                     const isCurrent = i === currentStep;
