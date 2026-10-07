@@ -242,8 +242,12 @@ export default function CustomerBookingDetailPage() {
     : 1;
   let luggageSubtotal = 0;
   try {
-    const parsed: { type: string; qty: number; price: number }[] = booking.luggageDetails ? JSON.parse(booking.luggageDetails) : [];
-    luggageSubtotal = parsed.reduce((sum, item) => sum + item.price * item.qty, 0);
+    const parsed: Record<string, unknown>[] = booking.luggageDetails ? JSON.parse(booking.luggageDetails) : [];
+    // luggageDetails also holds a { services: [...] } entry; only bag lines have a price.
+    luggageSubtotal = (Array.isArray(parsed) ? parsed : []).reduce(
+      (sum, item) => (typeof item?.price === "number" && typeof item?.qty === "number" ? sum + item.price * item.qty : sum),
+      0
+    );
   } catch {}
   const basePrice = luggageSubtotal > 0 ? luggageSubtotal * storageDays : booking.totalPrice - extraBagFee + booking.discount;
   const additionalServices = (() => {
@@ -552,6 +556,10 @@ export default function CustomerBookingDetailPage() {
               try {
                 if (booking.luggageDetails) parsed = JSON.parse(booking.luggageDetails);
               } catch {}
+              // Drop the { services: [...] } entry so it is not rendered as a bag line.
+              parsed = Array.isArray(parsed)
+                ? parsed.filter((item) => typeof item?.type === "string" && typeof item?.qty === "number" && typeof item?.price === "number")
+                : [];
               if (parsed.length === 0) return null;
               const typeColorMap: Record<string, string> = {
                 "Extra Small": "bg-emerald-100 text-emerald-700",

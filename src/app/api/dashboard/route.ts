@@ -4,11 +4,20 @@ import { prisma } from "@/lib/prisma";
 import { getSystemSettings, setting } from "@/lib/settings";
 import { manilaDayRange, manilaMonthRange } from "@/lib/manila-time";
 
+// The figures are global (no per-user data), and the dashboard is opened by every user on
+// every navigation, so share one computed result for a short time per server instance.
+const STATS_TTL_MS = 20_000;
+let statsCache: { at: number; body: unknown } | null = null;
+const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" };
+
 export async function GET() {
   try {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (statsCache && Date.now() - statsCache.at < STATS_TTL_MS) {
+      return NextResponse.json(statsCache.body, { headers: NO_STORE });
     }
 
     const now = new Date();
@@ -118,36 +127,37 @@ export async function GET() {
     for (const b of luggageData) {
       if (!b.luggageDetails) continue;
       try {
-        const items = JSON.parse(b.luggageDetails) as { type: string; qty: number }[];
+        const items = JSON.parse(b.luggageDetails) as { type?: unknown; qty?: unknown }[];
         for (const item of items) {
-          bagDistribution[item.type] = (bagDistribution[item.type] || 0) + item.qty;
+          // luggageDetails also holds a { services: [...] } entry; only count real bag lines.
+          if (typeof item?.type !== "string") continue;
+          const qty = Number(item.qty);
+          if (!Number.isFinite(qty) || qty <= 0) continue;
+          bagDistribution[item.type] = (bagDistribution[item.type] || 0) + qty;
         }
       } catch {}
     }
 
-    return NextResponse.json(
-      {
-        capacityUsage: { used: bagsUsingCapacity, total: capacityTotal, percent: usagePercent },
-        bookingsThisMonth: monthlyBookings,
-        claimedThisMonth: monthlyDelivered,
-        totalUsers,
-        totalBookings,
-        deliveredBookings,
-        pendingDeliveries,
-        outForDelivery,
-        bookingsThisWeek,
-        bookingsToday,
-        deliveredToday,
-        deliveredThisWeek,
-        completionRateWeekly,
-        pendingToday,
-        durationBuckets,
-        bagDistribution,
-      },
-      {
-        headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" },
-      }
-    );
+    const body = {
+      capacityUsage: { used: bagsUsingCapacity, total: capacityTotal, percent: usagePercent },
+      bookingsThisMonth: monthlyBookings,
+      claimedThisMonth: monthlyDelivered,
+      totalUsers,
+      totalBookings,
+      deliveredBookings,
+      pendingDeliveries,
+      outForDelivery,
+      bookingsThisWeek,
+      bookingsToday,
+      deliveredToday,
+      deliveredThisWeek,
+      completionRateWeekly,
+      pendingToday,
+      durationBuckets,
+      bagDistribution,
+    };
+    statsCache = { at: Date.now(), body };
+    return NextResponse.json(body, { headers: NO_STORE });
   } catch (e) {
     if (process.env.NODE_ENV === "development") {
       console.error("Dashboard API error:", e);

@@ -172,9 +172,13 @@ export async function GET(req: Request) {
   for (const b of luggageDetails) {
     if (!b.luggageDetails) continue;
     try {
-      const items = JSON.parse(b.luggageDetails) as { type: string; qty: number }[];
+      const items = JSON.parse(b.luggageDetails) as { type?: unknown; qty?: unknown }[];
       for (const item of items) {
-        bagBreakdown[item.type] = (bagBreakdown[item.type] || 0) + item.qty;
+        // Skip the { services: [...] } entry that shares this array.
+        if (typeof item?.type !== "string") continue;
+        const qty = Number(item.qty);
+        if (!Number.isFinite(qty) || qty <= 0) continue;
+        bagBreakdown[item.type] = (bagBreakdown[item.type] || 0) + qty;
       }
     } catch {}
   }

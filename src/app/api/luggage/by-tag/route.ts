@@ -38,6 +38,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: `No luggage found with tag number ${tagNumber}` }, { status: 404 });
   }
 
+  // Employees may only look up luggage of bookings they are assigned to (same rule as the scanner).
+  if (session.user.role === "EMPLOYEE") {
+    const assigned = await prisma.bookingAssignment.findFirst({
+      where: { bookingId: item.bookingId, userId: session.user.id },
+      select: { id: true },
+    });
+    if (!assigned) return NextResponse.json({ error: `No luggage found with tag number ${tagNumber}` }, { status: 404 });
+  }
+
   if (referenceNumber && normalizeReference(referenceNumber) !== item.booking.referenceNumber) {
     return NextResponse.json({ error: "Tag number does not match the booking number" }, { status: 400 });
   }
