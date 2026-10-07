@@ -25,10 +25,12 @@ export default function PaymentsPage() {
   const role = session?.user?.role;
   const allowed = role === "ADMIN" || role === "STAFF";
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [fetching, setLoading] = useState(true);
+  // Loading only applies while the session resolves or the user may fetch; avoids setState in the effect.
+  const loading = fetching && (status === "loading" || allowed);
 
   useEffect(() => {
-    if (status === "loading" || !allowed) { if (!allowed && status !== "loading") setLoading(false); return; }
+    if (status === "loading" || !allowed) return;
     fetch("/api/payments")
       .then((r) => r.ok ? r.json() : [])
       .then(setPayments)

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any -- Leaflet, Mapbox and MapLibre are loaded dynamically and driven through one duck-typed interface; typing them would change runtime behavior. */
+
+import { useEffect, useId, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import * as maplibregl from "maplibre-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -115,8 +117,9 @@ export default function LiveMapInner({
   const map = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const extraMarkersRef = useRef<any[]>([]);
-  const routeSourceId = useRef(`route-${referenceNumber}-${Math.random().toString(36).slice(2, 7)}`);
-  const routeLayerId = useRef(`route-layer-${referenceNumber}-${Math.random().toString(36).slice(2, 7)}`);
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const routeSourceId = useRef(`route-${referenceNumber}-${uid}`);
+  const routeLayerId = useRef(`route-layer-${referenceNumber}-${uid}`);
   const mapLibRef = useRef<any>(null);
   const fallbackRef = useRef<HTMLDivElement>(null);
   const fallbackMapRef = useRef<any>(null);

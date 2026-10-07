@@ -43,7 +43,8 @@ export default function EmployeesPage() {
   const role = session?.user?.role;
   const isAdmin = role === "ADMIN";
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [fetching, setLoading] = useState(true);
+  const loading = fetching && (status === "loading" || isAdmin);
   const [deleteConfirm, setDeleteConfirm] = useState<{id:string;name:string}|null>(null);
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -51,7 +52,7 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     if (status === "loading") return;
-    if (!isAdmin) { setLoading(false); return; }
+    if (!isAdmin) return;
     fetch("/api/employees")
       .then((r) => {
         if (r.status === 403) throw new Error("Forbidden");

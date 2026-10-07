@@ -183,6 +183,7 @@ export default function BookPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch of public settings on mount
     fetchPublicSettings();
     const onFocus = () => fetchPublicSettings();
     const onVisibility = () => { if (document.visibilityState === "visible") fetchPublicSettings(); };

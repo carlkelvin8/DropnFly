@@ -40,14 +40,16 @@ export default function LocationsPage() {
   const isAdmin = role === "ADMIN";
   const allowed = role === "ADMIN" || role === "STAFF";
   const [locations, setLocations] = useState<Location[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [fetching, setLoading] = useState(true);
+  // Loading only applies while the session resolves or the user may fetch; avoids setState in the effect.
+  const loading = fetching && (status === "loading" || allowed);
   const [deleteConfirm, setDeleteConfirm] = useState<{id:string;name:string}|null>(null);
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const perPage = 10;
 
   useEffect(() => {
-    if (status === "loading" || !allowed) { if (!allowed && status !== "loading") setLoading(false); return; }
+    if (status === "loading" || !allowed) return;
     fetch("/api/locations")
       .then((res) => res.json())
       .then((d) => { if (Array.isArray(d)) setLocations(d); })

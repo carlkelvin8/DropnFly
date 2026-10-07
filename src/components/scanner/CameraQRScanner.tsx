@@ -59,6 +59,9 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
     if (mountedRef.current) setActive(false);
   }, []);
 
+  // Ref lets the scan callbacks restart the camera without referencing startCamera before it is declared.
+  const startCameraRef = useRef<() => void>(() => {});
+
   const startCamera = useCallback(() => {
     if (!mountedRef.current) return;
     Promise.resolve()
@@ -99,7 +102,7 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
             // Stop after successful scan; the flash auto-dismisses shortly and
             // the camera resumes unless the parent swapped this view out.
             scanner.stop().catch(() => {});
-            resumeAfterFlash(startCamera);
+            resumeAfterFlash(() => startCameraRef.current());
           },
           () => { /* QR not found in frame — ignore */ }
         );
@@ -122,7 +125,11 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
           setError(msg || "Failed to start camera");
         }
       });
-  }, [facingMode, stopCamera]);
+  }, [facingMode, stopCamera, resumeAfterFlash]);
+
+  useEffect(() => {
+    startCameraRef.current = startCamera;
+  }, [startCamera]);
 
   const switchCamera = useCallback(async () => {
     await stopCamera();
@@ -154,7 +161,7 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
       setScanned(true);
       onScanRef.current(decodedText);
       if (navigator.vibrate) navigator.vibrate(200);
-      resumeAfterFlash(startCamera);
+      resumeAfterFlash(() => startCameraRef.current());
     } catch {
       if (mountedRef.current) {
         setError("No readable QR code was found in that image. Try a clearer screenshot or photo.");
@@ -163,7 +170,7 @@ export function CameraQRScanner({ onScan, onClose, title, description }: CameraQ
       if (mountedRef.current) setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [stopCamera]);
+  }, [stopCamera, resumeAfterFlash]);
 
   useEffect(() => {
     mountedRef.current = true;

@@ -86,10 +86,12 @@ export default function IncidentsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [fetching, setLoading] = useState(true);
+  // Loading only applies while the session resolves or the user may fetch; avoids setState in the effect.
+  const loading = fetching && (status === "loading" || allowed);
 
   useEffect(() => {
-    if (status === "loading" || !allowed) { if (!allowed && status !== "loading") setLoading(false); return; }
+    if (status === "loading" || !allowed) return;
     const params = new URLSearchParams();
     if (statusFilter) params.set("status", statusFilter);
     if (priorityFilter) params.set("priority", priorityFilter);

@@ -185,6 +185,7 @@ export default function NewBookingPage() {
 
   useEffect(() => {
     if (!custCountry) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag must flip before the async fetch starts
     setCitiesLoading(true);
     fetch("/api/public/geo", {
       method: "POST",
@@ -209,6 +210,7 @@ export default function NewBookingPage() {
 
   useEffect(() => {
     if (!pickupDate) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag must flip before the async fetch starts
     setPickupSlotsLoading(true);
     fetchSlots(pickupDate, "pickup").then((slots) => {
       setPickupSlots(slots);
@@ -219,6 +221,7 @@ export default function NewBookingPage() {
 
   useEffect(() => {
     if (!deliveryDate) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag must flip before the async fetch starts
     setDeliverySlotsLoading(true);
     fetchSlots(deliveryDate, "delivery").then((slots) => {
       setDeliverySlots(slots);

@@ -33,16 +33,12 @@ export default function PromoCodesPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [forbidden, setForbidden] = useState(false);
+  const [forbiddenByApi, setForbidden] = useState(false);
+  const forbidden = forbiddenByApi || (status !== "loading" && Boolean(role) && role !== "ADMIN");
 
   useEffect(() => {
-    if (status === "loading") return;
-    if (role && role !== "ADMIN") {
-      setForbidden(true);
-      setLoading(false);
-      return;
-    }
-    if (role === "ADMIN") loadPromos();
+    if (status === "loading" || role !== "ADMIN") return;
+    loadPromos();
   }, [role, status]);
 
   if (forbidden) {
