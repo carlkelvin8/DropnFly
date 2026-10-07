@@ -12,10 +12,10 @@ export async function POST(
   const { reference } = await params;
 
   try {
-    const { photo, note, latitude, longitude } = await req.json();
+    const { confirmed, photo, note, latitude, longitude } = await req.json();
 
-    if (!photo) {
-      return NextResponse.json({ error: "A verification photo is required" }, { status: 400 });
+    if (confirmed !== true) {
+      return NextResponse.json({ error: "Please confirm that you handed your baggage to the employee." }, { status: 400 });
     }
 
     const booking = await prisma.booking.findUnique({
@@ -34,7 +34,7 @@ export async function POST(
     }
     if (!(await canAccessBooking(booking))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (typeof photo !== "string" || photo.length > 7_000_000 || (note && (typeof note !== "string" || note.length > 1000))) {
+    if (photo != null && (typeof photo !== "string" || photo.length > 7_000_000) || (note && (typeof note !== "string" || note.length > 1000))) {
       return NextResponse.json({ error: "Photo or note is too large" }, { status: 413 });
     }
 
@@ -60,7 +60,7 @@ export async function POST(
           userId: null,
           status: "IN_STORAGE",
           photo,
-          note: note || "Passenger drop-off verification",
+          note: note || "Customer confirmed baggage handover to employee",
           latitude: latitude ?? null,
           longitude: longitude ?? null,
         },
@@ -72,7 +72,7 @@ export async function POST(
       action: "VERIFY",
       entity: "Booking",
       entityId: booking.id,
-      details: `Passenger drop-off verified with photo for ${booking.referenceNumber}`,
+      details: `Customer confirmed baggage handover to employee for ${booking.referenceNumber}`,
     });
 
     const [assigned, staff] = await Promise.all([
@@ -94,7 +94,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       booking: updatedBooking,
-      message: `Drop-off verified — ${booking.referenceNumber} is now In Storage`,
+      message: `Customer confirmed baggage handover — ${booking.referenceNumber} is now In Storage`,
     });
   } catch (error) {
     if (process.env.NODE_ENV === "development") {

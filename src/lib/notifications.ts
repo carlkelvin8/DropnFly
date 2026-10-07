@@ -161,7 +161,7 @@ export async function notifyDropOffVerified(staffUserIds: string[], bookingRef: 
       userId,
       type: "dropoff_verified",
       title: "Drop-off Verified",
-      message: `${customerName} verified the drop-off of booking ${bookingRef}. Luggage is now In Storage.`,
+      message: `${customerName} confirmed handing over booking ${bookingRef} to the employee. Luggage is now In Storage.`,
       link: `/dashboard/bookings`,
       sendEmail: true,
     });

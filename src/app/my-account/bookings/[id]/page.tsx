@@ -85,8 +85,7 @@ export default function CustomerBookingDetailPage() {
   const [showChat, setShowChat] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const [review, setReview] = useState<BookingReview | null>(null);
-  const verifyFileRef = useRef<HTMLInputElement>(null);
-  const [verifyPhoto, setVerifyPhoto] = useState<string | null>(null);
+  const [verifyConfirmed, setVerifyConfirmed] = useState(false);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
   const [verifyDone, setVerifyDone] = useState(false);
   const [verifyError, setVerifyError] = useState("");
@@ -191,20 +190,12 @@ export default function CustomerBookingDetailPage() {
     setPaying(false);
   }
 
-  function handleVerifyPhoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setVerifyPhoto(reader.result as string);
-    reader.readAsDataURL(file);
-  }
-
   async function handleVerifyDropoff() {
-    if (!verifyPhoto || !booking) return;
+    if (!verifyConfirmed || !booking) return;
     setVerifySubmitting(true);
     setVerifyError("");
     try {
-      const body: Record<string, unknown> = { photo: verifyPhoto, note: "Passenger drop-off verification" };
+      const body: Record<string, unknown> = { confirmed: true, note: "Customer confirmed baggage handover to employee" };
       if (navigator.geolocation) {
         try {
           const pos = await new Promise<GeolocationPosition>((res, rej) =>
@@ -219,12 +210,13 @@ export default function CustomerBookingDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const json = await res.json();
+      const responseText = await res.text();
+      const json = (() => { try { return JSON.parse(responseText) as { error?: string }; } catch { return { error: responseText }; } })();
       if (!res.ok) throw new Error(json.error || "Verification failed");
       setBooking((prev) => (prev ? { ...prev, status: "IN_STORAGE" } : prev));
       setVerifyDone(true);
-      setVerifyPhoto(null);
-      toast.success("Drop-off verified — luggage is now In Storage");
+      setVerifyConfirmed(false);
+      toast.success("Handover confirmed — luggage is now In Storage");
     } catch (e) {
       setVerifyError(e instanceof Error ? e.message : "Verification failed");
       toast.error(e instanceof Error ? e.message : "Verification failed");
@@ -366,51 +358,28 @@ export default function CustomerBookingDetailPage() {
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-100">
                   <Camera className="h-4 w-4 text-purple-600" />
                 </div>
-                Verify Your Drop-off
+                Confirm Baggage Handover
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-xs text-gray-500">
-                Your luggage has been received by our staff. Confirm the handover by taking a photo to move
-                your booking to <strong className="text-purple-700">In Storage</strong>.
+                Confirm that you handed your baggage to the employee. This will move your booking to
+                <strong className="text-purple-700"> In Storage</strong>.
               </p>
-              {verifyPhoto ? (
-                <div className="relative overflow-hidden rounded-xl border">
-                  <Image unoptimized width={800} height={320} src={verifyPhoto} alt="Drop-off verification" className="h-40 w-full object-cover" />
-                  <button
-                    onClick={() => setVerifyPhoto(null)}
-                    className="absolute top-2 right-2 rounded-full bg-red-500 px-2.5 py-1 text-xs font-medium text-white shadow-lg"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => verifyFileRef.current?.click()}
-                  className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/30 p-6 transition-colors hover:border-purple-500/50 hover:bg-purple-50/50"
-                >
-                  <Camera className="h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Take a photo of your handed-over luggage</p>
-                </button>
-              )}
-              <input
-                ref={verifyFileRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleVerifyPhoto}
-                className="hidden"
-              />
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-purple-200 bg-purple-50/50 p-4 text-sm text-purple-950">
+                <input type="checkbox" checked={verifyConfirmed} onChange={(event) => setVerifyConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 accent-purple-600" />
+                <span>I confirm that I handed my baggage to the DropnFly employee.</span>
+              </label>
               {verifyError && <p className="text-xs text-red-600">{verifyError}</p>}
               <Button
                 className="w-full bg-orange-500 text-white hover:bg-orange-600"
                 onClick={handleVerifyDropoff}
-                disabled={!verifyPhoto || verifySubmitting}
+                disabled={!verifyConfirmed || verifySubmitting}
               >
                 {verifySubmitting ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</>
                 ) : (
-                  <><CheckCircle2 className="mr-2 h-4 w-4" /> Confirm Drop-off</>
+                  <><CheckCircle2 className="mr-2 h-4 w-4" /> Confirm Handover</>
                 )}
               </Button>
             </CardContent>
