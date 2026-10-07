@@ -56,7 +56,7 @@ export async function GET(req: Request) {
     }),
     prisma.booking.findMany({
       where: periodFilter,
-      select: { createdAt: true },
+      select: { createdAt: true, totalPrice: true, status: true },
       orderBy: { createdAt: "asc" },
     }),
     prisma.booking.aggregate({
@@ -121,21 +121,35 @@ export async function GET(req: Request) {
   const totalCapacity = parseInt(setting(settings, "max_simultaneous_bags", "0"));
   // Authoritative active storage: bags physically in storage (RECEIVED/IN_STORAGE/OUT_FOR_DELIVERY are in-system but not yet delivered)
   // For utilization, use ongoing bags count so capacity (bags) matches unit.
+  // Active = not yet finished (includes confirmed bookings waiting for pickup).
   const activeBookingsCount = await prisma.booking.count({
-    where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
+    where: { status: { in: ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
   });
 
   // Use Manila date keys so containers match the “Asia/Manila” calendar admins see (avoids UTC off-by-one)
   const bookingsPerDay: Record<string, number> = {};
   const revenuePerDay: Record<string, number> = {};
+  const valuePerDay: Record<string, number> = {};
   const lastDay = until || new Date();
   for (let cursor = new Date(since); cursor <= lastDay; cursor.setDate(cursor.getDate() + 1)) {
     bookingsPerDay[manilaDateStr(cursor)] = 0;
     revenuePerDay[manilaDateStr(cursor)] = 0;
+    valuePerDay[manilaDateStr(cursor)] = 0;
   }
+  // Booking value = price of bookings made (cancelled/no-show excluded); collected revenue only counts
+  // recorded payments, which stays at 0 until staff record payments.
+  let bookedValue = 0;
+  let completedValue = 0;
+  let validBookingCount = 0;
   for (const b of bookingsByDay) {
     const day = manilaDateStr(b.createdAt);
     bookingsPerDay[day] = (bookingsPerDay[day] || 0) + 1;
+    if (b.status === "CANCELLED" || b.status === "NO_SHOW") continue;
+    const price = Number(b.totalPrice);
+    valuePerDay[day] = (valuePerDay[day] || 0) + price;
+    bookedValue += price;
+    validBookingCount += 1;
+    if (b.status === "DELIVERED") completedValue += price;
   }
   for (const p of paidPayments) {
     if (!p.paidAt) continue;
@@ -163,7 +177,8 @@ export async function GET(req: Request) {
   // using the period data left older weeks at 0 even when they had bookings.
   const heatmapStart = new Date(manilaDayStart(manilaDateStr(new Date())).getTime() - 83 * 86400000);
   const heatmapRows = await prisma.booking.findMany({
-    where: { createdAt: { gte: heatmapStart }, status: { notIn: ["CANCELLED", "NO_SHOW"] } },
+    // Same definition as "Total Bookings" and the trend graph, so the numbers match.
+    where: { createdAt: { gte: heatmapStart } },
     select: { createdAt: true },
   });
   const heatmapCounts: Record<string, number> = {};
@@ -294,6 +309,19 @@ export async function GET(req: Request) {
     }),
   ]);
 
+  // Completed bookings in the period whose price was never fully recorded as paid.
+  const unpaidCompleted = await prisma.$queryRaw<Array<{ count: number; amount: number }>>`
+    SELECT COUNT(*)::int AS count, COALESCE(SUM(GREATEST(b."totalPrice" - COALESCE(p.net, 0), 0)), 0)::float8 AS amount
+    FROM "Booking" b
+    LEFT JOIN (
+      SELECT "bookingId",
+             SUM(CASE WHEN status = 'PAID' THEN amount WHEN status = 'REFUNDED' AND amount < 0 THEN amount ELSE 0 END) AS net
+      FROM "Payment" GROUP BY "bookingId"
+    ) p ON p."bookingId" = b.id
+    WHERE b.status = 'DELIVERED'
+      AND b."createdAt" >= ${since}${until ? Prisma.sql` AND b."createdAt" <= ${until}` : Prisma.empty}
+      AND b."totalPrice" - COALESCE(p.net, 0) > 0
+  `;
   const refundsAmount = refundAgg.reduce((sum, refund) => sum + Math.abs(Number(refund.amount)), 0);
   const ongoingBagsCount = ongoingBags._sum.numberOfBags || 0;
   const storageUtilization = totalCapacity > 0 ? (ongoingBagsCount / totalCapacity) * 100 : 0;
@@ -310,6 +338,10 @@ export async function GET(req: Request) {
     refundsAmount: refundsAmount,
     grossRevenue: totalRevenue,
     netRevenue: totalRevenue - refundsAmount,
+    bookedValue,
+    completedValue,
+    unpaidCompletedBookings: Number(unpaidCompleted[0]?.count || 0),
+    unpaidCompletedAmount: Number(unpaidCompleted[0]?.amount || 0),
     canceledNoShow,
     customerSatisfaction: satisfactionAgg._avg.rating || 0,
   };
@@ -319,7 +351,9 @@ export async function GET(req: Request) {
       totalBookings: periodBookings,
       activeBookings: activeBookingsCount,
       totalRevenue,
-      averagePrice: paidBookingCount > 0 ? totalRevenue / paidBookingCount : 0,
+      // Average booking price in the period (from booking prices, not from recorded payments).
+      averagePrice: validBookingCount > 0 ? bookedValue / validBookingCount : 0,
+      averageCollectedPerPaidBooking: paidBookingCount > 0 ? totalRevenue / paidBookingCount : 0,
       averageBags: periodBookingStats._avg.numberOfBags || 0,
       totalCustomers,
       newCustomers,
@@ -333,6 +367,7 @@ export async function GET(req: Request) {
       date,
       count,
       revenue: revenuePerDay[date] || 0,
+      value: valuePerDay[date] || 0,
     })),
     revenueByStatus: Object.entries(revenueByStatusMap).map(([status, revenue]) => ({
       status,

@@ -67,6 +67,7 @@ interface DayData {
   date: string;
   count: number;
   revenue: number;
+  value?: number;
 }
 
 interface HourData {
@@ -90,6 +91,10 @@ interface FinancialMetrics {
   storageUtilization: number;
   outstandingBalance: number;
   outstandingBookings?: number;
+  bookedValue?: number;
+  completedValue?: number;
+  unpaidCompletedBookings?: number;
+  unpaidCompletedAmount?: number;
   refundsIssued: number;
   refundsAmount: number;
   grossRevenue?: number;
@@ -375,14 +380,15 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
       <Card className="border-t-2 border-t-sky-500">
         <CardHeader>
           <CardTitle className="text-sm font-medium">Bookings & Revenue Trend (Line Graph)</CardTitle>
-          <CardDescription>Daily bookings and collected revenue over the selected period.</CardDescription>
+          <CardDescription>Daily bookings (left axis), booking value and collected payments in pesos (right axis).</CardDescription>
         </CardHeader>
         <CardContent>
           <RechartsLine
-            data={bookingsByDay.map((d) => ({ date: d.date, bookings: d.count, revenue: d.revenue }))}
-            dataKeys={["bookings", "revenue"]}
-            labels={["Bookings", "Revenue"]}
-            colors={["#3b82f6", "#10b981"]}
+            data={bookingsByDay.map((d) => ({ date: d.date, bookings: d.count, value: d.value ?? 0, revenue: d.revenue }))}
+            dataKeys={["bookings", "value", "revenue"]}
+            labels={["Bookings", "Booking value", "Collected payments"]}
+            colors={["#3b82f6", "#f97316", "#10b981"]}
+            currencyKeys={["value", "revenue"]}
           />
         </CardContent>
       </Card>
@@ -537,7 +543,7 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
         <CardHeader className="gap-5 pb-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle className="text-sm font-semibold">Booking Activity Heatmap</CardTitle>
-            <CardDescription className="mt-1">Bookings created per day over the last 12 weeks (cancelled and no-show excluded)</CardDescription>
+            <CardDescription className="mt-1">Bookings created per day over the last 12 weeks (same count as Total Bookings)</CardDescription>
           </div>
           <div className="grid grid-cols-3 gap-6 text-center sm:gap-9">
             <div><p className="text-xl font-bold text-orange-500">{heatmapPeak}</p><p className="text-[10px] text-muted-foreground">Peak Bookings</p></div>
@@ -880,7 +886,7 @@ function FinancialTab({
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(overview?.averagePrice || 0)}</div>
-                  <p className="text-xs text-muted-foreground">per paid booking in period</p>
+                  <p className="text-xs text-muted-foreground">average booking price in period</p>
                 </CardContent>
               </Card>
             </>
@@ -898,6 +904,20 @@ function FinancialTab({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+              <span className="text-muted-foreground">Booked value (bookings made, excl. cancelled/no-show)</span>
+              <span className="font-bold">{formatCurrency(metrics?.bookedValue ?? 0)}</span>
+            </div>
+            <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+              <span className="text-muted-foreground">Completed value (delivered / claimed bookings)</span>
+              <span className="font-bold">{formatCurrency(metrics?.completedValue ?? 0)}</span>
+            </div>
+            {(metrics?.unpaidCompletedBookings ?? 0) > 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+                {metrics?.unpaidCompletedBookings} completed booking{metrics?.unpaidCompletedBookings === 1 ? " has" : "s have"} no recorded payment ({formatCurrency(metrics?.unpaidCompletedAmount ?? 0)}).
+                Collected revenue only counts payments recorded in each booking&apos;s Payment Summary.
+              </div>
+            )}
             <div className="flex justify-between rounded-lg border bg-muted/20 p-3 text-sm">
               <span className="text-muted-foreground">Collected (PAID · paidAt verified)</span>
               <span className="font-bold text-emerald-600">{formatCurrency(authoritativeRevenue)}</span>
