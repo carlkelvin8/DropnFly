@@ -32,6 +32,8 @@ async function getReporterUserId(incidentId: string) {
   return entry?.userId || null;
 }
 
+class AlreadyDecidedError extends Error {}
+
 async function handleNoShowDecision({
   id,
   session,
@@ -63,19 +65,12 @@ async function handleNoShowDecision({
 
   const targetStatus = incident.type === "no_show" ? "NO_SHOW" : "CANCELLED";
 
+  try {
   if (action === "accept") {
     await prisma.$transaction(async (tx) => {
-      await tx.booking.update({
-        where: { id: incident.booking.id },
-        data: {
-          status: targetStatus,
-          pickupStartedAt: null,
-          deliveryArrivedAt: null,
-          checkoutLockedUntil: null,
-        },
-      });
-      await tx.incidentReport.update({
-        where: { id },
+      // Claim the report atomically so two admins cannot both decide it.
+      const claimed = await tx.incidentReport.updateMany({
+        where: { id, status: { in: ["PENDING", "INVESTIGATING"] } },
         data: {
           status: "RESOLVED",
           resolvedAt: new Date(),
@@ -83,6 +78,16 @@ async function handleNoShowDecision({
             incident.type === "no_show"
               ? "No-show report accepted by admin. Booking marked as No Show."
               : "Cancellation report accepted by admin. Booking cancelled.",
+        },
+      });
+      if (claimed.count === 0) throw new AlreadyDecidedError();
+      await tx.booking.update({
+        where: { id: incident.booking.id },
+        data: {
+          status: targetStatus,
+          pickupStartedAt: null,
+          deliveryArrivedAt: null,
+          checkoutLockedUntil: null,
         },
       });
       await tx.incidentTimeline.create({
@@ -114,24 +119,31 @@ async function handleNoShowDecision({
       console.warn(`[INCIDENT] Customer notification failed for ${id}:`, notificationError);
     }
   } else {
-    await prisma.$transaction([
-      prisma.incidentReport.update({
-        where: { id },
+    await prisma.$transaction(async (tx) => {
+      const claimed = await tx.incidentReport.updateMany({
+        where: { id, status: { in: ["PENDING", "INVESTIGATING"] } },
         data: {
           status: "CLOSED",
           resolvedAt: new Date(),
           resolution: "No-show report dismissed by admin. Booking status unchanged.",
         },
-      }),
-      prisma.incidentTimeline.create({
+      });
+      if (claimed.count === 0) throw new AlreadyDecidedError();
+      await tx.incidentTimeline.create({
         data: {
           incidentId: id,
           action: "status_change",
           description: "Report dismissed by admin. Booking status unchanged.",
           userId: session.user.id,
         },
-      }),
-    ]);
+      });
+    });
+  }
+  } catch (error) {
+    if (error instanceof AlreadyDecidedError) {
+      return NextResponse.json({ error: "This report has already been decided" }, { status: 400 });
+    }
+    throw error;
   }
 
   try {

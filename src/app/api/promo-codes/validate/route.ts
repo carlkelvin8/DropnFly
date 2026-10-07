@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     }
     const { code, amount } = await req.json();
 
-    if (!code) {
+    if (!code || typeof code !== "string") {
       return NextResponse.json({ error: "Promo code is required" }, { status: 400 });
     }
 

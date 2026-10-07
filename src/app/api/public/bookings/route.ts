@@ -119,7 +119,7 @@ export async function POST(req: Request) {
     let discount = 0;
     let promoCodeId: string | null = null;
 
-    if (promoCode && setting(settings, "discount_codes_enabled", "true") !== "false") {
+    if (typeof promoCode === "string" && promoCode && setting(settings, "discount_codes_enabled", "true") !== "false") {
       const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.toUpperCase() } });
       if (promo && promo.isActive && promo.usedCount < promo.maxUsage) {
         if (!promo.expiresAt || new Date() <= promo.expiresAt) {

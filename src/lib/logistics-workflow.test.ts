@@ -36,3 +36,12 @@ test("entering a new phase clears leftover tracking state", async () => {
   assert.deepEqual(trackingResetForStatus("OUT_FOR_DELIVERY"), { pickupStartedAt: null, deliveryArrivedAt: null });
   assert.deepEqual(trackingResetForStatus("RECEIVED"), {});
 });
+
+test("duplicate services are charged and matched once", async () => {
+  const { parseLuggageDetails, computeBookingPrice, DEFAULT_PRICE_SETTINGS } = await import("./pricing");
+  const raw = JSON.stringify([{ type: "Small", qty: 1 }, { services: ["Pick-up from Customer", "Pick-up from Customer"] }]);
+  const parsed = parseLuggageDetails(raw);
+  assert.deepEqual(parsed.services, ["Pick-up from Customer"]);
+  const price = computeBookingPrice({ luggageLines: parsed.luggageLines, services: parsed.services, discount: 0, settings: DEFAULT_PRICE_SETTINGS });
+  assert.equal(price.servicesCost, DEFAULT_PRICE_SETTINGS.pickupFee);
+});

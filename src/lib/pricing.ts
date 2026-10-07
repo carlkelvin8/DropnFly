@@ -105,7 +105,8 @@ export function parseLuggageDetails(raw: string): {
     // invalid JSON — empty lines, caller will reject
   }
 
-  return { luggageLines, services };
+  // A repeated service must not be charged (or matched) twice.
+  return { luggageLines, services: [...new Set(services.map((s) => s.trim()))] };
 }
 
 function parseFeeSetting(value: string | undefined, defaultValue: number): number {
