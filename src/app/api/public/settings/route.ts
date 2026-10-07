@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { getSystemSettings } from "@/lib/settings";
 
 const DEFAULT_TERMS = `1. Service Description
 Dropnfly provides luggage storage and delivery services at NAIA Terminals 1-4. By using our service, you agree to these terms.
@@ -40,12 +40,13 @@ We implement reasonable security measures to protect your personal information. 
 6. Contact
 For privacy-related inquiries, contact our support team.`;
 
+// Keep database access at request time; the response itself is safely cached
+// at the CDN using the explicit Cache-Control headers below.
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const settings = await prisma.systemSetting.findMany();
-    const map = Object.fromEntries(settings.map((s) => [s.key, s.value]));
+    const map = await getSystemSettings();
     return NextResponse.json({
       // Explicit version to bust client caches when admin saves
       _version: Date.now(),
@@ -90,7 +91,7 @@ export async function GET() {
         operating_start: map.operating_start || "00:00",
         operating_end: map.operating_end || "23:59",
       },
-    }, { headers: { "Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache" } });
+    }, { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } });
   } catch {
     return NextResponse.json({
       terms_and_conditions: DEFAULT_TERMS,
@@ -102,6 +103,6 @@ export async function GET() {
       pricing: { pickup_fee: 180, delivery_fee: 180, excess_bag_fee: 100, excess_bag_threshold: 3 },
       booking_limits: { max_bags_per_booking: 0, max_storage_days: 0, max_advance_booking_days: 0, min_storage_days: 1 },
       footer: { phone: "+63 (2) 1234 5678", email: "hello@dropnfly.ph", facebook: "", instagram: "", twitter: "", operating_days: "0,1,2,3,4,5,6", operating_start: "00:00", operating_end: "23:59" },
-    }, { headers: { "Cache-Control": "no-store, must-revalidate" } });
+    }, { headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" } });
   }
 }

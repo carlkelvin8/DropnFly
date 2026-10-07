@@ -42,7 +42,6 @@ export default async function RootLayout({
   // Read request-time state before touching the database so Next.js does not
   // execute the settings query during static prerendering at build time.
   const headersList = await headers();
-  const { enabled, message } = await getMaintenanceMode();
   const pathname = headersList.get("x-pathname") || headersList.get("x-url")?.split("?")[0] || "";
   const trackBypass = headersList.get("x-track-bypass") === "1";
 
@@ -50,7 +49,13 @@ export default async function RootLayout({
   // Fallback to referer/x-url and explicit bypass header
   const effectivePathname = pathname || headersList.get("x-url")?.split("?")[0] || "";
   const isTrackRequest = effectivePathname.startsWith("/track") || trackBypass || headersList.get("referer")?.includes("/track");
-  const showMaintenance = enabled && !isTrackRequest && isPublicRoute(effectivePathname || pathname);
+  const maintenanceApplies = !isTrackRequest && isPublicRoute(effectivePathname || pathname);
+  // Dashboard/API/tracking transitions never render the maintenance screen, so
+  // do not block those navigations on a settings lookup they cannot use.
+  const { enabled, message } = maintenanceApplies
+    ? await getMaintenanceMode()
+    : { enabled: false, message: "" };
+  const showMaintenance = maintenanceApplies && enabled;
 
   return (
     <html lang="en" suppressHydrationWarning>

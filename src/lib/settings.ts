@@ -1,23 +1,30 @@
 import { prisma } from "./prisma";
+import { revalidateTag, unstable_cache } from "next/cache";
 
-let cache: { map: Record<string, string>; at: number } | null = null;
-const TTL_MS = 0;
+const SETTINGS_CACHE_TAG = "system-settings";
+
+async function readSystemSettings(): Promise<Record<string, string>> {
+  const settings = await prisma.systemSetting.findMany();
+  return Object.fromEntries(settings.map((item) => [item.key, item.value]));
+}
+
+// Settings are read from the root layout and several API routes. Persisting
+// this small map prevents every page transition from making a blocking
+// cross-region database round trip. Admin saves invalidate the tag below.
+const readCachedSystemSettings = unstable_cache(
+  readSystemSettings,
+  [SETTINGS_CACHE_TAG],
+  { tags: [SETTINGS_CACHE_TAG], revalidate: 300 }
+);
 
 export async function getSystemSettings(force = false): Promise<Record<string, string>> {
-  // Senior-level: immediate reflection for admin → customer/employee.
-  // Disable stale cache — always fetch fresh unless explicitly allowed.
-  // Keep tiny in-memory cache only to coalesce concurrent requests within same tick.
-  if (!force && TTL_MS > 0 && cache && Date.now() - cache.at < TTL_MS) {
-    return cache.map;
-  }
-  const settings = await prisma.systemSetting.findMany();
-  const map = Object.fromEntries(settings.map((s) => [s.key, s.value]));
-  cache = { map, at: Date.now() };
-  return map;
+  return force ? readSystemSettings() : readCachedSystemSettings();
 }
 
 export function invalidateSettingsCache() {
-  cache = null;
+  // Route Handlers cannot use updateTag; an immediate expiry preserves
+  // read-your-own-writes after an administrator saves settings.
+  revalidateTag(SETTINGS_CACHE_TAG, { expire: 0 });
 }
 
 export function setting(map: Record<string, string>, key: string, fallback: string): string {

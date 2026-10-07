@@ -27,30 +27,44 @@ export async function GET() {
     startOfDurations.setFullYear(startOfDurations.getFullYear() - 1);
 
     const [
-      totalBookings,
-      deliveredBookings,
-      monthlyBookings,
-      monthlyDelivered,
+      bookingCounts,
       bookingCapacity,
       totalUsers,
       bookingDurations,
       luggageData,
-      pendingDeliveries,
-      outForDelivery,
-      bookingsThisWeek,
-      bookingsToday,
-      deliveredToday,
-      deliveredThisWeek,
-      pendingToday,
+      settings,
     ] = await Promise.all([
-      prisma.booking.count(),
-      prisma.booking.count({ where: { status: "DELIVERED" } }),
-      prisma.booking.count({
-        where: { createdAt: { gte: startOfMonth } },
-      }),
-      prisma.booking.count({
-        where: { status: "DELIVERED", createdAt: { gte: startOfMonth } },
-      }),
+      prisma.$queryRaw<Array<{
+        totalBookings: number | bigint;
+        deliveredBookings: number | bigint;
+        monthlyBookings: number | bigint;
+        monthlyDelivered: number | bigint;
+        pendingDeliveries: number | bigint;
+        outForDelivery: number | bigint;
+        bookingsThisWeek: number | bigint;
+        bookingsToday: number | bigint;
+        deliveredToday: number | bigint;
+        deliveredThisWeek: number | bigint;
+        pendingToday: number | bigint;
+      }>>`
+        SELECT
+          COUNT(*)::int AS "totalBookings",
+          COUNT(*) FILTER (WHERE status = 'DELIVERED')::int AS "deliveredBookings",
+          COUNT(*) FILTER (WHERE "createdAt" >= ${startOfMonth})::int AS "monthlyBookings",
+          COUNT(*) FILTER (WHERE status = 'DELIVERED' AND "createdAt" >= ${startOfMonth})::int AS "monthlyDelivered",
+          COUNT(*) FILTER (WHERE status = 'PENDING')::int AS "pendingDeliveries",
+          COUNT(*) FILTER (WHERE status = 'OUT_FOR_DELIVERY')::int AS "outForDelivery",
+          COUNT(*) FILTER (WHERE "createdAt" >= ${startOfWeek})::int AS "bookingsThisWeek",
+          COUNT(*) FILTER (WHERE "checkIn" >= ${startOfToday} AND "checkIn" < ${endOfToday})::int AS "bookingsToday",
+          COUNT(*) FILTER (WHERE status = 'DELIVERED' AND "checkOut" >= ${startOfToday} AND "checkOut" < ${endOfToday})::int AS "deliveredToday",
+          COUNT(*) FILTER (WHERE status = 'DELIVERED' AND "checkOut" >= ${startOfWeek})::int AS "deliveredThisWeek",
+          COUNT(*) FILTER (
+            WHERE status IN ('RECEIVED', 'IN_STORAGE', 'OUT_FOR_DELIVERY')
+              AND "checkOut" >= ${startOfToday}
+              AND "checkOut" < ${endOfToday}
+          )::int AS "pendingToday"
+        FROM "Booking"
+      `,
       prisma.booking.aggregate({
         where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
         _sum: { numberOfBags: true },
@@ -67,33 +81,22 @@ export async function GET() {
         select: { luggageDetails: true },
         take: 500,
       }),
-      prisma.booking.count({
-        where: { status: "PENDING" },
-      }),
-      prisma.booking.count({
-        where: { status: "OUT_FOR_DELIVERY" },
-      }),
-      prisma.booking.count({
-        where: { createdAt: { gte: startOfWeek } },
-      }),
-      prisma.booking.count({
-        where: { checkIn: { gte: startOfToday, lt: endOfToday } },
-      }),
-      prisma.booking.count({
-        where: { status: "DELIVERED", checkOut: { gte: startOfToday, lt: endOfToday } },
-      }),
-      prisma.booking.count({
-        where: { status: "DELIVERED", checkOut: { gte: startOfWeek } },
-      }),
-      prisma.booking.count({
-        where: {
-          status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] },
-          checkOut: { gte: startOfToday, lt: endOfToday },
-        },
-      }),
+      getSystemSettings(),
     ]);
 
-    const settings = await getSystemSettings();
+    const counts = bookingCounts[0];
+    if (!counts) throw new Error("Dashboard count query returned no row");
+    const totalBookings = Number(counts.totalBookings);
+    const deliveredBookings = Number(counts.deliveredBookings);
+    const monthlyBookings = Number(counts.monthlyBookings);
+    const monthlyDelivered = Number(counts.monthlyDelivered);
+    const pendingDeliveries = Number(counts.pendingDeliveries);
+    const outForDelivery = Number(counts.outForDelivery);
+    const bookingsThisWeek = Number(counts.bookingsThisWeek);
+    const bookingsToday = Number(counts.bookingsToday);
+    const deliveredToday = Number(counts.deliveredToday);
+    const deliveredThisWeek = Number(counts.deliveredThisWeek);
+    const pendingToday = Number(counts.pendingToday);
     const capacityTotal = parseInt(setting(settings, "max_simultaneous_bags", "0"));
     const bagsUsingCapacity = bookingCapacity._sum.numberOfBags || 0;
     const usagePercent = capacityTotal > 0 ? Math.round((bagsUsingCapacity / capacityTotal) * 100) : 0;
