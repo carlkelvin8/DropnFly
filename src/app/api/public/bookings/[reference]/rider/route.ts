@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getFleetVehicleColor } from "@/lib/fleet-vehicle";
 import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
 import { canAccessBooking } from "@/lib/booking-access";
@@ -59,6 +60,7 @@ export async function GET(
       ...assignment.user,
       vehicleType: assignment.vehicleType || assignment.user.vehicleType,
       plateNumber: assignment.vehiclePlate || assignment.user.plateNumber,
+      vehicleColor: await getFleetVehicleColor(assignment.vehicleId),
     },
   });
 }

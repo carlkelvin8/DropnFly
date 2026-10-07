@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getFleetVehicleColor } from "@/lib/fleet-vehicle";
 import { prisma } from "@/lib/prisma";
 import { normalizeReference } from "@/lib/utils";
 import { canAccessBooking } from "@/lib/booking-access";
@@ -63,7 +64,17 @@ export async function GET(
   // Do not serialize the employee at all before Start Pickup/Delivery. Hiding
   // the card in React is not a security boundary; the API response must also
   // withhold identity, vehicle and location fields.
-  const rider = trackable && assignment?.user ? assignment.user : null;
+  // Show the vehicle assigned for this booking (type, plate, color from the registered fleet), not the
+  // legacy vehicle fields on the employee profile.
+  const vehicleColor = trackable ? await getFleetVehicleColor(assignment?.vehicleId) : null;
+  const rider = trackable && assignment?.user
+    ? {
+        ...assignment.user,
+        vehicleType: assignment.vehicleType || null,
+        plateNumber: assignment.vehiclePlate || null,
+        vehicleColor,
+      }
+    : null;
 
   return NextResponse.json({
     booking: decimalsToNumbers({

@@ -40,6 +40,7 @@ interface Rider {
   profilePic: string | null;
   vehicleType: string | null;
   plateNumber: string | null;
+  vehicleColor?: string | null;
 }
 
 interface BookingPublic {
@@ -447,6 +448,12 @@ export default function LiveTrackingPage() {
                           <div className="rounded-lg border bg-muted/30 p-2">
                             <span className="text-muted-foreground">Plate #</span>
                             <p className="font-mono font-bold text-blue-600">{rider.plateNumber}</p>
+                          </div>
+                        )}
+                        {rider.vehicleColor && (
+                          <div className="rounded-lg border bg-muted/30 p-2">
+                            <span className="text-muted-foreground">Color</span>
+                            <p className="font-medium">{rider.vehicleColor}</p>
                           </div>
                         )}
                         <div className="rounded-lg border bg-muted/30 p-2">

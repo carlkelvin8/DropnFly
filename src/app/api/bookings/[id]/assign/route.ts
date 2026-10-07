@@ -61,6 +61,7 @@ export async function POST(
     const vehicleId: string | null = typeof body.vehicleId === "string" && body.vehicleId ? body.vehicleId : null;
     let vehicleType: string | null = typeof body.vehicleType === "string" && body.vehicleType ? body.vehicleType : null;
     let vehiclePlate: string | null = typeof body.vehiclePlate === "string" && body.vehiclePlate ? body.vehiclePlate : null;
+    let vehicleColor: string | null = null;
 
     // If fleet vehicle selected, validate against fleet_data and expand vehicle details
     if (vehicleId) {
@@ -71,6 +72,7 @@ export async function POST(
         if (!found) return NextResponse.json({ error: "Select a registered fleet vehicle" }, { status: 400 });
         vehicleType = found.type;
         vehiclePlate = found.plateNumber || null;
+        vehicleColor = found.color || null;
       } catch {
         return NextResponse.json({ error: "Fleet configuration is invalid" }, { status: 500 });
       }
@@ -143,8 +145,10 @@ export async function POST(
         referenceNumber: booking.referenceNumber,
         riderName: assignment.user.name,
         riderProfilePic: assignment.user.profilePic,
-        vehicleType: assignment.vehicleType || assignment.user.vehicleType,
-        plateNumber: assignment.vehiclePlate || assignment.user.plateNumber,
+        riderId: body.userId,
+        vehicleType: assignment.vehicleType,
+        plateNumber: assignment.vehiclePlate,
+        vehicleColor,
       });
     } catch {
       if (process.env.NODE_ENV === "development") {

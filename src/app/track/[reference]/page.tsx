@@ -61,6 +61,7 @@ interface RiderData {
   profilePic: string | null;
   vehicleType: string | null;
   plateNumber: string | null;
+  vehicleColor?: string | null;
   currentLat: number | null;
   currentLng: number | null;
   lastLocationUpdate: string | null;
@@ -408,6 +409,7 @@ export default function TrackResultPage() {
                     {rider.plateNumber && (
                       <span className="font-mono text-blue-600">{rider.plateNumber}</span>
                     )}
+                    {rider.vehicleColor && <span>{rider.vehicleColor}</span>}
                   </div>
                 </div>
                 {rider.profilePic && (
@@ -453,6 +455,12 @@ export default function TrackResultPage() {
                           <div className="rounded-lg border bg-card p-3">
                             <p className="text-xs text-muted-foreground">Plate Number</p>
                             <p className="font-mono font-medium text-blue-600">{rider.plateNumber}</p>
+                          </div>
+                        )}
+                        {rider.vehicleColor && (
+                          <div className="rounded-lg border bg-card p-3">
+                            <p className="text-xs text-muted-foreground">Color of the Vehicle</p>
+                            <p className="font-medium">{rider.vehicleColor}</p>
                           </div>
                         )}
                       </div>

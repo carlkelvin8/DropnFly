@@ -198,16 +198,20 @@ export async function sendRiderAssignedEmail({
   referenceNumber,
   riderName,
   riderProfilePic,
+  riderId,
   vehicleType,
   plateNumber,
+  vehicleColor,
 }: {
   to: string;
   customerName: string;
   referenceNumber: string;
   riderName: string;
   riderProfilePic?: string | null;
+  riderId?: string | null;
   vehicleType?: string | null;
   plateNumber?: string | null;
+  vehicleColor?: string | null;
 }) {
   const config = await getEmailConfig();
   const settings = await getSystemSettings();
@@ -219,10 +223,14 @@ export async function sendRiderAssignedEmail({
   }
   const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
   const defaultLogo = `${baseUrl}/brand-mark.png`;
+  // Never embed a base64 photo: Gmail clips emails over ~102KB (hiding the rider details) and most
+  // clients block data: images. Link to the hosted photo route instead.
   const profilePicUrl =
-    riderProfilePic && (riderProfilePic.startsWith("https://") || riderProfilePic.startsWith("data:image/"))
+    riderProfilePic && riderProfilePic.startsWith("https://")
       ? riderProfilePic
-      : defaultLogo;
+      : riderProfilePic && riderId
+        ? `${baseUrl}/api/public/riders/${encodeURIComponent(riderId)}/photo`
+        : defaultLogo;
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #ea7d3d; color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
@@ -239,8 +247,10 @@ export async function sendRiderAssignedEmail({
         </div>
 
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-          ${vehicleType ? `<tr><td style="padding: 8px; color: #9ca3af;">Vehicle</td><td style="padding: 8px; font-weight: 600;">${sanitizeHtml(vehicleType)}</td></tr>` : ""}
-          ${plateNumber ? `<tr style="background: #f1f5f9;"><td style="padding: 8px; color: #9ca3af;">Plate Number</td><td style="padding: 8px; font-weight: 600;">${sanitizeHtml(plateNumber)}</td></tr>` : ""}
+          <tr><td style="padding: 8px; color: #9ca3af;">Rider</td><td style="padding: 8px; font-weight: 600;">${sanitizeHtml(riderName)}</td></tr>
+          <tr style="background: #f1f5f9;"><td style="padding: 8px; color: #9ca3af;">Type of Vehicle</td><td style="padding: 8px; font-weight: 600;">${vehicleType ? sanitizeHtml(vehicleType) : "To be confirmed"}</td></tr>
+          <tr><td style="padding: 8px; color: #9ca3af;">Plate Number</td><td style="padding: 8px; font-weight: 600;">${plateNumber ? sanitizeHtml(plateNumber) : "To be confirmed"}</td></tr>
+          <tr style="background: #f1f5f9;"><td style="padding: 8px; color: #9ca3af;">Color of the Vehicle</td><td style="padding: 8px; font-weight: 600;">${vehicleColor ? sanitizeHtml(vehicleColor) : "To be confirmed"}</td></tr>
         </table>
 
         <p style="text-align: center; margin-top: 24px;">
