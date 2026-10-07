@@ -86,6 +86,7 @@ export default function ChatRoomPage() {
     void boot();
 
     const poll = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       fetchChat()
         .then((chat) => { if (active) applyNewest(chat, false); })
         .catch(() => {});

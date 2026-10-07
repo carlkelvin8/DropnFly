@@ -44,7 +44,7 @@ export function NotificationDropdown() {
       } catch {}
     }
     fn();
-    const interval = setInterval(fn, 30000);
+    const interval = setInterval(() => { if (document.visibilityState === "visible") void fn(); }, 30000);
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 

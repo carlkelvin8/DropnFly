@@ -41,7 +41,7 @@ export default function SupportChatListPage() {
           if (active) setLoading(false);
         });
     void load();
-    const poll = window.setInterval(load, 5000);
+    const poll = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 5000);
     return () => {
       active = false;
       window.clearInterval(poll);

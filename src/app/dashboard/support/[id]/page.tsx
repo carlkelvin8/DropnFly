@@ -57,7 +57,7 @@ export default function SupportThreadPage() {
       }
     };
     void load();
-    const interval = window.setInterval(load, 4000);
+    const interval = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 4000);
     return () => {
       active = false;
       window.clearInterval(interval);

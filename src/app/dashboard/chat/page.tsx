@@ -45,7 +45,7 @@ export default function ChatListPage() {
       .catch(() => { if (active) setBookings([]); })
       .finally(() => { if (active) setLoading(false); });
     void loadConversations();
-    const poll = window.setInterval(loadConversations, 3000);
+    const poll = window.setInterval(() => { if (document.visibilityState === "visible") void loadConversations(); }, 5000);
     return () => { active = false; window.clearInterval(poll); };
   }, []);
 

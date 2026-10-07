@@ -253,7 +253,7 @@ export default function BookingDetailPage() {
       pending = true;
       try { await reloadOperationalData(true); } finally { pending = false; }
     };
-    const timer = window.setInterval(refresh, 5000);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 5000);
     const onVisible = () => { if (document.visibilityState === "visible") void refresh(); };
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", onVisible);

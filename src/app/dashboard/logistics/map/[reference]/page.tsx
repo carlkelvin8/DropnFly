@@ -117,7 +117,7 @@ export default function AdminFullMapPage() {
       }
     };
     void poll();
-    const id = setInterval(poll, 5000);
+    const id = setInterval(() => { if (document.visibilityState === "visible") void poll(); }, 5000);
     return () => { cancelled = true; abort.abort(); clearInterval(id); };
   }, [riderId, reference, started]);
 

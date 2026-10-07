@@ -134,13 +134,22 @@ async function handleLuggageIntake({
     }
   }
 
-  await prisma.luggageItem.update({
-    where: { id: item.id },
-    data: {
-      status: target,
-      location: target === "IN_STORAGE" ? booking.pickupLocation || item.location || null : item.location,
-      ...(target === "DELIVERED" ? { checkOutAt: new Date() } : {}),
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.luggageItem.update({
+      where: { id: item.id },
+      data: {
+        status: target,
+        location: target === "IN_STORAGE" ? booking.pickupLocation || item.location || null : item.location,
+        ...(target === "DELIVERED" ? { checkOutAt: new Date() } : {}),
+      },
+    });
+    // A delivered bag no longer needs its physical tag; free it right away for reuse.
+    if (target === "DELIVERED") {
+      await tx.baggageTag.updateMany({
+        where: { luggageItemId: item.id, status: "ASSIGNED" },
+        data: { status: "AVAILABLE", bookingId: null, luggageItemId: null, assignedAt: null },
+      });
+    }
   });
 
   // Promote the booking only when this was the last luggage waiting in its stage.
@@ -169,6 +178,7 @@ async function handleLuggageIntake({
         where: { id: booking.id },
         data: { status: bookingStatus, ...trackingResetForStatus(bookingStatus) },
       });
+      if (bookingStatus === "DELIVERED") await finalizeDeliveredBaggage(tx, booking.id);
       if (target === "OUT_FOR_DELIVERY") {
         await tx.luggageItem.updateMany({
           where: { bookingId: booking.id, status: { notIn: ["CANCELLED", "DELIVERED"] } },

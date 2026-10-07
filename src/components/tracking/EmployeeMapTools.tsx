@@ -39,7 +39,7 @@ export function EmployeeMapTools({ reference, customer, phone, latitude, longitu
     };
     if (!open) return;
     void load();
-    const timer = setInterval(load, 5000);
+    const timer = setInterval(() => { if (document.visibilityState === "visible") void load(); }, 5000);
     return () => { abort.abort(); clearInterval(timer); };
   }, [endpoint, open]);
   useEffect(() => {
