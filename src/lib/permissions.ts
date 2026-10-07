@@ -12,9 +12,10 @@ export const ROLE_ROUTES: Record<string, readonly Role[]> = {
   // Customer Records: search-first lookup for all operational roles. Customer edit (/api/customers/[id]) stays ADMIN/STAFF.
   "/dashboard/customers": ["ADMIN", "STAFF", "EMPLOYEE"],
   "/dashboard/incidents": ["ADMIN", "STAFF"],
+  "/dashboard/support": ["ADMIN", "STAFF"],
   "/dashboard/payments": ["ADMIN", "STAFF"],
   // logistics is intentionally open to all for geolocation study
-  // bookings, scanner, chat, support, logistics, notifications — open to all authenticated
+  // bookings, scanner, chat, logistics, notifications — open to all authenticated
 };
 
 /** Returns true if role is allowed to view the given dashboard path. */

@@ -10,6 +10,10 @@ export async function GET(
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // Customer support threads are an operations tool; employees must not read or reply to them.
+  if (!["ADMIN", "STAFF"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const { id } = await params;
 
@@ -42,6 +46,10 @@ export async function PATCH(
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Customer support threads are an operations tool; employees must not read or reply to them.
+  if (!["ADMIN", "STAFF"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await params;
