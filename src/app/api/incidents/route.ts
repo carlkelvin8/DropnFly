@@ -9,6 +9,8 @@ import { hasStaffRole } from "@/lib/staff-access";
 
 const REPORT_TYPES = ["no_show", "cancellation"];
 
+class DuplicateReportError extends Error {}
+
 export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user) {
@@ -107,7 +109,17 @@ export async function POST(req: Request) {
 
     const internalNotes = JSON.stringify({ report: type, photo: photo || null, note: note || null, reportedBy: session.user.id });
 
-    const incident = await prisma.$transaction(async (tx) => {
+    let incident;
+    try {
+    incident = await prisma.$transaction(async (tx) => {
+      // Serialize reports for the same booking: two taps at the same moment must not both pass
+      // the "already reported" check above and create duplicate reports.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`incident-report:${bookingId}`}))`;
+      const alreadyOpen = await tx.incidentReport.findFirst({
+        where: { bookingId, type: { in: REPORT_TYPES }, status: { in: ["PENDING", "INVESTIGATING"] } },
+        select: { id: true },
+      });
+      if (alreadyOpen) throw new DuplicateReportError();
       const created = await tx.incidentReport.create({
         data: {
           bookingId,
@@ -139,6 +151,12 @@ export async function POST(req: Request) {
       });
       return created;
     });
+    } catch (error) {
+      if (error instanceof DuplicateReportError) {
+        return NextResponse.json({ error: "A report for this booking is already waiting for admin review" }, { status: 409 });
+      }
+      throw error;
+    }
 
     try {
       await logActivity({
