@@ -86,6 +86,8 @@ export async function GET(req: Request) {
   const bookings = await prisma.booking.findMany({
     where,
     orderBy: { createdAt: "desc" },
+    // The list never returns these, and they are large base64 blobs on every row.
+    omit: { qrCode: true, luggagePhotos: true },
     include: {
       customer: { select: { name: true, email: true } },
       location: { select: { name: true, city: true } },

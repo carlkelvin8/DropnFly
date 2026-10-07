@@ -65,6 +65,8 @@ export async function GET() {
     bookings = (await prisma.booking.findMany({
       where,
       orderBy: { createdAt: "desc" },
+      // Large base64 fields that this endpoint never returns.
+      omit: { qrCode: true, luggagePhotos: true },
       include: {
         customer: { select: { name: true, email: true, phone: true } },
         assignments: {

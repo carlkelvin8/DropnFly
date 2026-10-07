@@ -145,7 +145,8 @@ export default function LogisticsPage() {
         if (active) setTasks(Array.isArray(data) ? data : data.tasks || []);
       } catch { /* retain current tasks during transient connection failures */ }
     };
-    const interval = window.setInterval(refreshTasks, 5000);
+    // Do not keep polling in background tabs; the visibility/focus handlers below refresh on return.
+    const interval = window.setInterval(() => { if (document.visibilityState === "visible") void refreshTasks(); }, 5000);
     const refreshVisible = () => { if (document.visibilityState === "visible") void refreshTasks(); };
     window.addEventListener("focus", refreshVisible);
     document.addEventListener("visibilitychange", refreshVisible);

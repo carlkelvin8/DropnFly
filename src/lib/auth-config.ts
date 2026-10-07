@@ -23,6 +23,32 @@ function isPasswordExpired(user: { role: string; passwordChangedAt?: Date | null
   return ageMs >= PASSWORD_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 }
 
+type CurrentUser = {
+  isActive: boolean;
+  isApproved: boolean;
+  role: string;
+  authVersion: number;
+  passwordChangedAt: Date | null;
+};
+
+// Every auth() call runs the jwt callback, i.e. one database round trip per API request and
+// page load. Cache the result briefly per server instance. Deactivation, role changes and
+// password resets (authVersion) therefore take effect within CURRENT_USER_TTL_MS.
+const CURRENT_USER_TTL_MS = 10_000;
+const currentUserCache = new Map<string, { at: number; user: CurrentUser | null }>();
+
+async function loadCurrentUser(id: string): Promise<CurrentUser | null> {
+  const hit = currentUserCache.get(id);
+  if (hit && Date.now() - hit.at < CURRENT_USER_TTL_MS) return hit.user;
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { isActive: true, isApproved: true, role: true, authVersion: true, passwordChangedAt: true },
+  });
+  if (currentUserCache.size > 500) currentUserCache.clear();
+  currentUserCache.set(id, { at: Date.now(), user });
+  return user;
+}
+
 export const config = {
   secret,
   trustHost: true,
@@ -92,10 +118,7 @@ export const config = {
         token.passwordExpired = user.passwordExpired;
         token.authVersion = user.authVersion;
       } else if (token.id) {
-        const current = await prisma.user.findUnique({
-          where: { id: token.id as string },
-          select: { isActive: true, isApproved: true, role: true, authVersion: true, passwordChangedAt: true },
-        });
+        const current = await loadCurrentUser(token.id as string);
         if (!current?.isActive || !current.isApproved || current.authVersion !== token.authVersion) {
           token.disabled = true;
         } else {
