@@ -50,17 +50,17 @@ export async function POST() {
   const candidateIds = Array.from(
     new Set([...noScanBookings, ...inactiveBookings, ...overdueBookings].map((b) => b.id))
   );
+  // Aggregate in the database: scan events carry base64 photos, so loading every
+  // row just to find the newest timestamp is slow and memory-heavy.
   const latestScans = candidateIds.length > 0
-    ? await prisma.scanEvent.findMany({
+    ? await prisma.scanEvent.groupBy({
+        by: ["bookingId"],
         where: { bookingId: { in: candidateIds } },
-        orderBy: { scannedAt: "desc" },
+        _max: { scannedAt: true },
       })
     : [];
   const latestScanByBooking = new Map<string, Date | null>();
-  for (const scan of latestScans) {
-    const existing = latestScanByBooking.get(scan.bookingId);
-    if (!existing || scan.scannedAt > existing) latestScanByBooking.set(scan.bookingId, scan.scannedAt);
-  }
+  for (const scan of latestScans) latestScanByBooking.set(scan.bookingId, scan._max.scannedAt);
 
   for (const b of noScanBookings) {
     if (!latestScanByBooking.has(b.id)) {
