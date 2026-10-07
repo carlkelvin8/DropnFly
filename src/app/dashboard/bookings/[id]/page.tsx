@@ -540,6 +540,13 @@ export default function BookingDetailPage() {
             ? "Photo is too large to upload. Please choose a smaller image and try again."
             : `Failed to submit report (${res.status}). Please try again.`));
         }
+        // Stop an already-mounted logistics watcher immediately, including in
+        // another same-origin tab. The API also clears pickupStartedAt inside
+        // the incident transaction, so the server remains authoritative.
+        window.dispatchEvent(new CustomEvent("dropnfly:stop-location", { detail: { bookingId: params.id } }));
+        try {
+          localStorage.setItem("dropnfly:tracking-stopped", JSON.stringify({ bookingId: params.id, at: Date.now() }));
+        } catch { /* storage can be unavailable in private browsing */ }
         toast.success("Report sent for admin review. GPS tracking has stopped for this task.");
       }
       setDangerModal(null);
@@ -1901,7 +1908,9 @@ export default function BookingDetailPage() {
                 <Label>Photo proof {dangerModal.mode === "admin" && <span className="text-red-500">*</span>}</Label>
                 {dangerPhoto ? (
                   <div className="relative mt-1 overflow-hidden rounded-lg border">
-                    <Image unoptimized width={800} height={320} src={dangerPhoto} alt="Proof" className="h-40 w-full object-cover" />
+                    {/* Native img is intentional: Safari rejects some data URLs through next/image. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={dangerPhoto} alt="Proof" className="h-40 w-full object-cover" />
                     <button
                       type="button"
                       onClick={() => setDangerPhoto(null)}

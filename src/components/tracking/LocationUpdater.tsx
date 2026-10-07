@@ -25,6 +25,16 @@ export function LocationUpdater({ enabled, bookingId, onStatusChange }: Location
       return typeof document === "undefined" || document.visibilityState === "visible";
     }
 
+    let stopped = false;
+    const stopTracking = (requestedBookingId?: string | null) => {
+      if (requestedBookingId && requestedBookingId !== bookingId) return;
+      stopped = true;
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
+
     function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
       const R = 6371e3;
       const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -34,6 +44,7 @@ export function LocationUpdater({ enabled, bookingId, onStatusChange }: Location
     }
 
     async function sendLocation(position: GeolocationPosition) {
+      if (stopped) return;
       // pause when tab hidden to save battery/bandwidth
       if (!isDocumentVisible()) return;
       // filter jitter: ignore low accuracy >100m
@@ -85,6 +96,20 @@ export function LocationUpdater({ enabled, bookingId, onStatusChange }: Location
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
     );
 
+    const onStopEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ bookingId?: string }>).detail;
+      stopTracking(detail?.bookingId);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== "dropnfly:tracking-stopped" || !event.newValue) return;
+      try {
+        const payload = JSON.parse(event.newValue) as { bookingId?: string };
+        stopTracking(payload.bookingId);
+      } catch { /* ignore malformed local storage values */ }
+    };
+    window.addEventListener("dropnfly:stop-location", onStopEvent);
+    window.addEventListener("storage", onStorage);
+
     const onVisibility = () => {
       // when returning to foreground, trigger a fresh request via getCurrentPosition
       if (document.visibilityState === "visible" && watchIdRef.current !== null) {
@@ -94,7 +119,10 @@ export function LocationUpdater({ enabled, bookingId, onStatusChange }: Location
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
+      stopped = true;
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("dropnfly:stop-location", onStopEvent);
+      window.removeEventListener("storage", onStorage);
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
