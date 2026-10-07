@@ -18,6 +18,15 @@ const SESSION_COOKIES = [
   "__Secure-next-auth.session-token",
 ];
 
+// Customer tracking is intentionally usable in the same browser as the
+// operations portal. A staff session alone must not override a valid
+// customer tracking grant when the customer opens "View Rider's Location".
+const CUSTOMER_TRACKING_COOKIES = ["booking_access", "customer_token"];
+
+export function hasCustomerTrackingAccess(req: NextRequest): boolean {
+  return CUSTOMER_TRACKING_COOKIES.some((name) => Boolean(req.cookies.get(name)?.value));
+}
+
 async function getSessionToken(req: NextRequest) {
   const cookie = SESSION_COOKIES.map((name) => req.cookies.get(name)).find(Boolean);
   if (!cookie) return null;
@@ -115,7 +124,7 @@ export default async function middleware(req: NextRequest) {
   // so Admin never sees the customer tracker UI or its customer-style Back link.
   if (path.startsWith("/track/map/")) {
     const token = await getSessionToken(req);
-    if (token && ["ADMIN", "STAFF"].includes(String(token.role))) {
+    if (token && ["ADMIN", "STAFF"].includes(String(token.role)) && !hasCustomerTrackingAccess(req)) {
       const reference = path.slice("/track/map/".length);
       return NextResponse.redirect(new URL(`/dashboard/logistics/map/${reference}`, req.url));
     }
