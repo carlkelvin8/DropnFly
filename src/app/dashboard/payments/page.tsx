@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { DollarSign } from "lucide-react";
+import { DollarSign, Loader2, Search } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 
 interface Payment {
   id: string;
@@ -16,7 +18,7 @@ interface Payment {
   paidAt: string | null;
   createdAt: string;
   booking: { referenceNumber: string };
-  customer: { name: string; email: string };
+  customer: { name: string };
 }
 
 export default function PaymentsPage() {
@@ -24,18 +26,11 @@ export default function PaymentsPage() {
   const router = useRouter();
   const role = session?.user?.role;
   const allowed = role === "ADMIN" || role === "STAFF";
+  const [query, setQuery] = useState("");
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [fetching, setLoading] = useState(true);
-  // Loading only applies while the session resolves or the user may fetch; avoids setState in the effect.
-  const loading = fetching && (status === "loading" || allowed);
-
-  useEffect(() => {
-    if (status === "loading" || !allowed) return;
-    fetch("/api/payments")
-      .then((r) => r.ok ? r.json() : [])
-      .then(setPayments)
-      .finally(() => setLoading(false));
-  }, [allowed, status]);
+  const [searched, setSearched] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const searchSeq = useRef(0);
 
   if (status !== "loading" && !allowed) {
     return (
@@ -48,6 +43,32 @@ export default function PaymentsPage() {
     );
   }
 
+  async function handleSearch(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    const name = query.trim();
+    if (name.length < 2) {
+      toast.error("Enter at least 2 characters of the customer name");
+      return;
+    }
+
+    const seq = ++searchSeq.current;
+    setLoading(true);
+    setSearched(true);
+    setPayments([]);
+    try {
+      const response = await fetch(`/api/payments?q=${encodeURIComponent(name)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Search failed");
+      const data = await response.json();
+      if (seq !== searchSeq.current) return;
+      setPayments(Array.isArray(data) ? data : []);
+    } catch {
+      if (seq !== searchSeq.current) return;
+      toast.error("Unable to search transactions");
+    } finally {
+      if (seq === searchSeq.current) setLoading(false);
+    }
+  }
+
   const totalRevenue = payments
     .filter((p) => p.status === "PAID")
     .reduce((sum, p) => sum + p.amount, 0);
@@ -56,9 +77,33 @@ export default function PaymentsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Payments</h1>
-        <p className="text-gray-500">Track all payment transactions</p>
+        <p className="text-gray-500">Search by customer name to view their existing transactions.</p>
       </div>
 
+      <Card>
+        <CardContent className="p-4">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <Input
+              value={query}
+              onChange={(event) => {
+                searchSeq.current++;
+                setQuery(event.target.value);
+                setPayments([]);
+                setSearched(false);
+                setLoading(false);
+              }}
+              placeholder="Search customer name"
+              aria-label="Search customer name"
+            />
+            <Button type="submit" disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Search
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {searched && !loading && (
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
@@ -85,6 +130,7 @@ export default function PaymentsPage() {
           </CardContent>
         </Card>
       </div>
+      )}
 
       <Card>
         <CardContent className="p-0">
@@ -92,10 +138,15 @@ export default function PaymentsPage() {
             <div className="flex items-center justify-center p-8">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
             </div>
+          ) : !searched ? (
+            <div className="text-center py-8 text-gray-500">
+              <Search className="mx-auto h-12 w-12 mb-3 text-gray-300" />
+              <p>Search a customer name to view matching transactions.</p>
+            </div>
           ) : payments.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <DollarSign className="mx-auto h-12 w-12 mb-3 text-gray-300" />
-              <p>No payments yet</p>
+              <p>No transactions found matching &quot;{query.trim()}&quot;.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">

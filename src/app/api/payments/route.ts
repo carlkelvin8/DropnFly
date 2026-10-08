@@ -14,6 +14,10 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
+  const nameQuery = searchParams.get("q")?.trim();
+  if (nameQuery !== undefined && nameQuery.length < 2) {
+    return NextResponse.json([]);
+  }
   const from = isoDayOrNull(searchParams.get("from"));
   const to = isoDayOrNull(searchParams.get("to"));
   const createdAt = from || to
@@ -24,11 +28,14 @@ export async function GET(req: Request) {
     : undefined;
 
   const payments = await prisma.payment.findMany({
-    where: createdAt ? { createdAt } : undefined,
+    where: {
+      ...(createdAt ? { createdAt } : {}),
+      ...(nameQuery ? { customer: { name: { contains: nameQuery, mode: "insensitive" } } } : {}),
+    },
     orderBy: { createdAt: "desc" },
     include: {
       booking: { select: { referenceNumber: true } },
-      customer: { select: { name: true, email: true } },
+      customer: { select: { name: true } },
     },
   });
 
