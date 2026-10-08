@@ -1,6 +1,7 @@
 "use client";
 
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
+import { ChartFrame } from "@/components/dashboard/ChartFrame";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, LabelList } from "recharts";
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "#f59e0b",
@@ -39,9 +40,10 @@ export default function RechartsStatusBar({
   );
 
   return (
-    <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={sorted} margin={{ top: 8, right: 8, left: 0, bottom: 16 }}>
+    <div className="w-full">
+      <ChartFrame className="h-64 w-full">
+      {({ width, height }) => (
+        <BarChart width={width} height={height} data={sorted} margin={{ top: 8, right: 8, left: 0, bottom: 16 }}>
           <XAxis
             dataKey="name"
             tick={{ fontSize: 10 }}
@@ -70,7 +72,8 @@ export default function RechartsStatusBar({
             />
           </Bar>
         </BarChart>
-      </ResponsiveContainer>
+      )}
+      </ChartFrame>
       <div className="flex flex-wrap justify-center gap-x-3 gap-y-1">
         {sorted.map((entry) => (
           <span key={entry.name} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">

@@ -1,5 +1,6 @@
 "use client";
 
+import { ChartFrame } from "@/components/dashboard/ChartFrame";
 import { RecentFeedback } from "@/components/feedback/RecentFeedback";
 import { useEffect, useState } from "react";
 import {
@@ -38,7 +39,7 @@ import {
   Store,
   UserPlus,
 } from "lucide-react";
-import { Bar, BarChart, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { Bar, BarChart, XAxis, YAxis, Tooltip } from "recharts";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
 import RechartsLine from "@/components/dashboard/RechartsLine";
@@ -480,9 +481,9 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
             <CardDescription>Bookings by check-in hour across the selected period.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={peakHourData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <ChartFrame className="h-64 w-full">
+              {({ width, height }) => (
+                <BarChart width={width} height={height} data={peakHourData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <XAxis dataKey="hourLabel" tick={{ fontSize: 10 }} interval={2} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={30} />
                   <Tooltip
@@ -492,8 +493,8 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
                   />
                   <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={28} />
                 </BarChart>
-              </ResponsiveContainer>
-            </div>
+              )}
+            </ChartFrame>
           </CardContent>
         </Card>
 

@@ -1,12 +1,12 @@
 "use client";
 
+import { ChartFrame } from "@/components/dashboard/ChartFrame";
 import {
   LineChart,
   Line,
   XAxis,
   YAxis,
   Tooltip,
-  ResponsiveContainer,
   Legend,
   CartesianGrid,
 } from "recharts";
@@ -29,10 +29,10 @@ export default function RechartsLine({
   const currencyLabels = new Set(dataKeys.flatMap((key, i) => (currencyKeys.includes(key) ? [labels[i]] : [])));
   const hasCurrency = currencyKeys.length > 0;
   return (
-    <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.4} />
+    <ChartFrame className="h-64 w-full">
+      {({ width, height }) => (
+        <LineChart width={width} height={height} data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+          <CartesianGrid yAxisId="left" strokeDasharray="3 3" stroke="var(--border)" opacity={0.4} />
           <XAxis
             dataKey="date"
             tick={{ fontSize: 11 }}
@@ -85,7 +85,7 @@ export default function RechartsLine({
           ))}
           <Legend fontSize={11} />
         </LineChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </ChartFrame>
   );
 }

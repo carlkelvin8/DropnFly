@@ -1,6 +1,7 @@
 "use client";
 
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { ChartFrame } from "@/components/dashboard/ChartFrame";
+import { BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
 
 export default function RechartsBar({
   data,
@@ -10,9 +11,9 @@ export default function RechartsBar({
   labelMap: Record<string, string>;
 }) {
   return (
-    <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data}>
+    <ChartFrame className="h-64 w-full">
+      {({ width, height }) => (
+        <BarChart width={width} height={height} data={data}>
           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
           <YAxis allowDecimals={false} />
           <Tooltip
@@ -25,7 +26,7 @@ export default function RechartsBar({
           />
           <Bar dataKey="value" fill="#ea7d3d" radius={[4, 4, 0, 0]} />
         </BarChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </ChartFrame>
   );
 }

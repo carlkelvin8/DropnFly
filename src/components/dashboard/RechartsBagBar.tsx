@@ -1,6 +1,7 @@
 "use client";
 
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
+import { ChartFrame } from "@/components/dashboard/ChartFrame";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, LabelList } from "recharts";
 
 const BAG_COLORS: Record<string, string> = {
   "Extra Small": "#d1d5db",
@@ -12,9 +13,9 @@ const BAG_FALLBACK_COLORS = ["#ea7d3d", "#3b7ac7", "#9ca3af", "#e3f0fb"];
 
 export default function RechartsBagBar({ data }: { data: { name: string; value: number }[] }) {
   return (
-    <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} layout="vertical" margin={{ left: 10, right: 30 }}>
+    <ChartFrame className="h-64 w-full">
+      {({ width, height }) => (
+        <BarChart width={width} height={height} data={data} layout="vertical" margin={{ left: 10, right: 30 }}>
           <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
           <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={90} />
           <Tooltip
@@ -40,7 +41,7 @@ export default function RechartsBagBar({ data }: { data: { name: string; value: 
             />
           </Bar>
         </BarChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </ChartFrame>
   );
 }

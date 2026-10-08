@@ -27,7 +27,7 @@ import {
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "@/components/ThemeProvider";
 import { VersionBadge } from "@/components/layout/VersionBadge";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const ADMIN_ONLY_ITEMS = new Set([
   "/dashboard/settings",
@@ -70,9 +70,13 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const role = session?.user?.role;
   const isAdmin = role === "ADMIN";
   const isStaff = role === "STAFF";
-  const [lastSync] = useState(() =>
-    new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })
-  );
+  // Set after mount: rendering the clock on the server (UTC) and again in the browser (Manila)
+  // produced different text and a React hydration error on every dashboard page.
+  const [lastSync, setLastSync] = useState("");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only value must be set after hydration
+    setLastSync(new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }));
+  }, []);
 
   const visibleItems = allNavItems.filter((item) => {
     // Geolocation study focus — Logistics & Routes must be visible to EMPLOYEE/STAFF/ADMIN to test live tracking

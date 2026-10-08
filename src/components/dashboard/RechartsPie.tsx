@@ -1,11 +1,11 @@
 "use client";
 
+import { ChartFrame } from "@/components/dashboard/ChartFrame";
 import {
   PieChart,
   Pie,
   Cell,
   Tooltip,
-  ResponsiveContainer,
   Legend,
 } from "recharts";
 
@@ -30,9 +30,9 @@ export default function RechartsPie({
   currency?: boolean;
 }) {
   return (
-    <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
+    <ChartFrame className="h-64 w-full">
+      {({ width, height }) => (
+        <PieChart width={width} height={height}>
           <Pie
             data={data}
             dataKey="value"
@@ -64,7 +64,7 @@ export default function RechartsPie({
           />
           <Legend fontSize={11} />
         </PieChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </ChartFrame>
   );
 }

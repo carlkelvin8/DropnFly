@@ -1,6 +1,7 @@
 "use client";
 
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
+import { ChartFrame } from "@/components/dashboard/ChartFrame";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, LabelList } from "recharts";
 
 const DEFAULT_PALETTE = [
   "#3b82f6",
@@ -49,9 +50,9 @@ export default function RechartsHBar({
   const yAxisWidth = Math.min(150, Math.max(84, maxNameLength * 7 + 14));
 
   return (
-    <div className="h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={rows} layout="vertical" margin={{ left: 0, right: 48 }}>
+    <ChartFrame className="h-64 w-full">
+      {({ width, height }) => (
+        <BarChart width={width} height={height} data={rows} layout="vertical" margin={{ left: 0, right: 48 }}>
           <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
           <YAxis
             type="category"
@@ -83,7 +84,7 @@ export default function RechartsHBar({
             />
           </Bar>
         </BarChart>
-      </ResponsiveContainer>
-    </div>
+      )}
+    </ChartFrame>
   );
 }
