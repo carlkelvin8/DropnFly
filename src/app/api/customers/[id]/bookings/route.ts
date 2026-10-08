@@ -17,6 +17,7 @@ export async function GET(
   const bookings = await prisma.booking.findMany({
     where: { customerId: id },
     orderBy: { createdAt: "desc" },
+    omit: { qrCode: true, luggagePhotos: true },
     include: {
       assignments: {
         include: { user: { select: { name: true } } },
@@ -34,6 +35,7 @@ export async function GET(
     return {
       id: b.id,
       referenceNumber: b.referenceNumber,
+      passengerName: b.customerNameSnapshot,
       pickupLocation: b.pickupLocation,
       dropOffLocation: b.dropOffLocation,
       numberOfBags: b.numberOfBags,

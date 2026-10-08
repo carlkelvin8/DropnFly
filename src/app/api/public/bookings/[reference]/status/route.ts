@@ -16,7 +16,11 @@ export async function GET(
     where: { referenceNumber: normalizeReference(reference) },
     // The tracker polls this every few seconds and never reads these large base64 fields.
     omit: { qrCode: true, luggagePhotos: true },
-    include: { customer: { select: { name: true, email: true } } },
+    include: {
+      customer: { select: { name: true, email: true } },
+      // The customer's own feedback, shown on their tracking page.
+      review: { select: { rating: true, comment: true, createdAt: true } },
+    },
   });
 
   if (!booking) {

@@ -173,19 +173,31 @@ export async function GET(req: Request) {
     hourlyDistribution[hour] = (hourlyDistribution[hour] || 0) + 1;
   }
 
-  // Heatmap always covers the last 12 weeks (84 Manila days) regardless of the selected period;
-  // using the period data left older weeks at 0 even when they had bookings.
-  const heatmapStart = new Date(manilaDayStart(manilaDateStr(new Date())).getTime() - 83 * 86400000);
+  // Heatmap = operational activity: scheduled pick-ups (check-in) and deliveries/claims (check-out)
+  // per Manila day, for the past 8 weeks and the next 4 weeks. Counting booking creation dates piled
+  // every simulated booking onto the day it was entered, even when it was scheduled for later.
+  const todayStart = manilaDayStart(manilaDateStr(new Date()));
+  const heatmapStart = new Date(todayStart.getTime() - 55 * 86400000);
+  const heatmapEnd = new Date(todayStart.getTime() + 29 * 86400000);
   const heatmapRows = await prisma.booking.findMany({
-    // Same definition as "Total Bookings" and the trend graph, so the numbers match.
-    where: { createdAt: { gte: heatmapStart } },
-    select: { createdAt: true },
+    where: {
+      status: { notIn: ["CANCELLED", "NO_SHOW"] },
+      OR: [
+        { checkIn: { gte: heatmapStart, lt: heatmapEnd } },
+        { checkOut: { gte: heatmapStart, lt: heatmapEnd } },
+      ],
+    },
+    select: { checkIn: true, checkOut: true },
   });
-  const heatmapCounts: Record<string, number> = {};
-  for (let i = 0; i < 84; i++) heatmapCounts[manilaDateStr(new Date(heatmapStart.getTime() + i * 86400000 + 12 * 3600000))] = 0;
+  const heatmapDays: Record<string, { pickups: number; deliveries: number }> = {};
+  for (let i = 0; i < 84; i++) heatmapDays[manilaDateStr(new Date(heatmapStart.getTime() + i * 86400000 + 12 * 3600000))] = { pickups: 0, deliveries: 0 };
   for (const row of heatmapRows) {
-    const day = manilaDateStr(row.createdAt);
-    if (day in heatmapCounts) heatmapCounts[day] += 1;
+    const pickupDay = manilaDateStr(row.checkIn);
+    if (pickupDay in heatmapDays) heatmapDays[pickupDay].pickups += 1;
+    if (row.checkOut) {
+      const deliveryDay = manilaDateStr(row.checkOut);
+      if (deliveryDay in heatmapDays) heatmapDays[deliveryDay].deliveries += 1;
+    }
   }
 
   const employeeNameMap = new Map(employeeUsers.map((u) => [u.id, u]));
@@ -399,7 +411,7 @@ export async function GET(req: Request) {
       .sort((a, b) => b.value - a.value),
     cityDistribution,
     countryDistribution,
-    heatmap: Object.entries(heatmapCounts).map(([date, count]) => ({ date, count })),
+    heatmap: Object.entries(heatmapDays).map(([date, day]) => ({ date, count: day.pickups + day.deliveries, pickups: day.pickups, deliveries: day.deliveries })),
     financialMetrics,
     storageUtilization,
   });

@@ -121,7 +121,7 @@ interface Analytics {
   bagBreakdown: { name: string; value: number }[];
   cityDistribution: { name: string; value: number }[];
   countryDistribution: { name: string; value: number }[];
-  heatmap?: { date: string; count: number }[];
+  heatmap?: { date: string; count: number; pickups?: number; deliveries?: number }[];
   financialMetrics: FinancialMetrics;
 }
 
@@ -328,6 +328,8 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
   // Server sends a fixed 12-week series (independent of the period filter); older payloads fall back.
   const heatmapSource = heatmap && heatmap.length ? heatmap : bookingsByDay.slice(-84);
   const heatmapCounts = new Map(heatmapSource.map((day) => [day.date, day.count]));
+  const heatmapDetail = new Map(heatmapSource.map((day) => [day.date, day as { date: string; count: number; pickups?: number; deliveries?: number }]));
+  const todayKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
   const latestHeatmapDate = heatmapSource.length
     ? new Date(`${heatmapSource[heatmapSource.length - 1].date}T00:00:00`)
     : new Date();
@@ -544,10 +546,10 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
         <CardHeader className="gap-5 pb-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle className="text-sm font-semibold">Booking Activity Heatmap</CardTitle>
-            <CardDescription className="mt-1">Bookings created per day over the last 12 weeks (same count as Total Bookings)</CardDescription>
+            <CardDescription className="mt-1">Scheduled pick-ups and deliveries/claims per day — past 8 weeks and next 4 weeks (cancelled and no-show excluded). Today is outlined.</CardDescription>
           </div>
           <div className="grid grid-cols-3 gap-6 text-center sm:gap-9">
-            <div><p className="text-xl font-bold text-orange-500">{heatmapPeak}</p><p className="text-[10px] text-muted-foreground">Peak Bookings</p></div>
+            <div><p className="text-xl font-bold text-orange-500">{heatmapPeak}</p><p className="text-[10px] text-muted-foreground">Busiest Day</p></div>
             <div><p className="text-xl font-bold">{(heatmapTotal / heatmapDayCount).toFixed(1)}</p><p className="text-[10px] text-muted-foreground">Daily Avg</p></div>
             <div><p className="text-xl font-bold">{heatmapActiveDays}</p><p className="text-[10px] text-muted-foreground">Active Days</p></div>
           </div>
@@ -568,9 +570,9 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
                     {week.map((day) => (
                       <span
                         key={day.key}
-                        className={`h-4 rounded-[3px] border border-orange-600/5 transition-transform hover:scale-110 ${heatmapColors[heatmapLevel(day.count)]}`}
-                        title={`${day.date.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}: ${day.count} bookings`}
-                        aria-label={`${day.key}: ${day.count} bookings`}
+                        className={`h-4 rounded-[3px] border transition-transform hover:scale-110 ${day.key === todayKey ? "border-sky-600 ring-1 ring-sky-600" : "border-orange-600/5"} ${heatmapColors[heatmapLevel(day.count)]}`}
+                        title={`${day.date.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}: ${day.count} scheduled (${heatmapDetail.get(day.key)?.pickups ?? 0} pick-up, ${heatmapDetail.get(day.key)?.deliveries ?? 0} delivery/claim)`}
+                        aria-label={`${day.key}: ${day.count} scheduled`}
                       />
                     ))}
                   </div>
@@ -580,7 +582,7 @@ function OverviewTab({ data }: { data: Analytics; period: string }) {
           </div>
           <div className="mt-4 flex flex-col gap-2 border-t pt-3 text-[10px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-1.5"><span>Less</span>{heatmapColors.map((color, index) => <span key={color} className={`h-3.5 w-3.5 rounded-[3px] border border-orange-600/5 ${color}`} aria-label={`Intensity level ${index}`} />)}<span>More</span></div>
-            {heatmapPeakDay && <p>Peak: <span className="font-semibold text-orange-500">{heatmapPeakDay.count} bookings</span> on {new Date(`${heatmapPeakDay.date}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</p>}
+            {heatmapPeakDay && heatmapPeakDay.count > 0 && <p>Busiest: <span className="font-semibold text-orange-500">{heatmapPeakDay.count} scheduled</span> on {new Date(`${heatmapPeakDay.date}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</p>}
           </div>
         </CardContent>
       </Card>

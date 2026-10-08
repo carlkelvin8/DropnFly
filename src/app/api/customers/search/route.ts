@@ -19,24 +19,48 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q");
 
-  if (!q || q.length < 2) {
-    return NextResponse.json([]);
-  }
+  const query = (q || "").trim();
+  if (query.length === 1) return NextResponse.json([]);
+
+  // Bookings carry their own passenger name/email/phone (the shared customer row keeps only the
+  // first one), so match those and the reference number too. With no query, list customers that
+  // have transactions, most recent first, so existing records are visible without searching.
+  const where = query
+    ? {
+        OR: [
+          { name: { contains: query, mode: "insensitive" as const } },
+          { email: { contains: query, mode: "insensitive" as const } },
+          { phone: { contains: query, mode: "insensitive" as const } },
+          {
+            bookings: {
+              some: {
+                OR: [
+                  { referenceNumber: { contains: query, mode: "insensitive" as const } },
+                  { customerNameSnapshot: { contains: query, mode: "insensitive" as const } },
+                  { customerEmailSnapshot: { contains: query, mode: "insensitive" as const } },
+                  { customerPhoneSnapshot: { contains: query, mode: "insensitive" as const } },
+                ],
+              },
+            },
+          },
+        ],
+      }
+    : { bookings: { some: {} } };
 
   const customers = await prisma.customer.findMany({
-    where: {
-      OR: [
-        { name: { contains: q, mode: "insensitive" } },
-        { email: { contains: q, mode: "insensitive" } },
-        { phone: { contains: q, mode: "insensitive" } },
-      ],
-    },
-    include: {
+    where,
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      createdAt: true,
       _count: { select: { bookings: true } },
+      bookings: { select: { createdAt: true, customerNameSnapshot: true }, orderBy: { createdAt: "desc" }, take: 5 },
     },
-    orderBy: { createdAt: "desc" },
-    take: 20,
+    take: query ? 20 : 50,
   });
+  customers.sort((a, b) => (b.bookings[0]?.createdAt?.getTime() ?? 0) - (a.bookings[0]?.createdAt?.getTime() ?? 0));
 
   return NextResponse.json(
     customers.map((c) => ({
@@ -46,6 +70,9 @@ export async function GET(req: Request) {
       phone: c.phone,
       totalBookings: c._count.bookings,
       createdAt: c.createdAt,
+      lastBookingAt: c.bookings[0]?.createdAt ?? null,
+      // Other names used on this customer's bookings (e.g. booking made for a companion).
+      bookingNames: [...new Set(c.bookings.map((b) => b.customerNameSnapshot).filter((n): n is string => Boolean(n) && n !== c.name))],
     }))
   );
 }

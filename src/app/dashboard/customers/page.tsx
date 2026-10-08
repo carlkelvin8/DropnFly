@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +18,8 @@ interface Customer {
   phone: string;
   totalBookings: number;
   createdAt: string;
+  lastBookingAt?: string | null;
+  bookingNames?: string[];
 }
 
 interface Booking {
@@ -32,6 +34,7 @@ interface Booking {
   balance: number;
   rider: string | null;
   createdAt: string;
+  passengerName?: string | null;
 }
 
 export default function CustomersPage() {
@@ -48,6 +51,35 @@ export default function CustomersPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
 
+  // Empty search lists every customer that has transactions; a search also matches the passenger
+  // name/email/phone used on each booking and the reference number.
+  const loadCustomers = useCallback(async (search: string) => {
+    const seq = ++searchSeq.current;
+    setLoading(true);
+    setSearched(true);
+    setSelectedCustomer(null);
+    setBookings([]);
+    try {
+      const res = await fetch(`/api/customers/search?q=${encodeURIComponent(search)}`, { cache: "no-store" });
+      if (seq !== searchSeq.current) return;
+      if (res.status === 403) { toast.error("Access denied"); return; }
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (seq !== searchSeq.current) return;
+      setCustomers(Array.isArray(data) ? data : []);
+    } catch {
+      if (seq !== searchSeq.current) return;
+      toast.error("Failed to load customers");
+      setCustomers([]);
+    } finally { if (seq === searchSeq.current) setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !allowed) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load of customer records
+    void loadCustomers("");
+  }, [status, allowed, loadCustomers]);
+
   if (status !== "loading" && !allowed) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -61,25 +93,8 @@ export default function CustomersPage() {
 
   async function handleSearch() {
     const search = query.trim();
-    if (search.length < 2) return toast.error("Enter at least 2 characters");
-    const seq = ++searchSeq.current;
-    setLoading(true);
-    setSearched(true);
-    setSelectedCustomer(null);
-    setBookings([]);
-    try {
-      const res = await fetch(`/api/customers/search?q=${encodeURIComponent(search)}`);
-      if (seq !== searchSeq.current) return; // query was cleared or replaced meanwhile
-      if (res.status === 403) { toast.error("Access denied"); return; }
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      if (seq !== searchSeq.current) return;
-      setCustomers(data);
-    } catch {
-      if (seq !== searchSeq.current) return;
-      toast.error("Search failed");
-      setCustomers([]);
-    } finally { if (seq === searchSeq.current) setLoading(false); }
+    if (search.length === 1) return toast.error("Enter at least 2 characters");
+    await loadCustomers(search);
   }
 
   async function handleSelectCustomer(c: Customer) {
@@ -110,7 +125,7 @@ export default function CustomersPage() {
     <div className="mx-auto max-w-4xl space-y-6">
       <h1 className="text-2xl font-bold">Customer Records</h1>
       <p className="text-sm text-muted-foreground">
-        Search for a customer to view their transaction history. Results are hidden until you search.
+        Customers with transactions are listed below, newest first. Search by customer or passenger name, email, phone, or booking reference.
       </p>
 
       <Card>
@@ -119,20 +134,13 @@ export default function CustomersPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, email, or phone..."
+                placeholder="Search by name, email, phone, or reference (e.g. DNF-261007-...)"
                 className="pl-9"
                 value={query}
                 onChange={(e) => {
                   setQuery(e.target.value);
-                  if (!e.target.value.trim()) {
-                    // Clearing the search hides all customer data again.
-                    searchSeq.current++;
-                    setSearched(false);
-                    setCustomers([]);
-                    setSelectedCustomer(null);
-                    setBookings([]);
-                    setLoading(false);
-                  }
+                  // Clearing the search shows the full list again.
+                  if (!e.target.value.trim()) void loadCustomers("");
                 }}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               />
@@ -151,7 +159,7 @@ export default function CustomersPage() {
             <Card>
               <CardContent className="p-8 text-center text-muted-foreground">
                 <User className="mx-auto h-8 w-8 mb-2 opacity-50" />
-                <p>No customers found matching &quot;{query}&quot;</p>
+                <p>{query.trim() ? <>No customers found matching &quot;{query}&quot;</> : "No customers with transactions yet."}</p>
               </CardContent>
             </Card>
           ) : (
@@ -165,6 +173,9 @@ export default function CustomersPage() {
                       </div>
                       <div>
                         <p className="font-medium">{c.name}</p>
+                        {c.bookingNames && c.bookingNames.length > 0 && (
+                          <p className="text-xs text-muted-foreground">Also booked as: {c.bookingNames.join(", ")}</p>
+                        )}
                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{c.email}</span>
                           <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.phone}</span>
@@ -221,7 +232,7 @@ export default function CustomersPage() {
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {b.pickupLocation} → {b.dropOffLocation}
+                          {b.passengerName ? <span className="font-medium text-foreground">{b.passengerName} · </span> : null}{b.pickupLocation} → {b.dropOffLocation}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {b.numberOfBags} bag{b.numberOfBags !== 1 ? "s" : ""} · {formatCurrency(b.totalPrice)}

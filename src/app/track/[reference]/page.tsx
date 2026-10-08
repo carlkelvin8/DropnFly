@@ -50,6 +50,7 @@ interface BookingData {
   checkOut: string | null;
   numberOfBags: number;
   luggageDetails: string | null;
+  review?: { rating: number; comment: string | null; createdAt: string } | null;
   totalPrice: number;
   status: string;
   pickupStartedAt: string | null;
@@ -732,6 +733,41 @@ export default function TrackResultPage() {
             )}
           </CardContent>
         </Card>
+
+        {booking.status === "DELIVERED" && (
+          <Card className="mb-6 border-t-4 border-yellow-400 shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-base">Your Feedback</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {booking.review ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <span key={n} aria-hidden="true" className={`text-xl ${n <= booking.review!.rating ? "text-yellow-400" : "text-gray-300"}`}>★</span>
+                      ))}
+                    </div>
+                    <span className="text-sm font-semibold">{booking.review.rating} / 5</span>
+                  </div>
+                  {booking.review.comment && <p className="rounded-lg bg-muted/40 p-3 text-sm">“{booking.review.comment}”</p>}
+                  <p className="text-xs text-muted-foreground">
+                    Submitted {new Date(booking.review.createdAt).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })} · Thank you for your feedback!
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {selfPickup ? "Your luggage has been claimed." : "Your luggage has been delivered."} How was your experience? Your feedback helps us improve.
+                  </p>
+                  <Button asChild className="bg-orange-500 text-white hover:bg-orange-600">
+                    <Link href={`/feedback?reference=${encodeURIComponent(booking.referenceNumber)}`}>Leave Feedback</Link>
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="border-t-4 border-indigo-500 shadow-lg">
           <CardHeader>
