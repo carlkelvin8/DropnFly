@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -51,8 +51,8 @@ export default function CustomersPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
 
-  // Empty search lists every customer that has transactions; a search also matches the passenger
-  // name/email/phone used on each booking and the reference number.
+  // Customer records are hidden until a search is made (data privacy). A search matches the customer
+  // or passenger name, email, phone and the booking reference.
   const loadCustomers = useCallback(async (search: string) => {
     const seq = ++searchSeq.current;
     setLoading(true);
@@ -61,7 +61,7 @@ export default function CustomersPage() {
     setBookings([]);
     try {
       const res = await fetch(`/api/customers/search?q=${encodeURIComponent(search)}`, { cache: "no-store" });
-      if (seq !== searchSeq.current) return;
+      if (seq !== searchSeq.current) return; // query was cleared or replaced meanwhile
       if (res.status === 403) { toast.error("Access denied"); return; }
       if (!res.ok) throw new Error();
       const data = await res.json();
@@ -69,16 +69,10 @@ export default function CustomersPage() {
       setCustomers(Array.isArray(data) ? data : []);
     } catch {
       if (seq !== searchSeq.current) return;
-      toast.error("Failed to load customers");
+      toast.error("Search failed");
       setCustomers([]);
     } finally { if (seq === searchSeq.current) setLoading(false); }
   }, []);
-
-  useEffect(() => {
-    if (status !== "authenticated" || !allowed) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load of customer records
-    void loadCustomers("");
-  }, [status, allowed, loadCustomers]);
 
   if (status !== "loading" && !allowed) {
     return (
@@ -93,7 +87,7 @@ export default function CustomersPage() {
 
   async function handleSearch() {
     const search = query.trim();
-    if (search.length === 1) return toast.error("Enter at least 2 characters");
+    if (search.length < 2) return toast.error("Enter at least 2 characters");
     await loadCustomers(search);
   }
 
@@ -125,7 +119,7 @@ export default function CustomersPage() {
     <div className="mx-auto max-w-4xl space-y-6">
       <h1 className="text-2xl font-bold">Customer Records</h1>
       <p className="text-sm text-muted-foreground">
-        Customers with transactions are listed below, newest first. Search by customer or passenger name, email, phone, or booking reference.
+        Search for a customer to view their transaction history. Results are hidden until you search — by customer or passenger name, email, phone, or booking reference.
       </p>
 
       <Card>
@@ -139,8 +133,15 @@ export default function CustomersPage() {
                 value={query}
                 onChange={(e) => {
                   setQuery(e.target.value);
-                  // Clearing the search shows the full list again.
-                  if (!e.target.value.trim()) void loadCustomers("");
+                  if (!e.target.value.trim()) {
+                    // Clearing the search hides all customer data again.
+                    searchSeq.current++;
+                    setSearched(false);
+                    setCustomers([]);
+                    setSelectedCustomer(null);
+                    setBookings([]);
+                    setLoading(false);
+                  }
                 }}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               />
@@ -159,7 +160,7 @@ export default function CustomersPage() {
             <Card>
               <CardContent className="p-8 text-center text-muted-foreground">
                 <User className="mx-auto h-8 w-8 mb-2 opacity-50" />
-                <p>{query.trim() ? <>No customers found matching &quot;{query}&quot;</> : "No customers with transactions yet."}</p>
+                <p>No customers found matching &quot;{query}&quot;</p>
               </CardContent>
             </Card>
           ) : (

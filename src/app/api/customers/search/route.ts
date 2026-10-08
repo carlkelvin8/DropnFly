@@ -20,13 +20,12 @@ export async function GET(req: Request) {
   const q = searchParams.get("q");
 
   const query = (q || "").trim();
-  if (query.length === 1) return NextResponse.json([]);
+  // Data privacy: customer records are never listed without a search term.
+  if (query.length < 2) return NextResponse.json([]);
 
   // Bookings carry their own passenger name/email/phone (the shared customer row keeps only the
-  // first one), so match those and the reference number too. With no query, list customers that
-  // have transactions, most recent first, so existing records are visible without searching.
-  const where = query
-    ? {
+  // first one), so match those and the reference number too.
+  const where = {
         OR: [
           { name: { contains: query, mode: "insensitive" as const } },
           { email: { contains: query, mode: "insensitive" as const } },
@@ -44,8 +43,7 @@ export async function GET(req: Request) {
             },
           },
         ],
-      }
-    : { bookings: { some: {} } };
+      };
 
   const customers = await prisma.customer.findMany({
     where,
@@ -58,7 +56,7 @@ export async function GET(req: Request) {
       _count: { select: { bookings: true } },
       bookings: { select: { createdAt: true, customerNameSnapshot: true }, orderBy: { createdAt: "desc" }, take: 5 },
     },
-    take: query ? 20 : 50,
+    take: 20,
   });
   customers.sort((a, b) => (b.bookings[0]?.createdAt?.getTime() ?? 0) - (a.bookings[0]?.createdAt?.getTime() ?? 0));
 
