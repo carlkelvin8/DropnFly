@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     if (setting(settings, "discount_codes_enabled", "true") === "false") {
       return NextResponse.json({ error: "Discount codes are currently disabled" }, { status: 403 });
     }
-    const { code, luggageDetails, storageDays } = await req.json();
+    const { code, luggageDetails, storageDays, customerEmail } = await req.json();
 
     if (!code || typeof code !== "string") {
       return NextResponse.json({ error: "Promo code is required" }, { status: 400 });
@@ -25,6 +25,21 @@ export async function POST(req: Request) {
     const normalizedCode = code.trim().toUpperCase();
     const promo = await prisma.promoCode.findUnique({ where: { code: normalizedCode } });
     if (!promo) return NextResponse.json({ error: "Promo code not found" }, { status: 400 });
+    const normalizedEmail = typeof customerEmail === "string" ? customerEmail.trim().toLowerCase() : "";
+    if (promo.maxUsesPerCustomer != null && normalizedEmail) {
+      const customerUses = await prisma.booking.count({
+        where: {
+          promoCodeId: promo.id,
+          OR: [
+            { customerEmailSnapshot: normalizedEmail },
+            { customer: { email: normalizedEmail } },
+          ],
+        },
+      });
+      if (customerUses >= promo.maxUsesPerCustomer) {
+        return NextResponse.json({ error: "Promo code has reached its usage limit for this customer" }, { status: 400 });
+      }
+    }
     const [priceSettings] = await Promise.all([getBookingPriceSettings()]);
     const parsed = parseLuggageDetails(typeof luggageDetails === "string" ? luggageDetails : "");
     const pricing = computeBookingPrice({ luggageLines: parsed.luggageLines, services: parsed.services, discount: 0, settings: priceSettings, storageDays: Math.max(1, Math.min(365, Number(storageDays) || 1)) });

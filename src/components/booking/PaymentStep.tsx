@@ -20,6 +20,9 @@ interface PaymentStepProps {
   fees: { pickupFee: number; deliveryFee: number; excessBagFee: number; excessBagThreshold: number };
   luggagePrices: Record<string, number>;
   discountCodesEnabled: boolean;
+  customerEmail: string;
+  promoBasisKey: string;
+  setAppliedPromoBasis: (v: string) => void;
   promoCode: string;
   setPromoCode: (v: string) => void;
   promoApplied: string;
@@ -42,6 +45,7 @@ export function PaymentStep({
   pickupDate, pickupSlot, pickupTerminal, pickupAirline,
   deliveryTerminal, deliveryAirline, deliveryDate, deliverySlot,
   luggageQty, selectedServices, fees, luggagePrices, discountCodesEnabled,
+  customerEmail, promoBasisKey, setAppliedPromoBasis,
   promoCode, setPromoCode, promoApplied, setPromoApplied,
   promoDiscount, setPromoDiscount, promoError, setPromoError,
   acceptedTerms, setAcceptedTerms,
@@ -194,15 +198,15 @@ export function PaymentStep({
         <div className="flex gap-2">
           <input type="text" value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="Enter promo code" className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" />
           <Button type="button" variant="outline" onClick={async () => {
-            setPromoError(""); setPromoDiscount(0); setPromoApplied("");
+            setPromoError(""); setPromoDiscount(0); setPromoApplied(""); setAppliedPromoBasis("");
             if (!promoCode) return;
             try {
               const items = JSON.parse(buildLuggageDetails(luggageQty, luggagePrices));
               const selected = servicesList.filter((service) => selectedServices[service.id]).map((service) => service.name);
               const luggageDetails = selected.length ? JSON.stringify([...items, { services: selected }]) : buildLuggageDetails(luggageQty, luggagePrices);
-              const res = await fetch("/api/promo-codes/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode, luggageDetails, storageDays }) });
+              const res = await fetch("/api/promo-codes/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode, luggageDetails, storageDays, customerEmail }) });
               const data = await res.json();
-              if (data.valid) { setPromoDiscount(data.discount); setPromoApplied(promoCode); setPromoCode(""); }
+              if (data.valid) { setPromoDiscount(data.discount); setPromoApplied(promoCode); setAppliedPromoBasis(promoBasisKey); setPromoCode(""); }
               else setPromoError(data.error || "Invalid promo code");
             } catch { setPromoError("Failed to validate"); }
           }}>Apply</Button>
@@ -210,7 +214,7 @@ export function PaymentStep({
         {promoApplied && (
           <div className="mt-2 flex items-center gap-2 rounded-lg bg-green-50 p-2 text-sm text-green-700">
             <span>Promo &ldquo;{promoApplied}&rdquo; applied! Discount: &#x20B1;{promoDiscount.toFixed(2)}</span>
-            <button type="button" onClick={() => { setPromoApplied(""); setPromoDiscount(0); }} className="ml-auto text-green-500 hover:text-green-700">Remove</button>
+            <button type="button" onClick={() => { setPromoApplied(""); setPromoDiscount(0); setAppliedPromoBasis(""); }} className="ml-auto text-green-500 hover:text-green-700">Remove</button>
           </div>
         )}
         {promoError && <p className="mt-1 text-sm text-red-500">{promoError}</p>}

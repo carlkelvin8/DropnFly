@@ -19,6 +19,7 @@ interface PromoCode {
   value: number;
   usedCount: number;
   maxUsage: number;
+  maxUsesPerCustomer: number | null;
   minAmount: number;
   maxDiscount: number | null;
   expiresAt: string | null;
@@ -79,6 +80,7 @@ export default function PromoCodesPage() {
           type: formData.get("type"),
           value: formData.get("value"),
           maxUsage: formData.get("maxUsage"),
+          maxUsesPerCustomer: formData.get("maxUsesPerCustomer") || null,
           minAmount: formData.get("minAmount"),
           maxDiscount: formData.get("maxDiscount") || null,
           expiresAt: formData.get("expiresAt") || null,
@@ -145,6 +147,10 @@ export default function PromoCodesPage() {
                 <Input id="maxUsage" name="maxUsage" type="number" min="1" defaultValue="100" />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="maxUsesPerCustomer">Max Uses Per Customer (optional)</Label>
+                <Input id="maxUsesPerCustomer" name="maxUsesPerCustomer" type="number" min="1" placeholder="Unlimited" />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="minAmount">Min. Order Amount (₱)</Label>
                 <Input id="minAmount" name="minAmount" type="number" min="0" defaultValue="0" />
               </div>
@@ -199,6 +205,7 @@ export default function PromoCodesPage() {
                     )}
                     <p className="text-xs text-gray-400">
                       Used {promo.usedCount}/{promo.maxUsage} &bull;
+                      {promo.maxUsesPerCustomer != null && ` Per customer: ${promo.maxUsesPerCustomer} max •`}
                       Min: ₱{promo.minAmount}
                       {promo.maxDiscount && ` &bull; Max: ₱${promo.maxDiscount}`}
                       {promo.expiresAt && ` &bull; Expires: ${new Date(promo.expiresAt).toLocaleDateString()}`}

@@ -13,7 +13,7 @@ import { rateLimit, requestKey } from "@/lib/rate-limit";
 import { fleetCapacity, movementsOverlappingSlot, FLEET_SLOT_MINUTES } from "@/lib/fleet-capacity";
 import { coordinatesForLocation, validCoordinates } from "@/lib/booking-location";
 import { assertStorageCapacity, StorageCapacityError } from "@/lib/storage-capacity";
-import { calculatePromoDiscount } from "@/lib/promo";
+import { calculatePromoDiscount, claimPromoCodeUsage, PromoCustomerUsageLimitError } from "@/lib/promo";
 
 export async function POST(req: Request) {
   const limited = await rateLimit(`booking:${requestKey(req)}`, 10, 60 * 60 * 1000);
@@ -288,18 +288,11 @@ export async function POST(req: Request) {
           }
 
           if (promoCodeId) {
-            const promoForUpdate = await tx.promoCode.findUnique({ where: { id: promoCodeId }, select: { maxUsage: true } });
-            if (!promoForUpdate) throw new Error("Promo code is no longer available");
-            const claimed = await tx.promoCode.updateMany({
-              where: {
-                id: promoCodeId,
-                isActive: true,
-                usedCount: { lt: promoForUpdate.maxUsage },
-                OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
-              },
-              data: { usedCount: { increment: 1 } },
+            await claimPromoCodeUsage(tx, {
+              promoCodeId,
+              customerId: bookingCustomer.id,
+              customerEmail: normalizedEmail,
             });
-            if (claimed.count !== 1) throw new Error("Promo code is no longer available");
           }
 
           const createdBooking = await tx.booking.create({
@@ -445,6 +438,9 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     if (error instanceof StorageCapacityError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error instanceof PromoCustomerUsageLimitError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
     const message = error instanceof Error ? error.message : "";

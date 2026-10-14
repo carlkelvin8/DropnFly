@@ -56,6 +56,7 @@ export default function BookPage() {
   const [promoCode, setPromoCode] = useState("");
   const [promoDiscount, setPromoDiscount] = useState(0);
   const [promoApplied, setPromoApplied] = useState("");
+  const [appliedPromoBasis, setAppliedPromoBasis] = useState("");
   const [promoError, setPromoError] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -97,6 +98,16 @@ export default function BookPage() {
   const totalBags = luggageQty ? Object.values(luggageQty).reduce((s, n) => s + (n || 0), 0) : 0;
 
   const storageDays = calcStorageDays(pickupDate, pickupSlot, deliveryDate, deliverySlot);
+  const promoBasisKey = JSON.stringify({
+    email: customerEmail.trim().toLowerCase(), luggageQty, selectedServices,
+    pickupDate, pickupSlot, deliveryDate, deliverySlot, storageDays, fees, luggagePrices,
+  });
+  const promoIsCurrent = Boolean(promoApplied && appliedPromoBasis === promoBasisKey);
+  const currentPromoApplied = promoIsCurrent ? promoApplied : "";
+  const currentPromoDiscount = promoIsCurrent ? promoDiscount : 0;
+  const currentPromoError = promoApplied && !promoIsCurrent
+    ? "Booking details changed. The discount was removed. Enter the promo code again to reapply it."
+    : promoError;
   const totalSteps = steps.length;
   const progress = ((step - 1) / (totalSteps - 1)) * 100;
 
@@ -274,7 +285,7 @@ export default function BookPage() {
     const numBags = calcTotalBags(luggageQty);
     const extraFee = numBags > fees.excessBagThreshold ? (numBags - fees.excessBagThreshold) * fees.excessBagFee : 0;
     const servicesCost = servicesList.filter((s) => selectedServices[s.id]).reduce((sum, s) => sum + s.price, 0);
-    const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
+    const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - currentPromoDiscount);
     // Online booking is a reservation-only flow: the customer is not required to pay during
     // booking, so no payment amount is collected now. The full estimated cost becomes an
     // outstanding balance and is NOT marked as paid.
@@ -292,7 +303,7 @@ export default function BookPage() {
       luggageDetails: luggageDetailsPayload,
       preferredDate: pickupDateTime,
       deliveryDate: deliveryDateTime || undefined,
-      promoCode: promoApplied || undefined,
+      promoCode: currentPromoApplied || undefined,
       totalPrice: grandTotal,
       downPayment,
     };
@@ -467,9 +478,11 @@ export default function BookPage() {
                     luggageQty={luggageQty} selectedServices={selectedServices} fees={fees}
                     luggagePrices={luggagePrices} discountCodesEnabled={discountCodesEnabled}
                     promoCode={promoCode} setPromoCode={setPromoCode}
-                    promoApplied={promoApplied} setPromoApplied={setPromoApplied}
-                    promoDiscount={promoDiscount} setPromoDiscount={setPromoDiscount}
-                    promoError={promoError} setPromoError={setPromoError}
+                    customerEmail={customerEmail}
+                    promoBasisKey={promoBasisKey} setAppliedPromoBasis={setAppliedPromoBasis}
+                    promoApplied={currentPromoApplied} setPromoApplied={setPromoApplied}
+                    promoDiscount={currentPromoDiscount} setPromoDiscount={setPromoDiscount}
+                    promoError={currentPromoError} setPromoError={setPromoError}
                     acceptedTerms={acceptedTerms} setAcceptedTerms={setAcceptedTerms}
                     error={error} loading={loading} storageDays={storageDays}
                     onPrev={prevStep}
