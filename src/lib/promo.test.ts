@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { PromoCode } from "@/generated/prisma/client";
-import { calculatePromoDiscount } from "./promo";
+import { calculatePromoDiscount, claimPromoCodeUsage, PromoCustomerUsageLimitError } from "./promo";
 
 function promo(overrides: Partial<PromoCode> = {}) {
   return {
     id: "promo-1", code: "SAVE", description: null, type: "PERCENTAGE", value: 20,
-    maxUsage: 10, usedCount: 0, minAmount: 100, maxDiscount: 50, expiresAt: null,
+    maxUsage: 10, maxUsesPerCustomer: null, usedCount: 0, minAmount: 100, maxDiscount: 50, expiresAt: null,
     isActive: true, createdAt: new Date(), updatedAt: new Date(),
     ...overrides,
   } as PromoCode;
@@ -24,4 +24,33 @@ test("promo rejects inactive, expired, exhausted, under-minimum, and empty order
   assert.throws(() => calculatePromoDiscount(promo({ usedCount: 10 }), 200, now), /usage limit/);
   assert.throws(() => calculatePromoDiscount(promo(), 99.99, now), /Minimum/);
   assert.throws(() => calculatePromoDiscount(promo(), 0, now), /Add eligible/);
+});
+
+test("promo customer usage cap rejects another use by the same customer", async () => {
+  const tx = {
+    promoCode: {
+      findUnique: async () => ({ maxUsage: 10, maxUsesPerCustomer: 2 }),
+      updateMany: async () => ({ count: 1 }),
+    },
+    booking: { count: async () => 2 },
+  } as unknown as Parameters<typeof claimPromoCodeUsage>[0];
+
+  await assert.rejects(
+    claimPromoCodeUsage(tx, { promoCodeId: "promo-1", customerId: "customer-1", customerEmail: "person@example.com" }),
+    PromoCustomerUsageLimitError,
+  );
+});
+
+test("promo customer usage cap allows a customer below their limit", async () => {
+  let claimed = false;
+  const tx = {
+    promoCode: {
+      findUnique: async () => ({ maxUsage: 10, maxUsesPerCustomer: 2 }),
+      updateMany: async () => { claimed = true; return { count: 1 }; },
+    },
+    booking: { count: async () => 1 },
+  } as unknown as Parameters<typeof claimPromoCodeUsage>[0];
+
+  await claimPromoCodeUsage(tx, { promoCodeId: "promo-1", customerId: "customer-1", customerEmail: "person@example.com" });
+  assert.equal(claimed, true);
 });

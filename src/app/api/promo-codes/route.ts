@@ -34,7 +34,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { code, description, type, value, maxUsage, minAmount, maxDiscount, expiresAt } = body;
+    const { code, description, type, value, maxUsage, maxUsesPerCustomer, minAmount, maxDiscount, expiresAt } = body;
 
     if (typeof code !== "string" || !code.trim() || !type || value == null) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -55,6 +55,9 @@ export async function POST(req: Request) {
     }
     if (maxUsage != null && (!Number.isInteger(Number(maxUsage)) || Number(maxUsage) < 1)) {
       return NextResponse.json({ error: "Max usage must be a whole number of at least 1" }, { status: 400 });
+    }
+    if (maxUsesPerCustomer != null && maxUsesPerCustomer !== "" && (!Number.isInteger(Number(maxUsesPerCustomer)) || Number(maxUsesPerCustomer) < 1)) {
+      return NextResponse.json({ error: "Per-customer usage must be a whole number of at least 1" }, { status: 400 });
     }
     for (const [label, amount] of [["Minimum amount", minAmount], ["Maximum discount", maxDiscount]] as const) {
       if (amount != null && amount !== "" && (!Number.isFinite(Number(amount)) || Number(amount) < 0)) {
@@ -77,6 +80,7 @@ export async function POST(req: Request) {
         type,
         value: numericValue,
         maxUsage: maxUsage == null || maxUsage === "" ? 100 : Number(maxUsage),
+        maxUsesPerCustomer: maxUsesPerCustomer == null || maxUsesPerCustomer === "" ? null : Number(maxUsesPerCustomer),
         minAmount: minAmount == null || minAmount === "" ? 0 : Number(minAmount),
         maxDiscount: maxDiscount == null || maxDiscount === "" ? null : Number(maxDiscount),
         expiresAt: expiresAt ? new Date(expiresAt) : null,

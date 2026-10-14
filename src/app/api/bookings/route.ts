@@ -13,7 +13,7 @@ import { manilaDateStr, manilaDayRange, manilaMinutesOfDay } from "@/lib/manila-
 import { fleetCapacity, movementsOverlappingSlot, FLEET_SLOT_MINUTES } from "@/lib/fleet-capacity";
 import { coordinatesForLocation, validCoordinates } from "@/lib/booking-location";
 import { assertStorageCapacity, StorageCapacityError } from "@/lib/storage-capacity";
-import { calculatePromoDiscount } from "@/lib/promo";
+import { calculatePromoDiscount, claimPromoCodeUsage } from "@/lib/promo";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -429,18 +429,11 @@ export async function POST(req: Request) {
       if (checkOutDate) await slotQueryStaff(checkOutDate, "delivery", tx);
 
       if (promoCodeId) {
-        const promoForUpdate = await tx.promoCode.findUnique({ where: { id: promoCodeId }, select: { maxUsage: true } });
-        if (!promoForUpdate) throw new Error("Promo code is no longer available");
-        const claimed = await tx.promoCode.updateMany({
-          where: {
-            id: promoCodeId,
-            isActive: true,
-            usedCount: { lt: promoForUpdate.maxUsage },
-            OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
-          },
-          data: { usedCount: { increment: 1 } },
+        await claimPromoCodeUsage(tx, {
+          promoCodeId,
+          customerId,
+          customerEmail: customer.email.trim().toLowerCase(),
         });
-        if (claimed.count !== 1) throw new Error("Promo code is no longer available");
       }
       return tx.booking.create({
         data: {

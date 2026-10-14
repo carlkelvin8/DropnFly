@@ -90,6 +90,7 @@ export default function NewBookingPage() {
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState("");
   const [promoDiscount, setPromoDiscount] = useState(0);
+  const [appliedPromoBasis, setAppliedPromoBasis] = useState("");
   const [promoError, setPromoError] = useState("");
 
   const [pickupFee, setPickupFee] = useState(180);
@@ -120,6 +121,17 @@ export default function NewBookingPage() {
   const totalBags = calcTotalBags(luggageQty);
   const storageDays = calcStorageDays(pickupDate, pickupSlot, deliveryDate, deliverySlot);
   const billableDays = Math.max(1, storageDays || 1);
+  const promoBasisKey = JSON.stringify({
+    email: custEmail.trim().toLowerCase(), luggageQty, selectedServices,
+    pickupDate, pickupSlot, deliveryDate, deliverySlot, billableDays,
+    pickupFee, deliveryFee, excessBagFee, excessBagThreshold, luggagePrices,
+  });
+  const promoIsCurrent = Boolean(promoApplied && appliedPromoBasis === promoBasisKey);
+  const currentPromoApplied = promoIsCurrent ? promoApplied : "";
+  const currentPromoDiscount = promoIsCurrent ? promoDiscount : 0;
+  const currentPromoError = promoApplied && !promoIsCurrent
+    ? "Booking details changed. The discount was removed. Enter the promo code again to reapply it."
+    : promoError;
   const subtotal = LUGGAGE_TYPES.reduce((sum, lt) => {
     const qty = luggageQty[lt.id] || 0;
     const price = luggagePrices[lt.id] ?? lt.price;
@@ -127,7 +139,7 @@ export default function NewBookingPage() {
   }, 0);
   const extraFee = totalBags > excessBagThreshold ? (totalBags - excessBagThreshold) * excessBagFee : 0;
   const servicesCost = (selectedServices["pick-up-from-customer"] ? pickupFee : 0) + (selectedServices["deliver-to-customer"] ? deliveryFee : 0);
-  const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - promoDiscount);
+  const grandTotal = Math.max(0, subtotal + extraFee + servicesCost - currentPromoDiscount);
 
   function updatePickupDate(date: string) {
     setPickupDate(date);
@@ -387,7 +399,7 @@ export default function NewBookingPage() {
           checkIn,
           checkOut,
           numberOfBags: totalBags,
-          promoCode: promoApplied || undefined,
+          promoCode: currentPromoApplied || undefined,
           status: "CONFIRMED",
         }),
       });
@@ -911,7 +923,7 @@ export default function NewBookingPage() {
                     <div className="flex justify-between text-sm"><span className="text-muted-foreground">Storage subtotal ({billableDays} day{billableDays > 1 ? "s" : ""})</span><span className="font-medium">₱{subtotal.toFixed(2)}</span></div>
                     {extraFee > 0 && <div className="flex justify-between text-amber-600"><span>Excess fee ({totalBags - excessBagThreshold} × ₱{excessBagFee.toFixed(2)})</span><span>+₱{extraFee.toFixed(2)}</span></div>}
                     {servicesCost > 0 && <div className="flex justify-between text-violet-600"><span>Additional services</span><span>+₱{servicesCost.toFixed(2)}</span></div>}
-                    {promoApplied && <div className="flex justify-between text-green-600"><span>Promo discount ({promoApplied})</span><span>-₱{promoDiscount.toFixed(2)}</span></div>}
+                    {currentPromoApplied && <div className="flex justify-between text-green-600"><span>Promo discount ({currentPromoApplied})</span><span>-₱{currentPromoDiscount.toFixed(2)}</span></div>}
                     <div className="flex justify-between border-t pt-2 text-base font-bold"><span>Estimated Total</span><span className="text-lg">₱{grandTotal.toFixed(2)}</span></div>
                   </div>
                 </div>
@@ -931,6 +943,7 @@ export default function NewBookingPage() {
                         setPromoError("");
                         setPromoDiscount(0);
                         setPromoApplied("");
+                        setAppliedPromoBasis("");
                         if (!promoCode) return;
                         try {
                           const res = await fetch("/api/promo-codes/validate", {
@@ -939,6 +952,7 @@ export default function NewBookingPage() {
                             body: JSON.stringify({
                               code: promoCode,
                               storageDays: billableDays,
+                              customerEmail: custEmail,
                               luggageDetails: (() => {
                                 const items = JSON.parse(buildLuggageDetails(luggageQty, luggagePrices));
                                 const selected = [
@@ -953,6 +967,7 @@ export default function NewBookingPage() {
                           if (data.valid) {
                             setPromoDiscount(data.discount);
                             setPromoApplied(promoCode);
+                            setAppliedPromoBasis(promoBasisKey);
                             setPromoCode("");
                           } else setPromoError(data.error || "Invalid promo code");
                         } catch {
@@ -963,15 +978,15 @@ export default function NewBookingPage() {
                       Apply
                     </Button>
                   </div>
-                  {promoApplied && (
+                  {currentPromoApplied && (
                     <div className="flex items-center gap-2 rounded-lg bg-green-50 p-2 text-sm text-green-700">
-                      <span>Promo &quot;{promoApplied}&quot; applied! Discount: ₱{promoDiscount.toFixed(2)}</span>
-                      <button type="button" onClick={() => { setPromoApplied(""); setPromoDiscount(0); }} className="ml-auto text-green-500 hover:text-green-700">
+                      <span>Promo &quot;{currentPromoApplied}&quot; applied! Discount: ₱{currentPromoDiscount.toFixed(2)}</span>
+                      <button type="button" onClick={() => { setPromoApplied(""); setPromoDiscount(0); setAppliedPromoBasis(""); }} className="ml-auto text-green-500 hover:text-green-700">
                         Remove
                       </button>
                     </div>
                   )}
-                  {promoError && <p className="text-sm text-red-500">{promoError}</p>}
+                  {currentPromoError && <p className="text-sm text-red-500">{currentPromoError}</p>}
                 </div>
 
                 {error && (
