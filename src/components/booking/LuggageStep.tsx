@@ -12,7 +12,7 @@ interface LuggageStepProps {
   luggageQty: Record<string, number>;
   setLuggageQty: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   selectedServices: Record<string, boolean>;
-  setSelectedServices: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  onServiceChange: (id: string, enabled: boolean) => void;
   fees: { pickupFee: number; deliveryFee: number; excessBagFee: number; excessBagThreshold: number };
   luggagePrices: Record<string, number>;
   maxBags: number;
@@ -23,15 +23,16 @@ interface LuggageStepProps {
 
 export function LuggageStep({
   luggageQty, setLuggageQty,
-  selectedServices, setSelectedServices,
+  selectedServices,
+  onServiceChange,
   fees, luggagePrices, maxBags, storageDays, onNext, onPrev,
 }: LuggageStepProps) {
   const totalBags = calcTotalBags(luggageQty);
   const subtotal = calcSubtotal(luggageQty, luggagePrices) * Math.max(1, storageDays);
   const extraFee = totalBags > fees.excessBagThreshold ? (totalBags - fees.excessBagThreshold) * fees.excessBagFee : 0;
   const servicesList = [
-    { id: "pick-up-from-customer", name: "Pick-up from Customer", description: "Rider picks up luggage from your location", price: fees.pickupFee },
-    { id: "deliver-to-customer", name: "Deliver to Customer", description: "Rider delivers luggage to your location", price: fees.deliveryFee },
+    { id: "pick-up-from-customer", name: "Pick-up from Customer", description: "Rider collects your luggage at the selected terminal", price: fees.pickupFee },
+    { id: "deliver-to-customer", name: "Deliver to Customer", description: "Rider returns your luggage at the selected terminal", price: fees.deliveryFee },
   ];
 
   return (
@@ -184,7 +185,7 @@ export function LuggageStep({
             <Package className="h-4 w-4 text-violet-500" />
             Additional Services
           </Label>
-          <p className="mb-4 text-xs text-muted-foreground">Default process: customer drops off and picks up luggage at the terminal. Add services below for convenience.</p>
+          <p className="mb-4 text-xs text-muted-foreground">Your luggage is stored at our facility by default. Choose pickup, delivery, both, or bring and collect it yourself.</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {servicesList.map((svc) => (
               <label
@@ -198,7 +199,7 @@ export function LuggageStep({
                 <div className="flex items-center gap-3">
                   <Checkbox
                     checked={!!selectedServices[svc.id]}
-                    onCheckedChange={(checked) => setSelectedServices((prev) => ({ ...prev, [svc.id]: !!checked }))}
+                    onCheckedChange={(checked) => onServiceChange(svc.id, checked === true)}
                   />
                   <div>
                     <p className="text-sm font-semibold">{svc.name}</p>

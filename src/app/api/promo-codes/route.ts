@@ -8,7 +8,7 @@ export async function GET() {
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (session.user.role !== "ADMIN") {
+  if (!["ADMIN", "EMPLOYEE", "STAFF"].includes(session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (session.user.role !== "ADMIN") {
+  if (!["ADMIN", "EMPLOYEE", "STAFF"].includes(session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -38,6 +38,13 @@ export async function POST(req: Request) {
 
     if (typeof code !== "string" || !code.trim() || !type || value == null) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+    const normalizedCode = code.trim().toUpperCase();
+    if (normalizedCode.length > 32 || !/^[A-Z0-9][A-Z0-9_-]*$/.test(normalizedCode)) {
+      return NextResponse.json({ error: "Code must use up to 32 letters, numbers, hyphens, or underscores" }, { status: 400 });
+    }
+    if (description != null && (typeof description !== "string" || description.length > 500)) {
+      return NextResponse.json({ error: "Description must be 500 characters or fewer" }, { status: 400 });
     }
     if (!["PERCENTAGE", "FIXED"].includes(type)) {
       return NextResponse.json({ error: "Type must be PERCENTAGE or FIXED" }, { status: 400 });
@@ -58,26 +65,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid expiry date" }, { status: 400 });
     }
 
-    const existing = await prisma.promoCode.findUnique({ where: { code: code.trim().toUpperCase() } });
+    const existing = await prisma.promoCode.findUnique({ where: { code: normalizedCode } });
     if (existing) {
       return NextResponse.json({ error: "Promo code already exists" }, { status: 409 });
     }
 
     const promo = await prisma.promoCode.create({
       data: {
-        code: code.trim().toUpperCase(),
-        description,
+        code: normalizedCode,
+        description: typeof description === "string" && description.trim() ? description.trim() : null,
         type,
         value: numericValue,
-        maxUsage: maxUsage || 100,
-        minAmount: minAmount || 0,
-        maxDiscount: maxDiscount || null,
+        maxUsage: maxUsage == null || maxUsage === "" ? 100 : Number(maxUsage),
+        minAmount: minAmount == null || minAmount === "" ? 0 : Number(minAmount),
+        maxDiscount: maxDiscount == null || maxDiscount === "" ? null : Number(maxDiscount),
         expiresAt: expiresAt ? new Date(expiresAt) : null,
       },
     });
 
     return NextResponse.json(decimalsToNumbers(promo), { status: 201 });
-  } catch {
+  } catch (error) {
+    if ((error as { code?: string })?.code === "P2002") return NextResponse.json({ error: "Promo code already exists" }, { status: 409 });
     return NextResponse.json({ error: "Failed to create promo code" }, { status: 500 });
   }
 }
