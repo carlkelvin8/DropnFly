@@ -241,22 +241,18 @@ export default function NewBookingPage() {
       if (!custCountry) errors.push("Please select Country of Origin");
       if (!custCity) errors.push("Please select City of Origin");
     } else if (step === 2) {
-      if (!pickupTerminal) errors.push("Please select Pickup Terminal");
-      if (!pickupAirline) errors.push("Please select Pickup Airline Carrier");
-      if (!pickupDate) errors.push("Please select Pickup Date");
-      if (!pickupSlot) errors.push("Please select Pickup Time Slot");
-      if (!deliveryTerminal) errors.push("Please select Drop-off Terminal");
-      if (!deliveryAirline) errors.push("Please select Drop-off Airline Carrier");
-      if (!deliveryDate) errors.push("Please select Delivery Date");
-      if (!deliverySlot) errors.push("Please select Delivery Time Slot");
-      if (pickupDate && deliveryDate) {
-        if (deliveryDate < pickupDate) errors.push("Delivery date must be on or after Pickup Date");
-        else if (deliveryDate === pickupDate && pickupSlot && deliverySlot && deliverySlot <= pickupSlot)
-          errors.push("Delivery time slot must be after Pickup Time Slot");
-      }
-    } else if (step === 3) {
       if (totalBags === 0) errors.push("Please select at least one bag (Luggage Types)");
       if (maxBags > 0 && totalBags > maxBags) errors.push(`Maximum of ${maxBags} bags per booking`);
+    } else if (step === 3) {
+      if (!pickupDate) errors.push("Please select storage intake date");
+      if (!pickupSlot) errors.push("Please select storage intake time");
+      if (selectedServices["pick-up-from-customer"] && !pickupTerminal) errors.push("Please select Pickup Terminal");
+      if (selectedServices["pick-up-from-customer"] && !pickupAirline) errors.push("Please select Pickup Airline Carrier");
+      if (selectedServices["deliver-to-customer"] && !deliveryTerminal) errors.push("Please select Drop-off Terminal");
+      if (selectedServices["deliver-to-customer"] && !deliveryAirline) errors.push("Please select Drop-off Airline Carrier");
+      if (!deliveryDate) errors.push("Please select storage collection date");
+      if (!deliverySlot) errors.push("Please select storage collection time");
+      if (pickupDate && deliveryDate && (deliveryDate < pickupDate || (deliveryDate === pickupDate && pickupSlot && deliverySlot && deliverySlot <= pickupSlot))) errors.push("Collection must be after intake");
     }
     if (errors.length > 0) {
       setError(errors.join(". "));
@@ -369,8 +365,8 @@ export default function NewBookingPage() {
         .map((s) => s.name);
       const luggageDetails = selectedSvcList.length > 0 ? JSON.stringify([...luggageItems, { services: selectedSvcList }]) : buildLuggageDetails(luggageQty, luggagePrices);
 
-      const pickupLocation = pickupAirline ? `${pickupTerminal} - ${pickupAirline}` : pickupTerminal;
-      const dropOffLocation = deliveryAirline ? `${deliveryTerminal} - ${deliveryAirline}` : deliveryTerminal;
+      const pickupLocation = selectedServices["pick-up-from-customer"] ? (pickupAirline ? `${pickupTerminal} - ${pickupAirline}` : pickupTerminal) : "";
+      const dropOffLocation = selectedServices["deliver-to-customer"] ? (deliveryAirline ? `${deliveryTerminal} - ${deliveryAirline}` : deliveryTerminal) : "";
       const checkIn = `${pickupDate}T${pickupSlot}:00+08:00`;
       const checkOut = `${deliveryDate}T${deliverySlot}:00+08:00`;
 
@@ -439,8 +435,8 @@ export default function NewBookingPage() {
         <div className="mt-2 flex justify-between">
           {[
             { num: 1, label: "Contact", Icon: User },
-            { num: 2, label: "Pickup", Icon: MapPin },
-            { num: 3, label: "Luggage", Icon: Luggage },
+            { num: 2, label: "Luggage & Services", Icon: Luggage },
+            { num: 3, label: "Pickup & Drop-off", Icon: MapPin },
             { num: 4, label: "Confirm", Icon: Check },
           ].map((s) => {
             const isActive = step >= s.num;
@@ -530,208 +526,14 @@ export default function NewBookingPage() {
                 )}
                 <div className="flex justify-end">
                   <Button type="button" onClick={handleNextStep} className="bg-orange-500 text-white shadow-lg hover:bg-orange-600">
-                    Next: Pickup <ArrowRight className="ml-2 h-4 w-4" />
+                    Next: Luggage & Services <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </div>
               </div>
             )}
 
-            {/* Step 2: Pickup - same as online: terminals + airlines + date + time slots */}
+            {/* Step 2: luggage and selected additional services */}
             {step === 2 && (
-              <div className="space-y-4" style={{ animation: "step-in 0.25s ease-out" }}>
-                <div className="mb-1 flex items-center gap-2">
-                  <MapPin className="h-5 w-5 text-blue-600" />
-                  <h3 className="text-lg font-semibold">Pickup & Delivery Details</h3>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-1.5">
-                    <Building2 className="h-4 w-4 text-blue-500" /> Pickup Terminal <span className="text-red-500">*</span>
-                  </Label>
-                  <select
-                    value={pickupTerminal}
-                    onChange={(e) => {
-                      setPickupTerminal(e.target.value);
-                      setPickupAirline("");
-                    }}
-                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
-                    required
-                  >
-                    <option value="">Select NAIA Terminal...</option>
-                    {NAIA_TERMINALS.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {pickupTerminal && (
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-1.5">
-                      <Plane className="h-4 w-4 text-blue-500" /> Pickup Airline Carrier <span className="text-red-500">*</span>
-                    </Label>
-                    <select
-                      value={pickupAirline}
-                      onChange={(e) => setPickupAirline(e.target.value)}
-                      className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
-                      required
-                    >
-                      <option value="">Select airline...</option>
-                      {getAirlinesForTerminal(pickupTerminal).map((a) => (
-                        <option key={a} value={a}>
-                          {a}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-muted-foreground">Showing airlines available for {pickupTerminal}</p>
-                  </div>
-                )}
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="pickupDate">
-                      Pickup Date <span className="text-red-500">*</span>
-                    </Label>
-                    <Input id="pickupDate" type="date" min={today()} value={pickupDate} onChange={(e) => updatePickupDate(e.target.value)} required />
-                  </div>
-                </div>
-                {pickupDate && (
-                  <div>
-                    <Label className="flex items-center gap-1.5">
-                      <Clock className="h-4 w-4 text-blue-500" /> Pickup Time Slot <span className="text-red-500">*</span>
-                    </Label>
-                    {pickupSlotsLoading ? (
-                      <p className="mt-2 text-sm text-muted-foreground">Loading available slots...</p>
-                    ) : pickupSlots.length === 0 ? (
-                      <p className="mt-2 text-sm text-red-500">No available slots on this date.</p>
-                    ) : (
-                      <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                        {pickupSlots.map((slot) => (
-                          <button
-                            key={slot.start}
-                            type="button"
-                            disabled={!slot.available}
-                            onClick={() => setPickupSlot(slot.start)}
-                            className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${pickupSlot === slot.start ? "border-blue-600 bg-orange-500 text-white shadow-md" : slot.available ? "border-border bg-card hover:border-blue-300 hover:bg-blue-50" : "cursor-not-allowed border-border/50 bg-muted/50 text-muted-foreground/60"}`}
-                          >
-                            <span className="block">{slot.start}</span>
-                            <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full"}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {pickupSlot && <p className="mt-2 text-xs text-green-600">Selected: {pickupSlot}</p>}
-                  </div>
-                )}
-
-                <div className="my-4 border-t" />
-
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-1.5">
-                    <Building2 className="h-4 w-4 text-indigo-500" /> Drop-off Terminal <span className="text-red-500">*</span>
-                  </Label>
-                  <select
-                    value={deliveryTerminal}
-                    onChange={(e) => {
-                      setDeliveryTerminal(e.target.value);
-                      setDeliveryAirline("");
-                    }}
-                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
-                    required
-                  >
-                    <option value="">Select NAIA Terminal...</option>
-                    {NAIA_TERMINALS.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {deliveryTerminal && (
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-1.5">
-                      <Plane className="h-4 w-4 text-indigo-500" /> Drop-off Airline Carrier <span className="text-red-500">*</span>
-                    </Label>
-                    <select
-                      value={deliveryAirline}
-                      onChange={(e) => setDeliveryAirline(e.target.value)}
-                      className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
-                      required
-                    >
-                      <option value="">Select airline...</option>
-                      {getAirlinesForTerminal(deliveryTerminal).map((a) => (
-                        <option key={a} value={a}>
-                          {a}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label>
-                    Delivery Date <span className="text-red-500">*</span>
-                  </Label>
-                  <Input type="date" min={pickupDate || today()} value={deliveryDate} onChange={(e) => updateDeliveryDate(e.target.value)} required />
-                </div>
-                {deliveryDate && (
-                  <div>
-                    <Label className="flex items-center gap-1.5">
-                      <Clock className="h-4 w-4 text-indigo-500" /> Delivery Time Slot <span className="text-red-500">*</span>
-                    </Label>
-                    {deliverySlotsLoading ? (
-                      <p className="mt-2 text-sm text-muted-foreground">Loading available slots...</p>
-                    ) : deliverySlots.length === 0 ? (
-                      <p className="mt-2 text-sm text-red-500">No available slots on this date.</p>
-                    ) : (
-                      <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                        {deliverySlots.map((slot) => (
-                          <button
-                            key={slot.start}
-                            type="button"
-                            disabled={!slot.available}
-                            onClick={() => setDeliverySlot(slot.start)}
-                            className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${deliverySlot === slot.start ? "border-indigo-600 bg-indigo-600 text-white shadow-md" : slot.available ? "border-border bg-card hover:border-indigo-300 hover:bg-indigo-50" : "cursor-not-allowed border-border/50 bg-muted/50 text-muted-foreground/60"}`}
-                          >
-                            <span className="block">{slot.start}</span>
-                            <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full"}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {deliverySlot && <p className="mt-2 text-xs text-green-600">Selected: {deliverySlot}</p>}
-                  </div>
-                )}
-
-                {storageDays > 0 && (
-                  <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                    <Package className="h-4 w-4 shrink-0" />
-                    <span>
-                      Storage Duration: <strong>{storageDays} day{storageDays > 1 ? "s" : ""}</strong> (from pickup to delivery)
-                    </span>
-                  </div>
-                )}
-
-                {error && (
-                  <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <Button type="button" variant="outline" onClick={() => { setError(""); setStep(1); }}>
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Back
-                  </Button>
-                  <Button type="button" onClick={handleNextStep} className="bg-orange-500 text-white hover:bg-orange-600">
-                    Next: Luggage <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Luggage - same as online with storage multiplier, baggage notes, maxBags */}
-            {step === 3 && (
               <div className="space-y-6" style={{ animation: "step-in 0.25s ease-out" }}>
                 <div className="mb-1 flex items-center gap-2">
                   <Luggage className="h-5 w-5 text-blue-600" />
@@ -823,12 +625,16 @@ export default function NewBookingPage() {
                   <Label className="mb-2 flex items-center gap-1.5 text-sm"><Package className="h-4 w-4 text-violet-500" /> Additional Services</Label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {[
-                      { id: "pick-up-from-customer", name: "Pick-up from Customer", desc: "Rider picks up luggage from your location", fee: pickupFee },
-                      { id: "deliver-to-customer", name: "Deliver to Customer", desc: "Rider delivers luggage to your location", fee: deliveryFee },
+                      { id: "pick-up-from-customer", name: "Pick-up from Customer", desc: "Rider collects luggage at the selected terminal", fee: pickupFee },
+                      { id: "deliver-to-customer", name: "Deliver to Customer", desc: "Rider returns luggage at the selected terminal", fee: deliveryFee },
                     ].map((svc) => (
                       <label key={svc.id} className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${selectedServices[svc.id] ? "border-violet-500 bg-violet-600 text-white shadow-md" : "border-border bg-card"}`}>
                         <div className="flex items-center gap-3">
-                          <Checkbox checked={!!selectedServices[svc.id]} onCheckedChange={(c) => setSelectedServices((p) => ({ ...p, [svc.id]: !!c }))} />
+                          <Checkbox checked={!!selectedServices[svc.id]} onCheckedChange={(c) => {
+                            setSelectedServices((p) => ({ ...p, [svc.id]: !!c }));
+                            if (!c && svc.id === "pick-up-from-customer") { setPickupTerminal(""); setPickupAirline(""); }
+                            if (!c && svc.id === "deliver-to-customer") { setDeliveryTerminal(""); setDeliveryAirline(""); }
+                          }} />
                           <div>
                             <p className="text-sm font-semibold">{svc.name}</p>
                             <p className={`mt-0.5 text-[11px] ${selectedServices[svc.id] ? "text-violet-100" : "text-muted-foreground"}`}>{svc.desc}</p>
@@ -848,17 +654,219 @@ export default function NewBookingPage() {
                 )}
 
                 <div className="flex items-center justify-between">
-                  <Button type="button" variant="outline" onClick={() => { setError(""); setStep(2); }}>
+                  <Button type="button" variant="outline" onClick={() => { setError(""); setStep(1); }}>
                     <ArrowLeft className="mr-2 h-4 w-4" /> Back
                   </Button>
                   <Button type="button" onClick={handleNextStep} className="bg-orange-500 text-white hover:bg-orange-600">
-                    Next: Confirm <ArrowRight className="ml-2 h-4 w-4" />
+                    Next: Pickup & Drop-off <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </div>
               </div>
             )}
 
-            {/* Step 4: Confirm - full summary same as online PaymentStep */}
+            {/* Step 3: schedule and only the selected pickup or delivery details */}
+            {step === 3 && (
+              <div className="space-y-4" style={{ animation: "step-in 0.25s ease-out" }}>
+                <div className="mb-1 flex items-center gap-2">
+                  <MapPin className="h-5 w-5 text-blue-600" />
+                  <h3 className="text-lg font-semibold">Schedule & Selected Service Details</h3>
+                </div>
+
+                {selectedServices["pick-up-from-customer"] && (
+                  <>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Building2 className="h-4 w-4 text-blue-500" /> Pickup Terminal <span className="text-red-500">*</span>
+                  </Label>
+                  <select
+                    value={pickupTerminal}
+                    onChange={(e) => {
+                      setPickupTerminal(e.target.value);
+                      setPickupAirline("");
+                    }}
+                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
+                    required
+                  >
+                    <option value="">Select NAIA Terminal...</option>
+                    {NAIA_TERMINALS.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {pickupTerminal && (
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1.5">
+                      <Plane className="h-4 w-4 text-blue-500" /> Pickup Airline Carrier <span className="text-red-500">*</span>
+                    </Label>
+                    <select
+                      value={pickupAirline}
+                      onChange={(e) => setPickupAirline(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
+                      required
+                    >
+                      <option value="">Select airline...</option>
+                      {getAirlinesForTerminal(pickupTerminal).map((a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-muted-foreground">Showing airlines available for {pickupTerminal}</p>
+                  </div>
+                )}
+                  </>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="pickupDate">
+                      Storage Intake Date <span className="text-red-500">*</span>
+                    </Label>
+                    <Input id="pickupDate" type="date" min={today()} value={pickupDate} onChange={(e) => updatePickupDate(e.target.value)} required />
+                  </div>
+                </div>
+                {pickupDate && (
+                  <div>
+                    <Label className="flex items-center gap-1.5">
+                      <Clock className="h-4 w-4 text-blue-500" /> Pickup Time Slot <span className="text-red-500">*</span>
+                    </Label>
+                    {pickupSlotsLoading ? (
+                      <p className="mt-2 text-sm text-muted-foreground">Loading available slots...</p>
+                    ) : pickupSlots.length === 0 ? (
+                      <p className="mt-2 text-sm text-red-500">No available slots on this date.</p>
+                    ) : (
+                      <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                        {pickupSlots.map((slot) => (
+                          <button
+                            key={slot.start}
+                            type="button"
+                            disabled={!slot.available}
+                            onClick={() => setPickupSlot(slot.start)}
+                            className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${pickupSlot === slot.start ? "border-blue-600 bg-orange-500 text-white shadow-md" : slot.available ? "border-border bg-card hover:border-blue-300 hover:bg-blue-50" : "cursor-not-allowed border-border/50 bg-muted/50 text-muted-foreground/60"}`}
+                          >
+                            <span className="block">{slot.start}</span>
+                            <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full"}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {pickupSlot && <p className="mt-2 text-xs text-green-600">Selected: {pickupSlot}</p>}
+                  </div>
+                )}
+
+                {selectedServices["deliver-to-customer"] && <div className="my-4 border-t" />}
+
+                {selectedServices["deliver-to-customer"] && (
+                  <>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Building2 className="h-4 w-4 text-indigo-500" /> Drop-off Terminal <span className="text-red-500">*</span>
+                  </Label>
+                  <select
+                    value={deliveryTerminal}
+                    onChange={(e) => {
+                      setDeliveryTerminal(e.target.value);
+                      setDeliveryAirline("");
+                    }}
+                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
+                    required
+                  >
+                    <option value="">Select NAIA Terminal...</option>
+                    {NAIA_TERMINALS.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {deliveryTerminal && (
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1.5">
+                      <Plane className="h-4 w-4 text-indigo-500" /> Drop-off Airline Carrier <span className="text-red-500">*</span>
+                    </Label>
+                    <select
+                      value={deliveryAirline}
+                      onChange={(e) => setDeliveryAirline(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
+                      required
+                    >
+                      <option value="">Select airline...</option>
+                      {getAirlinesForTerminal(deliveryTerminal).map((a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                  </>
+                )}
+
+                <div className="space-y-2">
+                  <Label>
+                    Storage Collection Date <span className="text-red-500">*</span>
+                  </Label>
+                  <Input type="date" min={pickupDate || today()} value={deliveryDate} onChange={(e) => updateDeliveryDate(e.target.value)} required />
+                </div>
+                {deliveryDate && (
+                  <div>
+                    <Label className="flex items-center gap-1.5">
+                      <Clock className="h-4 w-4 text-indigo-500" /> Delivery Time Slot <span className="text-red-500">*</span>
+                    </Label>
+                    {deliverySlotsLoading ? (
+                      <p className="mt-2 text-sm text-muted-foreground">Loading available slots...</p>
+                    ) : deliverySlots.length === 0 ? (
+                      <p className="mt-2 text-sm text-red-500">No available slots on this date.</p>
+                    ) : (
+                      <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                        {deliverySlots.map((slot) => (
+                          <button
+                            key={slot.start}
+                            type="button"
+                            disabled={!slot.available}
+                            onClick={() => setDeliverySlot(slot.start)}
+                            className={`rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all ${deliverySlot === slot.start ? "border-indigo-600 bg-indigo-600 text-white shadow-md" : slot.available ? "border-border bg-card hover:border-indigo-300 hover:bg-indigo-50" : "cursor-not-allowed border-border/50 bg-muted/50 text-muted-foreground/60"}`}
+                          >
+                            <span className="block">{slot.start}</span>
+                            <span className="block text-[10px] opacity-70">{slot.available ? slot.end : slot.unavailableReason === "past" ? "Past" : "Full"}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {deliverySlot && <p className="mt-2 text-xs text-green-600">Selected: {deliverySlot}</p>}
+                  </div>
+                )}
+
+                {storageDays > 0 && (
+                  <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                    <Package className="h-4 w-4 shrink-0" />
+                    <span>
+                      Storage Duration: <strong>{storageDays} day{storageDays > 1 ? "s" : ""}</strong> (from pickup to delivery)
+                    </span>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <Button type="button" variant="outline" onClick={() => { setError(""); setStep(2); }}>
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                  </Button>
+                  <Button type="button" onClick={handleNextStep} className="bg-orange-500 text-white hover:bg-orange-600">
+                    Next: Booking Summary <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 4: booking summary and promo code */}
             {step === 4 && (
               <div className="space-y-6" style={{ animation: "step-in 0.25s ease-out" }}>
                 <div className="mb-1 flex items-center gap-2">
@@ -928,7 +936,18 @@ export default function NewBookingPage() {
                           const res = await fetch("/api/promo-codes/validate", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ code: promoCode, amount: subtotal + extraFee + servicesCost }),
+                            body: JSON.stringify({
+                              code: promoCode,
+                              storageDays: billableDays,
+                              luggageDetails: (() => {
+                                const items = JSON.parse(buildLuggageDetails(luggageQty, luggagePrices));
+                                const selected = [
+                                  ...(selectedServices["pick-up-from-customer"] ? ["Pick-up from Customer"] : []),
+                                  ...(selectedServices["deliver-to-customer"] ? ["Deliver to Customer"] : []),
+                                ];
+                                return selected.length ? JSON.stringify([...items, { services: selected }]) : buildLuggageDetails(luggageQty, luggagePrices);
+                              })(),
+                            }),
                           });
                           const data = await res.json();
                           if (data.valid) {

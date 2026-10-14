@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isBookingLocked } from "@/lib/booking-access";
 import { assertScheduleCapacity, BookingSlotError } from "@/lib/booking-slot-capacity";
+import { assertStorageCapacity, StorageCapacityError } from "@/lib/storage-capacity";
+import { getSystemSettings, setting } from "@/lib/settings";
 
 class AlreadyReviewedError extends Error {}
 
@@ -19,7 +21,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     const extension = await prisma.bookingExtension.findUnique({
       where: { id },
-      include: { booking: { select: { status: true } } },
+      include: { booking: { select: { status: true, checkIn: true, checkOut: true, numberOfBags: true } } },
     });
     if (!extension) return new NextResponse("Extension not found", { status: 404 });
     if (isBookingLocked(extension.booking.status)) return new NextResponse("Cancelled and no-show bookings are locked", { status: 409 });
@@ -34,6 +36,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       if (claimed.count === 0) throw new AlreadyReviewedError();
       if (status === "APPROVED") {
         await assertScheduleCapacity(tx, [extension.requestedCheckOut], extension.bookingId);
+        const settings = await getSystemSettings();
+        const capacity = Math.max(0, Number.parseInt(setting(settings, "max_simultaneous_bags", "0")) || 0);
+        if (capacity > 0) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
+          await assertStorageCapacity(tx, { checkIn: extension.booking.checkIn, checkOut: extension.requestedCheckOut, bags: extension.booking.numberOfBags, capacity, excludeBookingId: extension.bookingId });
+        }
         await tx.booking.update({ where: { id: extension.bookingId }, data: { checkOut: extension.requestedCheckOut } });
       }
       return tx.bookingExtension.findUniqueOrThrow({ where: { id } });
@@ -43,6 +51,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   } catch (e: unknown) {
     if (e instanceof AlreadyReviewedError) return new NextResponse("Already reviewed", { status: 400 });
     if (e instanceof BookingSlotError) return NextResponse.json({ error: e.message }, { status: 409 });
+    if (e instanceof StorageCapacityError) return NextResponse.json({ error: e.message }, { status: 409 });
     const code = (e as { code?: string }).code;
     if (code === "P2025") return NextResponse.json({ error: "Extension not found" }, { status: 404 });
     return NextResponse.json({ error: "Failed to review extension" }, { status: 500 });

@@ -12,6 +12,8 @@ import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } fro
 import { manilaDateStr, manilaDayRange, manilaMinutesOfDay } from "@/lib/manila-time";
 import { fleetCapacity, movementsOverlappingSlot, FLEET_SLOT_MINUTES } from "@/lib/fleet-capacity";
 import { coordinatesForLocation, validCoordinates } from "@/lib/booking-location";
+import { assertStorageCapacity, StorageCapacityError } from "@/lib/storage-capacity";
+import { calculatePromoDiscount } from "@/lib/promo";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -186,8 +188,6 @@ export async function GET(req: Request) {
   return NextResponse.json(filtered);
 }
 
-class StorageCapacityError extends Error {}
-
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) {
@@ -216,12 +216,15 @@ export async function POST(req: Request) {
       promoCode,
     } = body;
 
-    // Require same complete information as online booking: customer, pickup + delivery, luggage
-    if (!customerId || !numberOfBags || !checkIn || !body.pickupLocation || !body.dropOffLocation) {
+    // Terminals are required only for the delivery services selected in luggageDetails.
+    const selected = parseLuggageDetails(luggageDetails || "").services;
+    const pickupRequired = selected.includes("Pick-up from Customer");
+    const dropoffRequired = selected.includes("Deliver to Customer");
+    if (!customerId || !numberOfBags || !checkIn) {
       const missing: string[] = [];
       if (!customerId) missing.push("Customer");
-      if (!body.pickupLocation) missing.push("Pickup Location (Terminal + Airline)");
-      if (!body.dropOffLocation) missing.push("Drop-off Location (Terminal + Airline)");
+      if (pickupRequired && !body.pickupLocation) missing.push("Pickup Location (Terminal + Airline)");
+      if (dropoffRequired && !body.dropOffLocation) missing.push("Drop-off Location (Terminal + Airline)");
       if (!numberOfBags) missing.push("Luggage");
       if (!checkIn) missing.push("Pickup Date & Time Slot");
       if (!checkOut) missing.push("Delivery Date & Time Slot");
@@ -230,11 +233,13 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    if (String(body.pickupLocation).length > 500 || String(body.dropOffLocation).length > 500) {
+    const pickupLocation = pickupRequired ? String(body.pickupLocation || "").trim() : "";
+    const dropOffLocation = dropoffRequired ? String(body.dropOffLocation || "").trim() : "";
+    if (pickupLocation.length > 500 || dropOffLocation.length > 500) {
       return NextResponse.json({ error: "Pickup or drop-off location is too long" }, { status: 400 });
     }
-    const pickupCoords = validCoordinates(body.pickupLat, body.pickupLng) ?? coordinatesForLocation(body.pickupLocation);
-    const dropoffCoords = validCoordinates(body.dropOffLat, body.dropOffLng) ?? coordinatesForLocation(body.dropOffLocation);
+    const pickupCoords = pickupLocation ? (validCoordinates(body.pickupLat, body.pickupLng) ?? coordinatesForLocation(pickupLocation)) : null;
+    const dropoffCoords = dropOffLocation ? (validCoordinates(body.dropOffLat, body.dropOffLng) ?? coordinatesForLocation(dropOffLocation)) : null;
 
     const VALID_STATUSES: BookingStatus[] = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW"];
     const bookingStatus: BookingStatus = VALID_STATUSES.includes(status) ? status : "PENDING";
@@ -323,21 +328,11 @@ export async function POST(req: Request) {
     let discount = 0;
     let promoCodeId: string | null = null;
 
-    if (typeof promoCode === "string" && promoCode && orderAmount > 0) {
-      const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.toUpperCase() } });
-      if (promo && promo.isActive && promo.usedCount < promo.maxUsage && (!promo.expiresAt || new Date() <= promo.expiresAt) && orderAmount >= Number(promo.minAmount)) {
-        if (promo.type === "PERCENTAGE") {
-          discount = orderAmount * (Number(promo.value) / 100);
-          if (promo.maxDiscount) discount = Math.min(discount, Number(promo.maxDiscount));
-        } else {
-          discount = Number(promo.value);
-        }
-        discount = Math.min(orderAmount, Math.max(0, discount));
-        if (discount > 0) {
-          promoCodeId = promo.id;
-          totalPrice = orderAmount - discount;
-        }
-      }
+    if (typeof promoCode === "string" && promoCode.trim() && orderAmount > 0) {
+      const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.trim().toUpperCase() } });
+      if (!promo) return NextResponse.json({ error: "Promo code not found" }, { status: 400 });
+      try { discount = calculatePromoDiscount(promo, orderAmount); promoCodeId = promo.id; totalPrice = orderAmount - discount; }
+      catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Promo code is not eligible" }, { status: 400 }); }
     }
 
     // Validate payment amount
@@ -428,13 +423,7 @@ export async function POST(req: Request) {
       const maxSimultaneousBags = parseInt(setting(settings, "max_simultaneous_bags", "0"));
       if (maxSimultaneousBags > 0) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
-        const activeBagTotal = await tx.booking.aggregate({
-          where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
-          _sum: { numberOfBags: true },
-        });
-        if (Number(activeBagTotal._sum.numberOfBags || 0) + computed.totalBags > maxSimultaneousBags) {
-          throw new StorageCapacityError(`Storage capacity is full (${activeBagTotal._sum.numberOfBags || 0}/${maxSimultaneousBags} bags in storage). Please try a later date or contact admin to increase capacity.`);
-        }
+        await assertStorageCapacity(tx, { checkIn: checkInDate, checkOut: checkOutDate, bags: computed.totalBags, capacity: maxSimultaneousBags });
       }
       await slotQueryStaff(checkInDate, "pickup", tx);
       if (checkOutDate) await slotQueryStaff(checkOutDate, "delivery", tx);
@@ -466,10 +455,10 @@ export async function POST(req: Request) {
           countryOfOriginSnapshot: customer.countryOfOrigin || null,
           cityOfOriginSnapshot: customer.cityOfOrigin || null,
           locationId: locationId || null,
-          pickupLocation: body.pickupLocation || "",
+          pickupLocation,
           pickupLat: pickupCoords?.lat ?? null,
           pickupLng: pickupCoords?.lng ?? null,
-          dropOffLocation: body.dropOffLocation || "",
+          dropOffLocation,
           dropOffLat: dropoffCoords?.lat ?? null,
           dropOffLng: dropoffCoords?.lng ?? null,
           luggageDetails: luggageDetails || null,

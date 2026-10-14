@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { nearestAvailableSlots } from "@/lib/fleet-capacity";
 
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,8 @@ interface TimeSlot {
 }
 
 interface PickupStepProps {
+  selectedServices: Record<string, boolean>;
+  requestedBags: number;
   pickupTerminal: string;
   setPickupTerminal: (v: string) => void;
   setPickupAirline: (v: string) => void;
@@ -49,6 +51,8 @@ interface PickupStepProps {
 }
 
 export function PickupStep({
+  selectedServices,
+  requestedBags,
   pickupTerminal, setPickupTerminal, setPickupAirline, pickupAirline,
   pickupDate, setPickupDate, setPickupSlotsLoading,
   pickupSlots, pickupSlotsLoading, pickupMaxConcurrent, pickupSlot, setPickupSlot,
@@ -58,6 +62,25 @@ export function PickupStep({
   storageDays, error, onNext, onPrev,
 }: PickupStepProps) {
   const [fullRequest, setFullRequest] = useState<{ type: "pickup" | "delivery"; date: string; time: string } | null>(null);
+  const [storageAvailability, setStorageAvailability] = useState<{ availableBags: number | null; key: string } | null>(null);
+  const availabilityKey = pickupDate && pickupSlot && deliveryDate && deliverySlot
+    ? `${pickupDate}T${pickupSlot}|${deliveryDate}T${deliverySlot}`
+    : "";
+  const storageCapacityFull = storageAvailability?.key === availabilityKey
+    && storageAvailability.availableBags != null
+    && storageAvailability.availableBags < requestedBags;
+
+  useEffect(() => {
+    if (!availabilityKey) return;
+    const controller = new AbortController();
+    const checkIn = `${pickupDate}T${pickupSlot}:00+08:00`;
+    const checkOut = `${deliveryDate}T${deliverySlot}:00+08:00`;
+    fetch(`/api/public/storage-availability?checkIn=${encodeURIComponent(checkIn)}&checkOut=${encodeURIComponent(checkOut)}`, { cache: "no-store", signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => { if (!controller.signal.aborted && data && typeof data.availableBags === "number") setStorageAvailability({ ...data, key: availabilityKey }); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [availabilityKey, pickupDate, pickupSlot, deliveryDate, deliverySlot]);
 
   const alternatives = (type: "pickup" | "delivery", date: string, slots: TimeSlot[], select: (value: string) => void) => {
     if (!fullRequest || fullRequest.type !== type || fullRequest.date !== date) return null;
@@ -77,10 +100,16 @@ export function PickupStep({
       <style>{`@keyframes step-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`}</style>
       <div className="mb-4 flex items-center gap-2">
         <MapPin className="h-5 w-5 text-blue-600" />
-        <h3 className="text-lg font-semibold">Pickup Details</h3>
+        <h3 className="text-lg font-semibold">Schedule & Selected Service Details</h3>
       </div>
 
-      <div className="space-y-2">
+      {storageCapacityFull && storageAvailability && (
+        <div role="alert" className="mb-5 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+          Sorry, we are currently unable to accept your booking for the selected date and time because our storage facility has reached its capacity. Please select another available schedule. ({storageAvailability.availableBags} of {requestedBags} requested bags available.)
+        </div>
+      )}
+
+      {selectedServices["pick-up-from-customer"] && <div className="space-y-2">
         <Label className="flex items-center gap-1.5">
           <Building2 className="h-4 w-4 text-blue-500" />
           Pickup Terminal <span className="text-red-500">*</span>
@@ -99,9 +128,9 @@ export function PickupStep({
             <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
-      </div>
+      </div>}
 
-      {pickupTerminal && (
+      {selectedServices["pick-up-from-customer"] && pickupTerminal && (
         <div className="mt-4 space-y-2">
           <Label className="flex items-center gap-1.5">
             <Plane className="h-4 w-4 text-blue-500" />
@@ -123,7 +152,7 @@ export function PickupStep({
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="pickupDate">Pickup Date <span className="text-red-500">*</span></Label>
+          <Label htmlFor="pickupDate">Storage Intake Date <span className="text-red-500">*</span></Label>
           <Input id="pickupDate" type="date" min={today()} value={pickupDate} onChange={(e) => { setPickupDate(e.target.value); setPickupSlotsLoading(true); }} required />
         </div>
       </div>
@@ -132,7 +161,7 @@ export function PickupStep({
         <div className="mt-4">
           <Label className="flex items-center gap-1.5">
             <Clock className="h-4 w-4 text-blue-500" />
-            Pickup Time Slot <span className="text-red-500">*</span>
+            Storage Intake Time Slot <span className="text-red-500">*</span>
           </Label>
           {pickupSlotsLoading ? (
             <p className="mt-2 text-sm text-muted-foreground">Loading available slots...</p>
@@ -178,7 +207,7 @@ export function PickupStep({
 
       <div className="my-6 border-t border-border" />
 
-      <div className="space-y-2">
+      {selectedServices["deliver-to-customer"] && <div className="space-y-2">
         <Label className="flex items-center gap-1.5">
           <Building2 className="h-4 w-4 text-indigo-500" />
           Drop-off Terminal <span className="text-red-500">*</span>
@@ -197,9 +226,9 @@ export function PickupStep({
             <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
-      </div>
+      </div>}
 
-      {deliveryTerminal && (
+      {selectedServices["deliver-to-customer"] && deliveryTerminal && (
         <div className="mt-4 space-y-2">
           <Label className="flex items-center gap-1.5">
             <Plane className="h-4 w-4 text-indigo-500" />
@@ -222,7 +251,7 @@ export function PickupStep({
       <div className="mt-4">
         <Label className="flex items-center gap-1.5">
           <Clock className="h-4 w-4 text-indigo-500" />
-          Delivery Date <span className="text-red-500">*</span>
+          Storage Collection Date <span className="text-red-500">*</span>
         </Label>
         <Input type="date" min={pickupDate || today()} value={deliveryDate} onChange={(e) => { setDeliveryDate(e.target.value); setDeliverySlotsLoading(true); }} className="mt-2" required />
       </div>
@@ -231,7 +260,7 @@ export function PickupStep({
         <div className="mt-4">
           <Label className="flex items-center gap-1.5">
             <Clock className="h-4 w-4 text-indigo-500" />
-            Delivery Time Slot <span className="text-red-500">*</span>
+            Storage Collection Time Slot <span className="text-red-500">*</span>
           </Label>
           {deliverySlotsLoading ? (
             <p className="mt-2 text-sm text-muted-foreground">Loading available slots...</p>
@@ -293,7 +322,7 @@ export function PickupStep({
 
       <div className="mt-8 flex items-center justify-between">
         <Button type="button" variant="outline" onClick={onPrev}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
-        <Button type="button" onClick={onNext} className="bg-orange-500 text-white shadow-lg hover:bg-orange-600 disabled:opacity-50">
+        <Button type="button" onClick={onNext} disabled={storageCapacityFull} className="bg-orange-500 text-white shadow-lg hover:bg-orange-600 disabled:opacity-50">
           Next Step <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
       </div>

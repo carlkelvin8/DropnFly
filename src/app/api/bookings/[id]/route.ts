@@ -13,6 +13,7 @@ import { isBookingLocked } from "@/lib/booking-access";
 import { getSystemSettings, setting } from "@/lib/settings";
 import { assertScheduleCapacity, BookingSlotError } from "@/lib/booking-slot-capacity";
 import { coordinatesForLocation, validCoordinates } from "@/lib/booking-location";
+import { assertStorageCapacity, StorageCapacityError } from "@/lib/storage-capacity";
 
 const VALID_STATUS = [
   "PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE",
@@ -125,6 +126,8 @@ export async function PUT(
     if (resultingCheckOut && resultingCheckOut <= resultingCheckIn) {
       return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
     }
+    const capacitySettings = await getSystemSettings();
+    const storageCapacity = Math.max(0, Number.parseInt(setting(capacitySettings, "max_simultaneous_bags", "0")) || 0);
 
     if (body.numberOfBags !== undefined && body.numberOfBags !== existingBooking.numberOfBags) {
       if (body.allowBaggageChange !== true) {
@@ -199,6 +202,18 @@ export async function PUT(
         ...(data.checkOut && (data.checkOut as Date).getTime() !== existingBooking.checkOut?.getTime() ? [data.checkOut as Date] : []),
       ];
       if (changedDates.length) await assertScheduleCapacity(tx, changedDates, id);
+      const resultingStatus = (data.status as BookingStatus | undefined) || existingBooking.status;
+      if (storageCapacity > 0 && !["CANCELLED", "NO_SHOW", "DELIVERED"].includes(resultingStatus) &&
+        (changedDates.length > 0 || data.numberOfBags !== undefined || (body.status && body.status !== existingBooking.status))) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
+        await assertStorageCapacity(tx, {
+          checkIn: resultingCheckIn,
+          checkOut: resultingCheckOut,
+          bags: Number(data.numberOfBags ?? existingBooking.numberOfBags),
+          capacity: storageCapacity,
+          excludeBookingId: id,
+        });
+      }
       const trackingReset = body.status && body.status !== existingBooking.status ? trackingResetForStatus(body.status) : {};
       const updated = await tx.booking.update({ where: { id }, data: { ...data, ...trackingReset } as { status?: BookingStatus; [key: string]: unknown } });
 
@@ -290,6 +305,7 @@ export async function PUT(
     return NextResponse.json(decimalsToNumbers(booking));
   } catch (error) {
     if (error instanceof BookingSlotError) return NextResponse.json({ error: error.message }, { status: 409 });
+    if (error instanceof StorageCapacityError) return NextResponse.json({ error: error.message }, { status: 409 });
     return NextResponse.json(
       { error: "Failed to update booking" },
       { status: 500 }

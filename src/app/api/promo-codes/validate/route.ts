@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
 import { getSystemSettings, setting } from "@/lib/settings";
+import { getBookingPriceSettings, computeBookingPrice, parseLuggageDetails } from "@/lib/pricing";
+import { calculatePromoDiscount } from "@/lib/promo";
 
 export async function POST(req: Request) {
   const key = requestKey(req);
@@ -14,37 +16,28 @@ export async function POST(req: Request) {
     if (setting(settings, "discount_codes_enabled", "true") === "false") {
       return NextResponse.json({ error: "Discount codes are currently disabled" }, { status: 403 });
     }
-    const { code, amount } = await req.json();
+    const { code, luggageDetails, storageDays } = await req.json();
 
     if (!code || typeof code !== "string") {
       return NextResponse.json({ error: "Promo code is required" }, { status: 400 });
     }
 
-    const promo = await prisma.promoCode.findUnique({ where: { code: code.toUpperCase() } });
-
-    if (!promo || !promo.isActive || promo.usedCount >= promo.maxUsage || (promo.expiresAt && new Date() > promo.expiresAt)) {
-      return NextResponse.json({ error: "Invalid or unavailable code" }, { status: 400 });
-    }
-
-    if (amount != null && amount < Number(promo.minAmount)) {
-      return NextResponse.json({ error: `Minimum amount of ${promo.minAmount} required` }, { status: 400 });
-    }
-
-    let discount = 0;
-    if (promo.type === "PERCENTAGE") {
-      discount = (amount || 0) * (Number(promo.value) / 100);
-      if (promo.maxDiscount) {
-        discount = Math.min(discount, Number(promo.maxDiscount));
-      }
-    } else {
-      discount = Number(promo.value);
-    }
+    const normalizedCode = code.trim().toUpperCase();
+    const promo = await prisma.promoCode.findUnique({ where: { code: normalizedCode } });
+    if (!promo) return NextResponse.json({ error: "Promo code not found" }, { status: 400 });
+    const [priceSettings] = await Promise.all([getBookingPriceSettings()]);
+    const parsed = parseLuggageDetails(typeof luggageDetails === "string" ? luggageDetails : "");
+    const pricing = computeBookingPrice({ luggageLines: parsed.luggageLines, services: parsed.services, discount: 0, settings: priceSettings, storageDays: Math.max(1, Math.min(365, Number(storageDays) || 1)) });
+    let discount: number;
+    try { discount = calculatePromoDiscount(promo, pricing.totalPrice); }
+    catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Promo code is not eligible" }, { status: 400 }); }
 
     return NextResponse.json({
       valid: true,
       promoCodeId: promo.id,
       code: promo.code,
       discount,
+      total: Math.max(0, Math.round((pricing.totalPrice - discount) * 100) / 100),
       type: promo.type,
       value: Number(promo.value),
       description: promo.description,

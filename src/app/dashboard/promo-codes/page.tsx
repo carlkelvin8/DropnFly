@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tag, Plus, Trash2 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 interface PromoCode {
   id: string;
@@ -34,19 +35,20 @@ export default function PromoCodesPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [forbiddenByApi, setForbidden] = useState(false);
-  const forbidden = forbiddenByApi || (status !== "loading" && Boolean(role) && role !== "ADMIN");
+  const permitted = ["ADMIN", "STAFF", "EMPLOYEE"].includes(role || "");
+  const forbidden = forbiddenByApi || (status !== "loading" && Boolean(role) && !permitted);
 
   useEffect(() => {
-    if (status === "loading" || role !== "ADMIN") return;
+    if (status === "loading" || !permitted) return;
     loadPromos();
-  }, [role, status]);
+  }, [role, status, permitted]);
 
   if (forbidden) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <Tag className="h-10 w-10 text-muted-foreground mb-3" />
         <h2 className="text-lg font-semibold">Access Denied</h2>
-        <p className="text-sm text-muted-foreground">Only administrators can manage promo codes.</p>
+        <p className="text-sm text-muted-foreground">You do not have permission to manage promo codes.</p>
         <Button className="mt-4" onClick={() => router.replace("/dashboard")}>Back to Dashboard</Button>
       </div>
     );
@@ -85,9 +87,14 @@ export default function PromoCodesPage() {
 
       if (res.ok) {
         setShowForm(false);
-        loadPromos();
+        const saved = await res.json();
+        setPromos((current) => [saved, ...current]);
+        toast.success(`Promo code ${saved.code} created`);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to create promo code");
       }
-    } catch {} finally {
+    } catch { toast.error("Failed to create promo code. Check your connection and try again."); } finally {
       setSaving(false);
     }
   }

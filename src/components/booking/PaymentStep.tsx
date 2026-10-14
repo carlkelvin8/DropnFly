@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertCircle, ArrowLeft, CheckCircle2, ChevronRight } from "lucide-react";
-import { LUGGAGE_TYPES, calcSubtotal, calcTotalBags } from "@/lib/luggage-types";
+import { LUGGAGE_TYPES, buildLuggageDetails, calcSubtotal, calcTotalBags } from "@/lib/luggage-types";
 
 interface PaymentStepProps {
   pickupDate: string;
@@ -197,10 +197,13 @@ export function PaymentStep({
             setPromoError(""); setPromoDiscount(0); setPromoApplied("");
             if (!promoCode) return;
             try {
-              const res = await fetch("/api/promo-codes/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode, amount: estimatedTotal }) });
+              const items = JSON.parse(buildLuggageDetails(luggageQty, luggagePrices));
+              const selected = servicesList.filter((service) => selectedServices[service.id]).map((service) => service.name);
+              const luggageDetails = selected.length ? JSON.stringify([...items, { services: selected }]) : buildLuggageDetails(luggageQty, luggagePrices);
+              const res = await fetch("/api/promo-codes/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode, luggageDetails, storageDays }) });
               const data = await res.json();
               if (data.valid) { setPromoDiscount(data.discount); setPromoApplied(promoCode); setPromoCode(""); }
-              else setPromoError("Invalid promo code");
+              else setPromoError(data.error || "Invalid promo code");
             } catch { setPromoError("Failed to validate"); }
           }}>Apply</Button>
         </div>

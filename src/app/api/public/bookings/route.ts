@@ -12,8 +12,8 @@ import type { Prisma, Booking, Customer } from "@/generated/prisma/client";
 import { rateLimit, requestKey } from "@/lib/rate-limit";
 import { fleetCapacity, movementsOverlappingSlot, FLEET_SLOT_MINUTES } from "@/lib/fleet-capacity";
 import { coordinatesForLocation, validCoordinates } from "@/lib/booking-location";
-
-class StorageCapacityError extends Error {}
+import { assertStorageCapacity, StorageCapacityError } from "@/lib/storage-capacity";
+import { calculatePromoDiscount } from "@/lib/promo";
 
 export async function POST(req: Request) {
   const limited = await rateLimit(`booking:${requestKey(req)}`, 10, 60 * 60 * 1000);
@@ -36,17 +36,22 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const { name, email, phone, pickupLocation, dropOffLocation, numberOfBags, luggageDetails, preferredDate, deliveryDate, promoCode, downPayment } = body;
-    const pickupCoords = validCoordinates(body.pickupLat, body.pickupLng) ?? coordinatesForLocation(pickupLocation);
-    const dropoffCoords = validCoordinates(body.dropOffLat, body.dropOffLng) ?? coordinatesForLocation(dropOffLocation);
+    const { name, email, phone, numberOfBags, luggageDetails, preferredDate, deliveryDate, promoCode, downPayment } = body;
+    const { luggageLines, services } = parseLuggageDetails(luggageDetails || "");
+    const pickupRequired = services.includes("Pick-up from Customer");
+    const dropoffRequired = services.includes("Deliver to Customer");
+    const pickupLocation = pickupRequired ? String(body.pickupLocation || "").trim() : "";
+    const dropOffLocation = dropoffRequired ? String(body.dropOffLocation || "").trim() : "";
+    const pickupCoords = pickupLocation ? (validCoordinates(body.pickupLat, body.pickupLng) ?? coordinatesForLocation(pickupLocation)) : null;
+    const dropoffCoords = dropOffLocation ? (validCoordinates(body.dropOffLat, body.dropOffLng) ?? coordinatesForLocation(dropOffLocation)) : null;
     const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
 
     const missing: string[] = [];
     if (!name) missing.push("Full Name");
     if (!email) missing.push("Email Address");
     if (!phone) missing.push("Phone Number");
-    if (!pickupLocation) missing.push("Pickup Location");
-    if (!dropOffLocation) missing.push("Drop-off Location");
+    if (pickupRequired && !pickupLocation) missing.push("Pickup Location");
+    if (dropoffRequired && !dropOffLocation) missing.push("Drop-off Location");
     if (!numberOfBags) missing.push("Luggage/Bag Selection");
     if (!preferredDate) missing.push("Pickup Date & Time");
     if (!luggageDetails) missing.push("Luggage Details");
@@ -111,7 +116,6 @@ export async function POST(req: Request) {
       }
     }
 
-    const { luggageLines, services } = parseLuggageDetails(luggageDetails);
     const storageDays = checkOutDate
       ? Math.max(1, Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)))
       : 1;
@@ -119,23 +123,13 @@ export async function POST(req: Request) {
     let discount = 0;
     let promoCodeId: string | null = null;
 
-    if (typeof promoCode === "string" && promoCode && setting(settings, "discount_codes_enabled", "true") !== "false") {
-      const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.toUpperCase() } });
-      if (promo && promo.isActive && promo.usedCount < promo.maxUsage) {
-        if (!promo.expiresAt || new Date() <= promo.expiresAt) {
-          const computed = computeBookingPrice({ luggageLines, services, discount: 0, settings: priceSettings, storageDays });
-          const orderAmount = computed.totalPrice;
-          if (orderAmount >= Number(promo.minAmount)) {
-            if (promo.type === "PERCENTAGE") {
-              discount = orderAmount * (Number(promo.value) / 100);
-              if (promo.maxDiscount) discount = Math.min(discount, Number(promo.maxDiscount));
-            } else {
-              discount = Number(promo.value);
-            }
-            if (discount > 0) promoCodeId = promo.id;
-          }
-        }
-      }
+    if (typeof promoCode === "string" && promoCode.trim()) {
+      if (setting(settings, "discount_codes_enabled", "true") === "false") return NextResponse.json({ error: "Discount codes are currently disabled" }, { status: 400 });
+      const promo = await prisma.promoCode.findUnique({ where: { code: promoCode.trim().toUpperCase() } });
+      if (!promo) return NextResponse.json({ error: "Promo code not found" }, { status: 400 });
+      const order = computeBookingPrice({ luggageLines, services, discount: 0, settings: priceSettings, storageDays });
+      try { discount = calculatePromoDiscount(promo, order.totalPrice); promoCodeId = promo.id; }
+      catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Promo code is not eligible" }, { status: 400 }); }
     }
 
     const pricing = computeBookingPrice({ luggageLines, services, discount, settings: priceSettings, storageDays });
@@ -263,15 +257,7 @@ export async function POST(req: Request) {
           }
           if (maxSimultaneousBags > 0) {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
-            // Senior: only bags physically in storage count toward capacity (RECEIVED/IN_STORAGE/OUT_FOR_DELIVERY)
-            // CONFIRMED/PENDING are reservations not yet occupying a slot
-            const activeBagTotal = await tx.booking.aggregate({
-              where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
-              _sum: { numberOfBags: true },
-            });
-            if (Number(activeBagTotal._sum.numberOfBags || 0) + pricing.totalBags > maxSimultaneousBags) {
-              throw new StorageCapacityError(`Storage capacity is full (${activeBagTotal._sum.numberOfBags || 0}/${maxSimultaneousBags} bags in storage). Please try a later date or contact admin to increase capacity.`);
-            }
+            await assertStorageCapacity(tx, { checkIn: checkInDate, checkOut: checkOutDate, bags: pricing.totalBags, capacity: maxSimultaneousBags });
           }
           await slotQuery(checkInDate, "pickup", tx);
           if (checkOutDate) await slotQuery(checkOutDate, "delivery", tx);
