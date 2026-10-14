@@ -8,7 +8,7 @@ export const ROLE_ROUTES: Record<string, readonly Role[]> = {
   "/dashboard/employees": ["ADMIN"],
   "/dashboard/settings": ["ADMIN"],
   "/dashboard/activity-logs": ["ADMIN"],
-  "/dashboard/promo-codes": ["ADMIN"],
+  "/dashboard/promo-codes": ["ADMIN", "STAFF", "EMPLOYEE"],
   // Customer Records: search-first lookup for all operational roles. Customer edit (/api/customers/[id]) stays ADMIN/STAFF.
   "/dashboard/customers": ["ADMIN", "STAFF", "EMPLOYEE"],
   "/dashboard/incidents": ["ADMIN", "STAFF"],

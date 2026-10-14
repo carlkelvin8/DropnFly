@@ -35,8 +35,8 @@ interface TimeSlot {
 
 const steps = [
   { num: 1, label: "Contact", icon: User },
-  { num: 2, label: "Pickup", icon: MapPin },
-  { num: 3, label: "Delivery & Luggage", icon: Luggage },
+  { num: 2, label: "Delivery & Luggage", icon: Luggage },
+  { num: 3, label: "Pickup & Drop-off", icon: MapPin },
   { num: 4, label: "Confirm", icon: Check },
 ];
 
@@ -95,6 +95,7 @@ export default function BookPage() {
   const [slotRefreshTick, setSlotRefreshTick] = useState(0);
 
   const totalBags = luggageQty ? Object.values(luggageQty).reduce((s, n) => s + (n || 0), 0) : 0;
+
   const storageDays = calcStorageDays(pickupDate, pickupSlot, deliveryDate, deliverySlot);
   const totalSteps = steps.length;
   const progress = ((step - 1) / (totalSteps - 1)) * 100;
@@ -285,8 +286,8 @@ export default function BookPage() {
       phone: customerPhone.trim(),
       countryOfOrigin: selectedCountry || undefined,
       cityOfOrigin: selectedCity || undefined,
-      pickupLocation: getPickupLocationText(),
-      dropOffLocation: getDropOffLocationText(),
+      pickupLocation: selectedServices["pick-up-from-customer"] ? getPickupLocationText() : "",
+      dropOffLocation: selectedServices["deliver-to-customer"] ? getDropOffLocationText() : "",
       numberOfBags: String(numBags),
       luggageDetails: luggageDetailsPayload,
       preferredDate: pickupDateTime,
@@ -334,23 +335,17 @@ export default function BookPage() {
       if (!selectedCountry) errors.push("Please select your Country of Origin");
       if (!selectedCity) errors.push("Please select your City of Origin");
     } else if (step === 2) {
-      if (!pickupDate) errors.push("Please select your Pickup Date");
-      if (!pickupSlot) errors.push("Please select your Pickup Time Slot");
-      if (!pickupTerminal) errors.push("Please select your Pickup Terminal");
-      if (!pickupAirline) errors.push("Please select your Pickup Airline Carrier");
-      if (!deliveryTerminal) errors.push("Please select your Drop-off Terminal");
-      if (!deliveryAirline) errors.push("Please select your Drop-off Airline Carrier");
-      if (!deliveryDate) errors.push("Please select your Delivery Date");
-      if (!deliverySlot) errors.push("Please select your Delivery Time Slot");
-      if (pickupDate && deliveryDate) {
-        if (deliveryDate < pickupDate) {
-          errors.push("Delivery date must be on or after your Pickup Date");
-        } else if (deliveryDate === pickupDate && pickupSlot && deliverySlot && deliverySlot <= pickupSlot) {
-          errors.push("Delivery time slot must be after your Pickup Time Slot");
-        }
-      }
-    } else if (step === 3) {
       if (totalBags === 0) errors.push("Please select at least one bag (Luggage Types)");
+    } else if (step === 3) {
+      if (!pickupDate) errors.push("Please select your storage intake date");
+      if (!pickupSlot) errors.push("Please select your storage intake time");
+      if (selectedServices["pick-up-from-customer"] && !pickupTerminal) errors.push("Please select your Pickup Terminal");
+      if (selectedServices["pick-up-from-customer"] && !pickupAirline) errors.push("Please select your Pickup Airline Carrier");
+      if (selectedServices["deliver-to-customer"] && !deliveryTerminal) errors.push("Please select your Drop-off Terminal");
+      if (selectedServices["deliver-to-customer"] && !deliveryAirline) errors.push("Please select your Drop-off Airline Carrier");
+      if (!deliveryDate) errors.push("Please select your storage collection date");
+      if (!deliverySlot) errors.push("Please select your storage collection time");
+      if (pickupDate && deliveryDate && (deliveryDate < pickupDate || (deliveryDate === pickupDate && pickupSlot && deliverySlot && deliverySlot <= pickupSlot))) errors.push("Collection must be after intake");
     }
     if (errors.length > 0) { setError(errors.join(". ")); return; }
     setError("");
@@ -427,7 +422,24 @@ export default function BookPage() {
               )}
               {step === 2 && (
                 <Suspense fallback={<StepFallback />}>
+                  <LuggageStep
+                    luggageQty={luggageQty} setLuggageQty={setLuggageQty}
+                    selectedServices={selectedServices}
+                    onServiceChange={(id, enabled) => {
+                      setSelectedServices((current) => ({ ...current, [id]: enabled }));
+                      if (!enabled && id === "pick-up-from-customer") { setPickupTerminal(""); setPickupAirline(""); }
+                      if (!enabled && id === "deliver-to-customer") { setDeliveryTerminal(""); setDeliveryAirline(""); }
+                    }}
+                    fees={fees} luggagePrices={luggagePrices} maxBags={maxBags} storageDays={storageDays}
+                    onNext={handleNextStep} onPrev={prevStep}
+                  />
+                </Suspense>
+              )}
+              {step === 3 && (
+                <Suspense fallback={<StepFallback />}>
                   <PickupStep
+                    selectedServices={selectedServices}
+                    requestedBags={totalBags}
                     pickupTerminal={pickupTerminal} setPickupTerminal={setPickupTerminal}
                     setPickupAirline={setPickupAirline} pickupAirline={pickupAirline}
                     pickupDate={pickupDate} setPickupDate={updatePickupDate}
@@ -443,16 +455,6 @@ export default function BookPage() {
                     deliveryMaxConcurrent={deliveryMaxConcurrent}
                     deliverySlot={deliverySlot} setDeliverySlot={setDeliverySlot}
                     storageDays={storageDays} error={error} onNext={handleNextStep} onPrev={prevStep}
-                  />
-                </Suspense>
-              )}
-              {step === 3 && (
-                <Suspense fallback={<StepFallback />}>
-                  <LuggageStep
-                    luggageQty={luggageQty} setLuggageQty={setLuggageQty}
-                    selectedServices={selectedServices} setSelectedServices={setSelectedServices}
-                    fees={fees} luggagePrices={luggagePrices} maxBags={maxBags} storageDays={storageDays}
-                    onNext={handleNextStep} onPrev={prevStep}
                   />
                 </Suspense>
               )}
