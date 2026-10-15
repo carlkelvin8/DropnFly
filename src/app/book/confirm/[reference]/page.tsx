@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle, ExternalLink, Home, RefreshCw, AlertTriangle } from "lucide-react";
 import { PublicHeader } from "@/components/layout/PublicHeader";
 import { PublicFooter } from "@/components/layout/PublicFooter";
+import { displayHandoffLocation } from "@/lib/handoff-location";
 
 interface BookingData {
   referenceNumber: string;
@@ -167,11 +168,11 @@ export default function ConfirmPage() {
               </div>
               <div className="rounded-lg border bg-muted/50 p-3">
                 <p className="text-muted-foreground">Pickup Location</p>
-                <p className="font-medium">{booking.pickupLocation}</p>
+                <p className="font-medium">{displayHandoffLocation(booking.pickupLocation)}</p>
               </div>
               <div className="rounded-lg border bg-muted/50 p-3">
                 <p className="text-muted-foreground">Drop-off Location</p>
-                <p className="font-medium">{booking.dropOffLocation}</p>
+                <p className="font-medium">{displayHandoffLocation(booking.dropOffLocation)}</p>
               </div>
               <div className="rounded-lg border bg-muted/50 p-3">
                 <p className="text-muted-foreground">Scheduled Date</p>

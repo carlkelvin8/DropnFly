@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer-secure";
 import { getSystemSettings, setting } from "./settings";
+import { displayHandoffLocation } from "@/lib/handoff-location";
 
 interface EmailConfig {
   enabled: boolean;
@@ -138,11 +139,11 @@ export async function sendConfirmationEmail({
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
           <tr>
             <td style="padding: 8px; color: #9ca3af;">Pickup Location</td>
-            <td style="padding: 8px; font-weight: 600;">${sanitizeHtml(pickupLocation)}</td>
+            <td style="padding: 8px; font-weight: 600;">${sanitizeHtml(displayHandoffLocation(pickupLocation))}</td>
           </tr>
           <tr style="background: #f1f5f9;">
             <td style="padding: 8px; color: #9ca3af;">Drop-off Location</td>
-            <td style="padding: 8px; font-weight: 600;">${sanitizeHtml(dropOffLocation)}</td>
+            <td style="padding: 8px; font-weight: 600;">${sanitizeHtml(displayHandoffLocation(dropOffLocation))}</td>
           </tr>
           <tr>
             <td style="padding: 8px; color: #9ca3af;">Scheduled Date</td>
@@ -519,7 +520,7 @@ export async function sendReceiptEmail({
             <tr style="border-bottom: 1px solid #e5e7eb;">
               <td style="padding: 12px 0;">
                 <strong>Luggage Storage</strong>
-                <div style="font-size: 12px; color: #6b7280;">${sanitizeHtml(pickupLocation)} &rarr; ${sanitizeHtml(dropOffLocation)}</div>
+                <div style="font-size: 12px; color: #6b7280;">${sanitizeHtml(displayHandoffLocation(pickupLocation))} &rarr; ${sanitizeHtml(displayHandoffLocation(dropOffLocation))}</div>
               </td>
               <td style="padding: 12px 0; text-align: right;">${numberOfBags}</td>
               <td style="padding: 12px 0; text-align: right;">&#8369;${totalPrice.toFixed(2)}</td>

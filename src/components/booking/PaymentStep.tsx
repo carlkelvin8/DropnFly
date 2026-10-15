@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertCircle, ArrowLeft, CheckCircle2, ChevronRight } from "lucide-react";
 import { LUGGAGE_TYPES, buildLuggageDetails, calcSubtotal, calcTotalBags } from "@/lib/luggage-types";
+import { displayHandoffLocation } from "@/lib/handoff-location";
 
 interface PaymentStepProps {
   pickupDate: string;
@@ -89,18 +90,16 @@ export function PaymentStep({
         <div className="space-y-2">
           <div className="flex justify-between text-muted-foreground">
             <span>Pickup</span>
-            <span className="font-medium text-right max-w-[200px]">{getPickupLocationText()}</span>
+            <span className="font-medium text-right max-w-[200px]">{displayHandoffLocation(selectedServices["pick-up-from-customer"] ? getPickupLocationText() : "")}</span>
           </div>
           <div className="flex justify-between text-muted-foreground">
             <span>Schedule</span>
             <span className="font-medium">{pickupDate} at {pickupSlot}</span>
           </div>
-          {deliveryTerminal && (
-            <div className="flex justify-between text-muted-foreground">
-              <span>Drop-off</span>
-              <span className="font-medium text-right max-w-[200px]">{getDropOffLocationText()}</span>
-            </div>
-          )}
+          <div className="flex justify-between text-muted-foreground">
+            <span>Drop-off</span>
+            <span className="font-medium text-right max-w-[200px]">{displayHandoffLocation(selectedServices["deliver-to-customer"] ? getDropOffLocationText() : "")}</span>
+          </div>
           {deliveryDate && deliverySlot && (
             <div className="flex justify-between text-muted-foreground">
               <span>Delivery</span>
