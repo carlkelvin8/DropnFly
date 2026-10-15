@@ -38,7 +38,7 @@ export async function GET() {
     ]);
 
     const settings = await getSystemSettings();
-    const totalCapacity = parseInt(setting(settings, "max_simultaneous_bags", "50"));
+    const totalCapacity = parseInt(setting(settings, "max_simultaneous_bags", "0"));
     const activeBagTotal = await prisma.booking.aggregate({
       where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
       _sum: { numberOfBags: true },

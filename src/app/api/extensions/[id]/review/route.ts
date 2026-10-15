@@ -37,7 +37,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       if (status === "APPROVED") {
         await assertScheduleCapacity(tx, [extension.requestedCheckOut], extension.bookingId);
         const settings = await getSystemSettings();
-        const capacity = Math.max(0, Number.parseInt(setting(settings, "max_simultaneous_bags", "50")) || 0);
+        const capacity = Math.max(0, Number.parseInt(setting(settings, "max_simultaneous_bags", "0")) || 0);
         if (capacity > 0) {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
           await assertStorageCapacity(tx, { checkIn: extension.booking.checkIn, checkOut: extension.requestedCheckOut, bags: extension.booking.numberOfBags, capacity, excludeBookingId: extension.bookingId });

@@ -127,7 +127,7 @@ export async function PUT(
       return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
     }
     const capacitySettings = await getSystemSettings();
-    const storageCapacity = Math.max(0, Number.parseInt(setting(capacitySettings, "max_simultaneous_bags", "50")) || 0);
+    const storageCapacity = Math.max(0, Number.parseInt(setting(capacitySettings, "max_simultaneous_bags", "0")) || 0);
 
     if (body.numberOfBags !== undefined && body.numberOfBags !== existingBooking.numberOfBags) {
       if (body.allowBaggageChange !== true) {

@@ -118,7 +118,7 @@ export async function GET(req: Request) {
   const paidBookingCount = new Set(paidPayments.map((payment) => payment.bookingId)).size;
 
   const settings = await getSystemSettings();
-  const totalCapacity = parseInt(setting(settings, "max_simultaneous_bags", "50"));
+  const totalCapacity = parseInt(setting(settings, "max_simultaneous_bags", "0"));
   // Authoritative active storage: bags physically in storage (RECEIVED/IN_STORAGE/OUT_FOR_DELIVERY are in-system but not yet delivered)
   // For utilization, use ongoing bags count so capacity (bags) matches unit.
   // Active = not yet finished (includes confirmed bookings waiting for pickup).
