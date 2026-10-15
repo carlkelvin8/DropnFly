@@ -184,9 +184,11 @@ export default function DashboardPage() {
               const full = used >= total;
               return (
                 <>
-                  <div className="text-2xl font-bold">{100 - usedPercent}%</div>
+                  <div className={`text-2xl font-bold ${full ? "text-red-600" : ""}`}>
+                    {available} <span className="text-sm font-medium text-muted-foreground">slot{available === 1 ? "" : "s"} left</span>
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    {available} of {total} bags available{used > total ? ` (${used - total} over capacity)` : ""}
+                    {full ? "Storage full · " : ""}{used} of {total} bags used ({usedPercent}%){used > total ? ` · ${used - total} over capacity` : ""}
                   </p>
                   <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
                     <div

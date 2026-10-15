@@ -75,7 +75,18 @@ export async function GET() {
         FROM "Booking"
       `,
       prisma.booking.aggregate({
-        where: { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
+        // Same occupancy rule the booking check enforces: bags physically held, plus
+        // active bookings whose storage period covers right now.
+        where: {
+          OR: [
+            { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
+            {
+              status: { notIn: ["CANCELLED", "NO_SHOW", "DELIVERED"] },
+              checkIn: { lte: new Date() },
+              OR: [{ checkOut: null }, { checkOut: { gt: new Date() } }],
+            },
+          ],
+        },
         _sum: { numberOfBags: true },
       }),
       prisma.user.count(),
@@ -106,7 +117,7 @@ export async function GET() {
     const deliveredToday = Number(counts.deliveredToday);
     const deliveredThisWeek = Number(counts.deliveredThisWeek);
     const pendingToday = Number(counts.pendingToday);
-    const capacityTotal = parseInt(setting(settings, "max_simultaneous_bags", "0"));
+    const capacityTotal = parseInt(setting(settings, "max_simultaneous_bags", "50"));
     const bagsUsingCapacity = bookingCapacity._sum.numberOfBags || 0;
     const usagePercent = capacityTotal > 0 ? Math.round((bagsUsingCapacity / capacityTotal) * 100) : 0;
     const completionRateWeekly = bookingsThisWeek > 0 ? Math.round((deliveredThisWeek / bookingsThisWeek) * 100) : 0;

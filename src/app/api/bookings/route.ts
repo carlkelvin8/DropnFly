@@ -420,7 +420,7 @@ export async function POST(req: Request) {
       if (promoCodeId) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`promo:${promoCodeId}`}))`;
       }
-      const maxSimultaneousBags = parseInt(setting(settings, "max_simultaneous_bags", "0"));
+      const maxSimultaneousBags = parseInt(setting(settings, "max_simultaneous_bags", "50"));
       if (maxSimultaneousBags > 0) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
         await assertStorageCapacity(tx, { checkIn: checkInDate, checkOut: checkOutDate, bags: computed.totalBags, capacity: maxSimultaneousBags });

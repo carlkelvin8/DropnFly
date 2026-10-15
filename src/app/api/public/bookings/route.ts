@@ -142,7 +142,7 @@ export async function POST(req: Request) {
     if (maxBags > 0 && pricing.totalBags > maxBags) {
       return NextResponse.json({ error: `Maximum of ${maxBags} bags per booking` }, { status: 400 });
     }
-    const maxSimultaneousBags = parseInt(setting(settings, "max_simultaneous_bags", "0"));
+    const maxSimultaneousBags = parseInt(setting(settings, "max_simultaneous_bags", "50"));
 
     const declaredBags = parseInt(numberOfBags);
     if (isNaN(declaredBags) || declaredBags !== pricing.totalBags) {

@@ -38,6 +38,7 @@ import { PublicHeader } from "@/components/layout/PublicHeader";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { BrandMark } from "@/components/BrandLogo";
 import { roleLabel } from "@/lib/utils";
+import { displayHandoffLocation } from "@/lib/handoff-location";
 
 interface BookingData {
   referenceNumber: string;
@@ -779,14 +780,14 @@ export default function TrackResultPage() {
                 <MapPin className="mt-0.5 h-4 w-4 text-blue-500" />
                 <div>
                   <p className="text-muted-foreground">Pickup Location</p>
-                  <p className="font-medium">{booking.pickupLocation}</p>
+                  <p className="font-medium">{displayHandoffLocation(booking.pickupLocation)}</p>
                 </div>
               </div>
               <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
                 <MapPin className="mt-0.5 h-4 w-4 text-indigo-500" />
                 <div>
                   <p className="text-muted-foreground">Drop-off Location</p>
-                  <p className="font-medium">{booking.dropOffLocation}</p>
+                  <p className="font-medium">{displayHandoffLocation(booking.dropOffLocation)}</p>
                 </div>
               </div>
               {!(["IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW"].includes(booking.status)) && (

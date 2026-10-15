@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   }
   try {
     const settings = await getSystemSettings();
-    const capacity = Math.max(0, Number.parseInt(setting(settings, "max_simultaneous_bags", "0")) || 0);
+    const capacity = Math.max(0, Number.parseInt(setting(settings, "max_simultaneous_bags", "50")) || 0);
     if (!capacity) return NextResponse.json({ capacity: 0, used: 0, availableBags: null });
     const bookings = await prisma.booking.findMany({
       where: { status: { notIn: ["CANCELLED", "NO_SHOW", "DELIVERED"] }, checkIn: { lt: checkOut }, OR: [{ checkOut: null }, { checkOut: { gt: checkIn } }] },

@@ -10,6 +10,7 @@ import { formatDate, formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { displayHandoffLocation } from "@/lib/handoff-location";
 
 interface Customer {
   id: string;
@@ -233,7 +234,7 @@ export default function CustomersPage() {
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {b.passengerName ? <span className="font-medium text-foreground">{b.passengerName} · </span> : null}{b.pickupLocation} → {b.dropOffLocation}
+                          {b.passengerName ? <span className="font-medium text-foreground">{b.passengerName} · </span> : null}{displayHandoffLocation(b.pickupLocation)} → {displayHandoffLocation(b.dropOffLocation)}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {b.numberOfBags} bag{b.numberOfBags !== 1 ? "s" : ""} · {formatCurrency(b.totalPrice)}

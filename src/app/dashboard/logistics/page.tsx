@@ -24,6 +24,7 @@ import { manilaDateStr } from "@/lib/manila-time";
 import { TASK_DATE_FILTERS, matchesTaskDateFilter, taskDay, type TaskDateFilter } from "@/lib/task-date-filter";
 import { coordinatesForLocation } from "@/lib/booking-location";
 import { useSession } from "next-auth/react";
+import { displayHandoffLocation } from "@/lib/handoff-location";
 
 interface Employee {
   id: string;
@@ -462,7 +463,7 @@ export default function LogisticsPage() {
                           <div className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
                             <div>
                               <p className="text-[10px] font-semibold uppercase text-muted-foreground">{task.taskType === "delivery" ? "Drop-off location" : "Pickup address"}</p>
-                              <p className="mt-1 flex items-start gap-1.5 font-medium"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-500" />{task.taskType === "delivery" ? task.dropOffLocation : task.pickupLocation}</p>
+                              <p className="mt-1 flex items-start gap-1.5 font-medium"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-500" />{displayHandoffLocation(task.taskType === "delivery" ? task.dropOffLocation : task.pickupLocation)}</p>
                             </div>
                             <div>
                               <p className="text-[10px] font-semibold uppercase text-muted-foreground">Tracking code</p>
@@ -582,7 +583,7 @@ export default function LogisticsPage() {
               <code className="rounded bg-muted px-2 py-0.5 text-xs font-mono font-bold">{trackedTask.referenceNumber}</code>
               <Badge variant="outline" className="text-[10px]">{trackedTask.taskType === "delivery" ? "Delivering" : "Picking Up"} — Guide Active</Badge>
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <MapPin className="h-3 w-3" /> {trackedTask.pickupLocation} → {trackedTask.dropOffLocation}
+                <MapPin className="h-3 w-3" /> {displayHandoffLocation(trackedTask.pickupLocation)} → {displayHandoffLocation(trackedTask.dropOffLocation)}
               </span>
             </div>
             <LiveMap
@@ -759,9 +760,9 @@ export default function LogisticsPage() {
 
                     <div className="flex items-center gap-2 text-sm">
                       <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{task.pickupLocation}</span>
+                      <span className="truncate">{displayHandoffLocation(task.pickupLocation)}</span>
                       <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{task.dropOffLocation}</span>
+                      <span className="truncate">{displayHandoffLocation(task.dropOffLocation)}</span>
                     </div>
 
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
