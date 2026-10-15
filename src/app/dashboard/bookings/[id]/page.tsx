@@ -39,6 +39,7 @@ import { NAIA_TERMINALS } from "@/components/booking/constants";
 import { getAirlinesForTerminal } from "@/lib/terminal-airlines";
 import { imageFileToDataUrl } from "@/lib/client-image";
 import { useSession } from "next-auth/react";
+import { displayHandoffLocation } from "@/lib/handoff-location";
 
 interface Booking {
   id: string;
@@ -923,11 +924,11 @@ export default function BookingDetailPage() {
           <CardContent className="space-y-3">
             <div className="rounded-lg border bg-muted/30 p-3">
               <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Pickup Location</p>
-              <p className="font-medium">{booking.pickupLocation}</p>
+              <p className="font-medium">{displayHandoffLocation(booking.pickupLocation)}</p>
             </div>
             <div className="rounded-lg border bg-muted/30 p-3">
               <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Drop-off Location</p>
-              <p className="font-medium">{booking.dropOffLocation}</p>
+              <p className="font-medium">{displayHandoffLocation(booking.dropOffLocation)}</p>
             </div>
           </CardContent>
         </Card>

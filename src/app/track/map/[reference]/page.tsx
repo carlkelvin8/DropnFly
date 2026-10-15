@@ -30,6 +30,7 @@ import {
   Send,
   Loader2,
 } from "lucide-react";
+import { displayHandoffLocation } from "@/lib/handoff-location";
 
 interface Rider {
   id: string;
@@ -373,11 +374,11 @@ export default function LiveTrackingPage() {
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <div className="rounded-lg border bg-muted/30 p-3">
                       <p className="text-[10px] text-muted-foreground uppercase">Pickup</p>
-                      <p className="text-sm font-medium">{booking.pickupLocation}</p>
+                      <p className="text-sm font-medium">{displayHandoffLocation(booking.pickupLocation)}</p>
                     </div>
                     <div className="rounded-lg border bg-muted/30 p-3">
                       <p className="text-[10px] text-muted-foreground uppercase">Drop-off</p>
-                      <p className="text-sm font-medium">{booking.dropOffLocation}</p>
+                      <p className="text-sm font-medium">{displayHandoffLocation(booking.dropOffLocation)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -428,12 +429,12 @@ export default function LiveTrackingPage() {
                 <CardContent className="space-y-2 text-sm">
                   <div className="rounded-lg border bg-gray-50/50 p-2.5">
                     <p className="text-[10px] text-muted-foreground">FROM</p>
-                    <p className="font-medium text-xs">{booking.pickupLocation}</p>
+                    <p className="font-medium text-xs">{displayHandoffLocation(booking.pickupLocation)}</p>
                   </div>
                   <div className="flex justify-center text-muted-foreground">↓</div>
                   <div className="rounded-lg border bg-gray-50/50 p-2.5">
                     <p className="text-[10px] text-muted-foreground">TO</p>
-                    <p className="font-medium text-xs">{booking.dropOffLocation}</p>
+                    <p className="font-medium text-xs">{displayHandoffLocation(booking.dropOffLocation)}</p>
                   </div>
                   <Badge variant="outline" className="text-[10px]">{statusLabel}</Badge>
                 </CardContent>

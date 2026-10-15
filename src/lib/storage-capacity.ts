@@ -33,7 +33,7 @@ export async function assertStorageCapacity(
   for (const event of events) {
     used += event.delta;
     if (used > input.capacity) {
-      throw new StorageCapacityError(`Sorry, we are currently unable to accept your booking for the selected date and time because our storage facility has reached its capacity (${Math.max(0, used - input.bags)}/${input.capacity} bags already reserved). Please select another available schedule.`);
+      throw new StorageCapacityError(`Sorry, we are currently unable to accept your booking for the selected date and time because our storage facility has reached its capacity. Please select another available schedule.`);
     }
   }
 }

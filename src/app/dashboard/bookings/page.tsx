@@ -26,6 +26,7 @@ import { ExportDialog } from "@/components/ui/export-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/ui/pagination";
 import { useSession } from "next-auth/react";
+import { displayHandoffLocation } from "@/lib/handoff-location";
 
 interface Rider {
   id: string;
@@ -317,8 +318,8 @@ export default function BookingsPage() {
                       </Link>
                     </TableCell>
                     <TableCell className="font-medium text-sm">{booking.customer.name}</TableCell>
-                    <TableCell className="max-w-[140px] truncate text-xs">{booking.pickupLocation}</TableCell>
-                    <TableCell className="max-w-[140px] truncate text-xs">{booking.dropOffLocation}</TableCell>
+                    <TableCell className="max-w-[140px] truncate text-xs">{displayHandoffLocation(booking.pickupLocation)}</TableCell>
+                    <TableCell className="max-w-[140px] truncate text-xs">{displayHandoffLocation(booking.dropOffLocation)}</TableCell>
                     <TableCell className="text-center text-sm">{booking.numberOfBags}</TableCell>
                     <TableCell>
                       <PaymentBadge status={booking.paymentStatus} total={booking.totalPrice} paid={booking.totalPaid} />
