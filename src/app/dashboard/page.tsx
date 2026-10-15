@@ -190,6 +190,7 @@ export default function DashboardPage() {
                   <p className="text-xs text-muted-foreground">
                     {full ? "Storage full · " : ""}{used} of {total} bags used ({usedPercent}%){used > total ? ` · ${used - total} over capacity` : ""}
                   </p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">Current storage. New bookings are checked against their selected schedule.</p>
                   <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
                     <div
                       className={`h-2 rounded-full transition-all ${full ? "bg-red-500" : "bg-gradient-to-r from-cyan-400 to-blue-500"}`}

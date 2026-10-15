@@ -109,6 +109,12 @@ export function PickupStep({
         </div>
       )}
 
+      {!storageCapacityFull && storageAvailability?.key === availabilityKey && storageAvailability.availableBags != null && (
+        <p role="status" className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+          {storageAvailability.availableBags} bag slot{storageAvailability.availableBags === 1 ? "" : "s"} available for your selected schedule.
+        </p>
+      )}
+
       {selectedServices["pick-up-from-customer"] && <div className="space-y-2">
         <Label className="flex items-center gap-1.5">
           <Building2 className="h-4 w-4 text-blue-500" />
