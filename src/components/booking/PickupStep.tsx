@@ -66,6 +66,9 @@ export function PickupStep({
   const availabilityKey = pickupDate && pickupSlot && deliveryDate && deliverySlot
     ? `${pickupDate}T${pickupSlot}|${deliveryDate}T${deliverySlot}`
     : "";
+  const [failedKey, setFailedKey] = useState("");
+  // Hold the Next button until the capacity check for this exact schedule has answered.
+  const storageChecking = Boolean(availabilityKey) && storageAvailability?.key !== availabilityKey && failedKey !== availabilityKey;
   const storageCapacityFull = storageAvailability?.key === availabilityKey
     && storageAvailability.availableBags != null
     && storageAvailability.availableBags < requestedBags;
@@ -77,8 +80,13 @@ export function PickupStep({
     const checkOut = `${deliveryDate}T${deliverySlot}:00+08:00`;
     fetch(`/api/public/storage-availability?checkIn=${encodeURIComponent(checkIn)}&checkOut=${encodeURIComponent(checkOut)}`, { cache: "no-store", signal: controller.signal })
       .then((response) => response.ok ? response.json() : null)
-      .then((data) => { if (!controller.signal.aborted && data && typeof data.availableBags === "number") setStorageAvailability({ ...data, key: availabilityKey }); })
-      .catch(() => {});
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        if (data && typeof data.availableBags === "number") setStorageAvailability({ ...data, key: availabilityKey });
+        else if (data && data.availableBags === null) setStorageAvailability({ availableBags: null, key: availabilityKey });
+        else setFailedKey(availabilityKey);
+      })
+      .catch(() => { if (!controller.signal.aborted) setFailedKey(availabilityKey); });
     return () => controller.abort();
   }, [availabilityKey, pickupDate, pickupSlot, deliveryDate, deliverySlot]);
 
@@ -328,7 +336,7 @@ export function PickupStep({
 
       <div className="mt-8 flex items-center justify-between">
         <Button type="button" variant="outline" onClick={onPrev}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
-        <Button type="button" onClick={onNext} disabled={storageCapacityFull} className="bg-orange-500 text-white shadow-lg hover:bg-orange-600 disabled:opacity-50">
+        <Button type="button" onClick={onNext} disabled={storageCapacityFull || storageChecking} className="bg-orange-500 text-white shadow-lg hover:bg-orange-600 disabled:opacity-50">
           Next Step <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
       </div>

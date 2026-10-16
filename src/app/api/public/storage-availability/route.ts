@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSystemSettings, setting } from "@/lib/settings";
+import { getStorageCapacityLimit } from "@/lib/settings";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -10,8 +10,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "A valid storage period is required" }, { status: 400 });
   }
   try {
-    const settings = await getSystemSettings();
-    const capacity = Math.max(0, Number.parseInt(setting(settings, "max_simultaneous_bags", "0")) || 0);
+    const capacity = await getStorageCapacityLimit();
     if (!capacity) return NextResponse.json({ capacity: 0, used: 0, availableBags: null });
     const bookings = await prisma.booking.findMany({
       where: { status: { notIn: ["CANCELLED", "NO_SHOW", "DELIVERED"] }, checkIn: { lt: checkOut }, OR: [{ checkOut: null }, { checkOut: { gt: checkIn } }] },

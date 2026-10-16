@@ -10,7 +10,7 @@ import { canReadBooking, hasStaffRole } from "@/lib/staff-access";
 import { awardDeliveryPoints } from "@/lib/loyalty";
 import { decimalsToNumbers } from "@/lib/serialize";
 import { isBookingLocked } from "@/lib/booking-access";
-import { getSystemSettings, setting } from "@/lib/settings";
+import { getSystemSettings, getStorageCapacityLimit, setting } from "@/lib/settings";
 import { assertScheduleCapacity, BookingSlotError } from "@/lib/booking-slot-capacity";
 import { coordinatesForLocation, validCoordinates } from "@/lib/booking-location";
 import { assertStorageCapacity, StorageCapacityError } from "@/lib/storage-capacity";
@@ -126,8 +126,7 @@ export async function PUT(
     if (resultingCheckOut && resultingCheckOut <= resultingCheckIn) {
       return NextResponse.json({ error: "Check-out must be after check-in" }, { status: 400 });
     }
-    const capacitySettings = await getSystemSettings();
-    const storageCapacity = Math.max(0, Number.parseInt(setting(capacitySettings, "max_simultaneous_bags", "0")) || 0);
+    const storageCapacity = await getStorageCapacityLimit();
 
     if (body.numberOfBags !== undefined && body.numberOfBags !== existingBooking.numberOfBags) {
       if (body.allowBaggageChange !== true) {
