@@ -13,11 +13,17 @@ export async function GET(request: Request) {
     const capacity = await getStorageCapacityLimit();
     if (!capacity) return NextResponse.json({ capacity: 0, used: 0, availableBags: null });
     const bookings = await prisma.booking.findMany({
-      where: { status: { notIn: ["CANCELLED", "NO_SHOW", "DELIVERED"] }, checkIn: { lt: checkOut }, OR: [{ checkOut: null }, { checkOut: { gt: checkIn } }] },
-      select: { checkIn: true, checkOut: true, numberOfBags: true },
+      where: {
+        status: { notIn: ["CANCELLED", "NO_SHOW", "DELIVERED"] },
+        OR: [
+          { status: "IN_STORAGE", checkIn: { lt: checkOut } },
+          { status: { not: "IN_STORAGE" }, checkIn: { lt: checkOut }, OR: [{ checkOut: null }, { checkOut: { gt: checkIn } }] },
+        ],
+      },
+      select: { checkIn: true, checkOut: true, numberOfBags: true, status: true },
     });
     const points = [checkIn.getTime(), ...bookings.map((b) => Math.max(checkIn.getTime(), b.checkIn.getTime())).filter((t) => t < checkOut.getTime())];
-    const used = Math.max(0, ...points.map((at) => bookings.reduce((sum, b) => sum + (b.checkIn.getTime() <= at && (!b.checkOut || b.checkOut.getTime() > at) ? b.numberOfBags : 0), 0)));
+    const used = Math.max(0, ...points.map((at) => bookings.reduce((sum, b) => sum + (b.checkIn.getTime() <= at && (b.status === "IN_STORAGE" || !b.checkOut || b.checkOut.getTime() > at) ? b.numberOfBags : 0), 0)));
     return NextResponse.json({ capacity, used, availableBags: Math.max(0, capacity - used) }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "Could not check storage availability" }, { status: 500 });

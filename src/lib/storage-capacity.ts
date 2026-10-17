@@ -13,16 +13,24 @@ export async function assertStorageCapacity(
     where: {
       status: { notIn: ["CANCELLED", "NO_SHOW", "DELIVERED"] },
       ...(input.excludeBookingId ? { id: { not: input.excludeBookingId } } : {}),
-      checkIn: { lt: input.checkOut ?? new Date("9999-12-31T00:00:00.000Z") },
-      OR: [{ checkOut: null }, { checkOut: { gt: input.checkIn } }],
+      OR: [
+        // A bag physically in storage continues using a slot until staff deliver it,
+        // even if its planned checkout time has passed.
+        { status: "IN_STORAGE", checkIn: { lt: input.checkOut ?? new Date("9999-12-31T00:00:00.000Z") } },
+        {
+          status: { not: "IN_STORAGE" },
+          checkIn: { lt: input.checkOut ?? new Date("9999-12-31T00:00:00.000Z") },
+          OR: [{ checkOut: null }, { checkOut: { gt: input.checkIn } }],
+        },
+      ],
     },
-    select: { checkIn: true, checkOut: true, numberOfBags: true },
+    select: { checkIn: true, checkOut: true, numberOfBags: true, status: true },
   });
   const events = [{ time: input.checkIn.getTime(), delta: input.bags }];
   if (input.checkOut) events.push({ time: input.checkOut.getTime(), delta: -input.bags });
   for (const booking of active) {
     const start = Math.max(input.checkIn.getTime(), booking.checkIn.getTime());
-    const end = Math.min(input.checkOut?.getTime() ?? Infinity, booking.checkOut?.getTime() ?? Infinity);
+    const end = Math.min(input.checkOut?.getTime() ?? Infinity, booking.status === "IN_STORAGE" ? Infinity : booking.checkOut?.getTime() ?? Infinity);
     if (end <= start) continue;
     events.push({ time: start, delta: booking.numberOfBags });
     if (Number.isFinite(end)) events.push({ time: end, delta: -booking.numberOfBags });
