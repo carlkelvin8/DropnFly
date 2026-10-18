@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { peakStorageUsage } from "@/lib/storage-capacity";
 import { getStorageCapacityLimit } from "@/lib/settings";
 
 export async function GET(request: Request) {
@@ -22,8 +23,7 @@ export async function GET(request: Request) {
       },
       select: { checkIn: true, checkOut: true, numberOfBags: true, status: true },
     });
-    const points = [checkIn.getTime(), ...bookings.map((b) => Math.max(checkIn.getTime(), b.checkIn.getTime())).filter((t) => t < checkOut.getTime())];
-    const used = Math.max(0, ...points.map((at) => bookings.reduce((sum, b) => sum + (b.checkIn.getTime() <= at && (b.status === "IN_STORAGE" || !b.checkOut || b.checkOut.getTime() > at) ? b.numberOfBags : 0), 0)));
+    const used = peakStorageUsage(bookings, checkIn, checkOut);
     return NextResponse.json({ capacity, used, availableBags: Math.max(0, capacity - used) }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "Could not check storage availability" }, { status: 500 });
