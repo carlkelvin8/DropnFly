@@ -31,3 +31,14 @@ export function setting(map: Record<string, string>, key: string, fallback: stri
   const value = map[key];
   return value === undefined || value === "" ? fallback : value;
 }
+
+/** Default matches the value the admin settings page displays when unset. */
+export const DEFAULT_MAX_SIMULTANEOUS_BAGS = 50;
+
+/** Capacity for enforcement. Always reads fresh (never the 5-minute cache) so a
+ * booking is never accepted against a stale limit; 0 or less disables the check. */
+export async function getStorageCapacityLimit(): Promise<number> {
+  const settings = await getSystemSettings(true);
+  const raw = Number.parseInt(setting(settings, "max_simultaneous_bags", String(DEFAULT_MAX_SIMULTANEOUS_BAGS)), 10);
+  return Number.isFinite(raw) ? Math.max(0, raw) : DEFAULT_MAX_SIMULTANEOUS_BAGS;
+}

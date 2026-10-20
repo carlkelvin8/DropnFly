@@ -40,26 +40,29 @@ function FloatingOrb({
   );
 }
 
-function Particle() {
-  const [style] = useState(() => ({
-    width: Math.random() * 3 + 1,
-    left: `${Math.random() * 100}%`,
-    top: `${Math.random() * 100}%`,
-  }));
-  const [anim] = useState(() => ({
-    duration: Math.random() * 8 + 6,
-    delay: Math.random() * 5,
-  }));
+// Deterministic pseudo-random values from the particle index. Math.random() during render produced
+// different server and browser HTML and a hydration error on the login page.
+function seeded(index: number, salt: number) {
+  const x = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function Particle({ index = 0 }: { index?: number }) {
+  const width = Number((seeded(index, 1) * 3 + 1).toFixed(3));
+  const left = `${(seeded(index, 2) * 100).toFixed(3)}%`;
+  const top = `${(seeded(index, 3) * 100).toFixed(3)}%`;
+  const duration = Number((seeded(index, 4) * 8 + 6).toFixed(3));
+  const delay = Number((seeded(index, 5) * 5).toFixed(3));
 
   return (
     <div
       className="absolute rounded-full bg-blue-400/30"
       style={{
-        width: style.width,
-        height: style.width,
-        left: style.left,
-        top: style.top,
-        animation: `particle-float ${anim.duration}s ease-in-out ${anim.delay}s infinite`,
+        width,
+        height: width,
+        left,
+        top,
+        animation: `particle-float ${duration}s ease-in-out ${delay}s infinite`,
       }}
     />
   );
@@ -78,16 +81,18 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [existingSession, setExistingSession] = useState<{ email?: string; role?: string } | null>(null);
-  const [alternateOrigin] = useState(() => {
-    // Development-only helper; never offered in production builds.
-    if (typeof window === "undefined" || process.env.NODE_ENV === "production") return "";
+  // Development-only helper (never in production); computed after mount so server and browser HTML match.
+  const [alternateOrigin, setAlternateOrigin] = useState("");
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
     const url = new URL(window.location.href);
     if (url.hostname === "localhost") url.hostname = "127.0.0.1";
     else if (url.hostname === "127.0.0.1") url.hostname = "localhost";
-    else return "";
+    else return;
     url.pathname = "/login";
-    return url.toString();
-  });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only value set after hydration
+    setAlternateOrigin(url.toString());
+  }, []);
 
   useEffect(() => {
     getSession().then((s) => {
@@ -165,7 +170,7 @@ function LoginForm() {
 
         {/* Particles */}
         {Array.from({ length: 30 }).map((_, i) => (
-          <Particle key={i} />
+          <Particle key={i} index={i} />
         ))}
       </div>
 

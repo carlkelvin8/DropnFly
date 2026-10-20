@@ -11,9 +11,14 @@ interface PushManagerProps {
 export function PushManager({ subscribeUrl, unsubscribeUrl, vapidKeyUrl }: PushManagerProps) {
   const [subscribed, setSubscribed] = useState(false);
   const [error, setError] = useState(false);
-  const [supported] = useState(() =>
-    typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window
-  );
+  // Browser support is only known on the client. Reading it during the first render made the server
+  // HTML (no button) differ from the client's (button), causing a hydration error on every page.
+  const [supported, setSupported] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only capability check after hydration
+    setSupported("serviceWorker" in navigator && "PushManager" in window);
+  }, []);
 
   useEffect(() => {
     if (!supported) return;

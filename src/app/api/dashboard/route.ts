@@ -75,18 +75,9 @@ export async function GET() {
         FROM "Booking"
       `,
       prisma.booking.aggregate({
-        // Same occupancy rule the booking check enforces: bags physically held, plus
-        // active bookings whose storage period covers right now.
-        where: {
-          OR: [
-            { status: { in: ["RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY"] } },
-            {
-              status: { notIn: ["CANCELLED", "NO_SHOW", "DELIVERED"] },
-              checkIn: { lte: new Date() },
-              OR: [{ checkOut: null }, { checkOut: { gt: new Date() } }],
-            },
-          ],
-        },
+        // The dashboard's available-slot indicator is physical stock, not future
+        // reservations. Bags stop occupying a physical slot when delivered.
+        where: { status: "IN_STORAGE" },
         _sum: { numberOfBags: true },
       }),
       prisma.user.count(),

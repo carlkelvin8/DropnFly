@@ -1,0 +1,393 @@
+/**
+ * Seeds orders and related data (bookings, payments, assignments, luggage, chats, reviews,
+ * extensions, notifications, activity logs) WITHOUT creating or modifying users or customers.
+ * Uses the existing accounts in the database. Safe to re-run: bookings use fixed reference numbers.
+ *
+ * Run: npx tsx scripts/seed-orders.ts
+ */
+import "dotenv/config";
+import { prisma } from "../src/lib/prisma";
+
+function randomDate(daysAgo: number, daysRange: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo + Math.floor(Math.random() * daysRange));
+  d.setHours(6 + Math.floor(Math.random() * 14), Math.floor(Math.random() * 60), 0, 0);
+  return d;
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+async function main() {
+  const admin = await prisma.user.findFirst({ where: { role: "ADMIN" }, orderBy: { createdAt: "asc" } });
+  if (!admin) throw new Error("No ADMIN user found. Create an account first.");
+  const others = await prisma.user.findMany({ where: { role: { in: ["STAFF", "EMPLOYEE"] } }, orderBy: { createdAt: "asc" }, take: 5 });
+  const createdUsers = [admin, ...others].map((u) => ({ email: u.email, id: u.id }));
+  const customers = await prisma.customer.findMany({ orderBy: { createdAt: "asc" }, take: 10 });
+  if (customers.length === 0) throw new Error("No customers found. Create a customer first.");
+  const createdCustomers = customers.map((c) => ({ email: c.email, id: c.id }));
+  console.log(`Using ${createdUsers.length} existing users and ${createdCustomers.length} existing customers`);
+
+  let location = await prisma.storageLocation.findFirst();
+  if (!location) {
+    location = await prisma.storageLocation.create({ data: { name: "Dropnfly Villamor", address: "Villamor Air Base, Pasay City", city: "Pasay", capacity: 200, pricePerDay: 50, openingTime: "06:00", closingTime: "22:00" } });
+  }
+  const adminUser = createdUsers[0];
+  const user = (i: number) => createdUsers[i % createdUsers.length];
+  const cust = (i: number) => createdCustomers[i % createdCustomers.length];
+
+  // ── Bookings with realistic data ──
+
+  const bookingConfigs = [
+    { custIdx: 0, bags: 2, days: 1, status: "DELIVERED" as const, staffIdx: 1, terminal: "NAIA Terminal 1", airline: "Philippine Airlines", luggage: JSON.stringify([{ type: "Standard", qty: 1, price: 250 }, { type: "Small", qty: 1, price: 200 }]), services: ["Pick-up from Customer"], payment: "full" },
+    { custIdx: 1, bags: 1, days: 3, status: "IN_STORAGE" as const, staffIdx: 2, terminal: "NAIA Terminal 3", airline: "Cebu Pacific", luggage: JSON.stringify([{ type: "Standard", qty: 1, price: 250 }]), services: [], payment: "full" },
+    { custIdx: 2, bags: 3, days: 2, status: "CONFIRMED" as const, staffIdx: 3, terminal: "NAIA Terminal 1", airline: "United Airlines", luggage: JSON.stringify([{ type: "Large", qty: 1, price: 300 }, { type: "Small", qty: 2, price: 200 }]), services: ["Deliver to Customer"], payment: "dp" },
+    { custIdx: 3, bags: 1, days: 5, status: "PENDING" as const, staffIdx: null, terminal: "NAIA Terminal 3", airline: "Japan Airlines", luggage: JSON.stringify([{ type: "Standard", qty: 1, price: 250 }]), services: [], payment: "dp" },
+    { custIdx: 4, bags: 4, days: 1, status: "OUT_FOR_DELIVERY" as const, staffIdx: 4, terminal: "NAIA Terminal 1", airline: "Korean Air", luggage: JSON.stringify([{ type: "Small", qty: 2, price: 200 }, { type: "Standard", qty: 1, price: 250 }, { type: "Large", qty: 1, price: 300 }]), services: ["Pick-up from Customer", "Deliver to Customer"], payment: "full" },
+    { custIdx: 5, bags: 2, days: 4, status: "DELIVERED" as const, staffIdx: 5, terminal: "NAIA Terminal 2", airline: "Singapore Airlines", luggage: JSON.stringify([{ type: "Standard", qty: 2, price: 250 }]), services: ["Pick-up from Customer"], payment: "full" },
+    { custIdx: 6, bags: 1, days: 7, status: "IN_STORAGE" as const, staffIdx: 2, terminal: "NAIA Terminal 3", airline: "Emirates", luggage: JSON.stringify([{ type: "Large", qty: 1, price: 300 }]), services: ["Deliver to Customer"], payment: "full" },
+    { custIdx: 7, bags: 2, days: 2, status: "RECEIVED" as const, staffIdx: 1, terminal: "NAIA Terminal 1", airline: "Qatar Airways", luggage: JSON.stringify([{ type: "Small", qty: 1, price: 200 }, { type: "Extra Small", qty: 1, price: 150 }]), services: ["Pick-up from Customer"], payment: "dp" },
+    { custIdx: 8, bags: 3, days: 3, status: "CONFIRMED" as const, staffIdx: 3, terminal: "NAIA Terminal 3", airline: "Cathay Pacific", luggage: JSON.stringify([{ type: "Standard", qty: 1, price: 250 }, { type: "Small", qty: 1, price: 200 }, { type: "Extra Small", qty: 1, price: 150 }]), services: [], payment: "dp" },
+    { custIdx: 9, bags: 5, days: 1, status: "DELIVERED" as const, staffIdx: 4, terminal: "NAIA Terminal 1", airline: "Turkish Airlines", luggage: JSON.stringify([{ type: "Standard", qty: 2, price: 250 }, { type: "Large", qty: 1, price: 300 }, { type: "Small", qty: 2, price: 200 }]), services: ["Pick-up from Customer", "Deliver to Customer"], payment: "full" },
+    { custIdx: 0, bags: 1, days: 2, status: "DELIVERED" as const, staffIdx: 5, terminal: "NAIA Terminal 3", airline: "Philippine Airlines", luggage: JSON.stringify([{ type: "Small", qty: 1, price: 200 }]), services: [], payment: "full" },
+    { custIdx: 1, bags: 2, days: 1, status: "PENDING" as const, staffIdx: null, terminal: "NAIA Terminal 1", airline: "AirAsia Philippines", luggage: JSON.stringify([{ type: "Standard", qty: 2, price: 250 }]), services: ["Pick-up from Customer"], payment: "dp" },
+    { custIdx: 2, bags: 1, days: 3, status: "DELIVERED" as const, staffIdx: 1, terminal: "NAIA Terminal 2", airline: "Etihad Airways", luggage: JSON.stringify([{ type: "Standard", qty: 1, price: 250 }]), services: ["Deliver to Customer"], payment: "full" },
+  ];
+
+  const createdBookings: { ref: string; id: string }[] = [];
+
+  const DELIVERED_STATUSES = new Set(["DELIVERED"]);
+  const PAST_STATUSES = new Set(["CANCELLED", "NO_SHOW"]);
+
+  for (let i = 0; i < bookingConfigs.length; i++) {
+    const b = bookingConfigs[i];
+    const ref = `DROPFLY-SEED-${String(i + 1).padStart(3, "0")}`;
+    const existing = await prisma.booking.findFirst({ where: { referenceNumber: ref } });
+    if (existing) {
+      createdBookings.push({ ref: existing.referenceNumber, id: existing.id });
+      console.log(`Booking ${existing.referenceNumber} already exists, skipping`);
+      continue;
+    }
+
+    const customer = cust(b.custIdx);
+    const staffUser = b.staffIdx !== null ? user(b.staffIdx) : null;
+
+    let pickupDate: Date;
+    let deliveryDate: Date;
+
+    if (DELIVERED_STATUSES.has(b.status)) {
+      pickupDate = randomDate(5 + i * 1, 3);
+      deliveryDate = addDays(pickupDate, b.days);
+    } else if (PAST_STATUSES.has(b.status as string)) {
+      pickupDate = randomDate(10 + i, 2);
+      deliveryDate = addDays(pickupDate, b.days);
+    } else {
+      const futureDays = 1 + Math.floor(Math.random() * 5);
+      pickupDate = addDays(new Date(), futureDays);
+      deliveryDate = addDays(pickupDate, b.days);
+    }
+
+    const luggageItems = JSON.parse(b.luggage);
+    const baseTotal = luggageItems.reduce((sum: number, item: { qty: number; price: number }) => sum + item.qty * item.price, 0);
+    const extraFee = b.bags > 3 ? 100 : 0;
+    const servicesFee = b.services.length * 180;
+    const totalPrice = baseTotal + extraFee + servicesFee;
+    const downPayment = b.payment === "full" ? totalPrice : Math.ceil(totalPrice * 0.5);
+
+    const booking = await prisma.booking.create({
+      data: {
+        referenceNumber: ref,
+        qrCode: "seed-qr-placeholder",
+        userId: staffUser?.id || adminUser.id,
+        customerId: customer.id,
+        locationId: location!.id,
+        pickupLocation: `${b.terminal} - ${b.airline}`,
+        dropOffLocation: "Villamor, Pasay City",
+        luggageDetails: b.luggage,
+        checkIn: pickupDate,
+        checkOut: deliveryDate,
+        numberOfBags: b.bags,
+        totalPrice,
+        status: b.status,
+      },
+    });
+    createdBookings.push({ ref: ref, id: booking.id });
+    console.log(`Created booking: ${ref} (${b.status}) - ₱${totalPrice}`);
+
+    // Create assignment
+    if (staffUser) {
+      await prisma.bookingAssignment.create({
+        data: { bookingId: booking.id, userId: staffUser.id },
+      });
+    }
+
+    // Create payment record
+    if (b.payment === "full") {
+      await prisma.payment.create({
+        data: {
+          bookingId: booking.id,
+          customerId: customer.id,
+          amount: totalPrice,
+          method: "CASH",
+          status: "PAID",
+          paidAt: pickupDate,
+        },
+      });
+    } else {
+      await prisma.payment.create({
+        data: {
+          bookingId: booking.id,
+          customerId: customer.id,
+          amount: downPayment,
+          method: "GCASH",
+          status: "PAID",
+          paidAt: pickupDate,
+        },
+      });
+    }
+
+    // Create loyalty points for DELIVERED bookings
+    if (DELIVERED_STATUSES.has(b.status)) {
+      const pointsEarned = Math.floor(totalPrice / 10);
+      if (pointsEarned > 0) {
+        await prisma.customer.update({
+          where: { id: customer.id },
+          data: { points: { increment: pointsEarned } },
+        });
+        await prisma.pointsTransaction.create({
+          data: {
+            customerId: customer.id,
+            points: pointsEarned,
+            type: "EARNED",
+            reference: booking.id,
+            description: `Earned from booking ${ref}`,
+          },
+        });
+      }
+    }
+  }
+
+  // ── Analytics demo dataset: keep a stable set of exactly 100 seeded bookings ──
+  const demoStatuses = ["PENDING", "CONFIRMED", "RECEIVED", "IN_STORAGE", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "NO_SHOW"] as const;
+  const demoMethods = ["CASH", "GCASH", "MAYA", "CARD"] as const;
+  const additionalDemoBookings = Math.max(0, 100 - bookingConfigs.length);
+  for (let i = 1; i <= additionalDemoBookings; i++) {
+    const referenceNumber = `DROPFLY-MOCK-${String(i).padStart(3, "0")}`;
+    const existing = await prisma.booking.findUnique({ where: { referenceNumber } });
+    if (existing) {
+      createdBookings.push({ ref: existing.referenceNumber, id: existing.id });
+      continue;
+    }
+
+    const customer = cust(i);
+    const employee = user(1 + i);
+    const status = demoStatuses[i % demoStatuses.length];
+    const checkIn = randomDate(90 - (i % 90), 3);
+    const checkOut = addDays(checkIn, 1 + (i % 10));
+    const numberOfBags = 1 + (i % 5);
+    const totalPrice = 250 * numberOfBags + (i % 3) * 180;
+
+    const booking = await prisma.booking.create({
+      data: {
+        referenceNumber,
+        qrCode: "seed-qr-placeholder",
+        userId: adminUser.id,
+        customerId: customer.id,
+        locationId: location!.id,
+        pickupLocation: `NAIA Terminal ${(i % 3) + 1}`,
+        dropOffLocation: "Dropnfly Villamor, Pasay City",
+        luggageDetails: JSON.stringify([{ type: ["Extra Small", "Small", "Standard", "Large"][i % 4], qty: numberOfBags, price: 250 }]),
+        checkIn,
+        checkOut,
+        numberOfBags,
+        totalPrice,
+        status,
+      },
+    });
+    createdBookings.push({ ref: referenceNumber, id: booking.id });
+
+    await prisma.bookingAssignment.create({ data: { bookingId: booking.id, userId: employee.id, phase: i % 2 === 0 ? "PICKUP" : "DROPOFF" } });
+    if (!["PENDING", "CANCELLED", "NO_SHOW"].includes(status)) {
+      await prisma.payment.create({
+        data: { bookingId: booking.id, customerId: customer.id, amount: status === "CONFIRMED" ? Math.ceil(totalPrice / 2) : totalPrice, method: demoMethods[i % demoMethods.length], status: "PAID", paidAt: checkIn },
+      });
+    }
+  }
+  console.log(`Analytics dataset ready: ${bookingConfigs.length + additionalDemoBookings} seeded bookings`);
+
+  // ── Activity Logs ──
+  const logActions = ["CREATE", "UPDATE", "UPDATE", "DELETE", "CREATE", "UPDATE"];
+  const logEntities = ["Booking", "Customer", "Booking", "SystemSetting", "Booking", "Booking"];
+  for (let i = 0; i < 6; i++) {
+    const booking = createdBookings[i % createdBookings.length];
+    await prisma.activityLog.create({
+      data: {
+        userId: adminUser.id,
+        action: logActions[i],
+        entity: logEntities[i],
+        entityId: booking.id,
+        details: `Activity log #${i + 1}: ${logActions[i]} ${logEntities[i]}`,
+        createdAt: new Date(Date.now() - i * 3600000),
+      },
+    });
+  }
+  console.log("Created 6 activity logs");
+
+  // ── Notifications ──
+  for (const user of createdUsers.slice(0, 3)) {
+    for (let i = 0; i < 3; i++) {
+      const booking = createdBookings[i % createdBookings.length];
+      await prisma.notification.create({
+        data: {
+          userId: user.id,
+          type: i === 0 ? "booking_created" : i === 1 ? "status_update" : "payment_received",
+          title: i === 0 ? "New Booking Created" : i === 1 ? "Booking Status Updated" : "Payment Received",
+          message: `Booking ${booking.ref} was ${i === 0 ? "created" : i === 1 ? "updated" : "paid"}`,
+          link: `/dashboard/bookings/${booking.id}`,
+          isRead: i === 0,
+        },
+      });
+    }
+  }
+  console.log("Created notifications");
+
+  // ── System Settings ──
+  const settingData = [
+    { key: "price_per_bag", value: "50" },
+    { key: "max_capacity", value: "200" },
+    { key: "business_hours_start", value: "06:00" },
+    { key: "business_hours_end", value: "22:00" },
+    { key: "allow_online_booking", value: "true" },
+    { key: "extra_bag_fee", value: "100" },
+    { key: "extra_bag_threshold", value: "3" },
+    { key: "service_pickup_fee", value: "180" },
+    { key: "service_delivery_fee", value: "180" },
+  ];
+  for (const s of settingData) {
+    await prisma.systemSetting.upsert({
+      where: { key: s.key },
+      update: {},
+      create: { key: s.key, value: s.value },
+    });
+  }
+  console.log("Created/updated system settings");
+
+  // ── Booking Extensions ──
+  const firstBooking = createdBookings[0];
+  const secondBooking = createdBookings[1];
+  if (firstBooking) {
+    const existingExt = await prisma.bookingExtension.findFirst({ where: { bookingId: firstBooking.id } });
+    if (!existingExt) {
+      await prisma.bookingExtension.create({
+        data: {
+          bookingId: firstBooking.id,
+          requestedCheckOut: addDays(new Date(), 1),
+          reason: "Need an extra day to pick up luggage",
+          status: "APPROVED",
+          reviewedById: adminUser.id,
+          reviewedAt: new Date(),
+        },
+      });
+      console.log("Created booking extension (approved)");
+    }
+  }
+
+  if (secondBooking) {
+    const existingExt = await prisma.bookingExtension.findFirst({ where: { bookingId: secondBooking.id } });
+    if (!existingExt) {
+      await prisma.bookingExtension.create({
+        data: {
+          bookingId: secondBooking.id,
+          requestedCheckOut: addDays(new Date(), 2),
+          reason: "Delayed flight, need extension",
+          status: "PENDING",
+        },
+      });
+      console.log("Created booking extension (pending)");
+    }
+  }
+
+  // ── Chat Messages ──
+  if (firstBooking) {
+    const existingMsg = await prisma.chatMessage.findFirst({ where: { bookingId: firstBooking.id } });
+    if (!existingMsg) {
+      const customer = cust(0);
+      const staffUser = user(1);
+      await prisma.chatMessage.create({
+        data: { bookingId: firstBooking.id, customerId: customer.id, message: "Hi, when will my luggage be delivered?", isFromCustomer: true },
+      });
+      await prisma.chatMessage.create({
+        data: { bookingId: firstBooking.id, senderId: staffUser.id, message: "Your luggage is on the way! ETA is within 2 hours.", isFromCustomer: false },
+      });
+      await prisma.chatMessage.create({
+        data: { bookingId: firstBooking.id, customerId: customer.id, message: "Thank you!", isFromCustomer: true },
+      });
+      console.log("Created 3 chat messages");
+    }
+  }
+
+  // ── Booking Reviews ──
+  if (firstBooking) {
+    const existingReview = await prisma.bookingReview.findUnique({ where: { bookingId: firstBooking.id } });
+    if (!existingReview) {
+      const customer = cust(0);
+      await prisma.bookingReview.create({
+        data: { bookingId: firstBooking.id, customerId: customer.id, rating: 5, comment: "Great service! Fast delivery and friendly staff." },
+      });
+      console.log("Created booking review (5 stars)");
+    }
+  }
+
+  // ── Luggage Items with tags ──
+  for (const b of createdBookings.slice(0, 6)) {
+    const existing = await prisma.luggageItem.findFirst({ where: { bookingId: b.id } });
+    if (existing) continue;
+    const bookingRecord = await prisma.booking.findUnique({ where: { id: b.id }, select: { numberOfBags: true } });
+    const bagCount = bookingRecord?.numberOfBags || 1;
+    for (let i = 0; i < bagCount; i++) {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let code = "";
+      for (let j = 0; j < 6; j++) code += chars[Math.floor(Math.random() * chars.length)];
+      const statuses = ["DELIVERED", "IN_STORAGE", "CHECKED_IN", "IN_STORAGE", "DELIVERED", "DELIVERED"];
+      const bIdx = createdBookings.indexOf(b);
+      await prisma.luggageItem.create({
+        data: {
+          bookingId: b.id,
+          tagNumber: `BAG-${code}`,
+          description: `Bag ${i + 1} of ${bagCount}`,
+          status: statuses[bIdx] || "CHECKED_IN",
+          location: statuses[bIdx] === "IN_STORAGE" ? `Shelf ${String.fromCharCode(65 + (i % 5))}-${10 + i}` : null,
+        },
+      });
+    }
+    console.log(`Created ${bagCount} luggage items for ${b.ref}`);
+  }
+
+  // ── Promo Codes ──
+  const promoData = [
+    { code: "DROP10", description: "10% off your booking", type: "PERCENTAGE" as const, value: 10, maxUsage: 200, minAmount: 0 },
+    { code: "SAVE100", description: "₱100 off bookings over ₱500", type: "FIXED" as const, value: 100, maxUsage: 150, minAmount: 500 },
+    { code: "FREEPICKUP", description: "₱180 off pick-up service", type: "FIXED" as const, value: 180, maxUsage: 100, minAmount: 0 },
+  ];
+  for (const p of promoData) {
+    const existing = await prisma.promoCode.findUnique({ where: { code: p.code } });
+    if (existing) {
+      continue;
+    } else {
+      await prisma.promoCode.create({ data: p });
+    }
+  }
+  console.log(`Created ${promoData.length} promo codes`);
+
+  console.log("\n✅ Seed complete!");
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(() => prisma.$disconnect());

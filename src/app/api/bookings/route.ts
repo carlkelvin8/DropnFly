@@ -7,7 +7,7 @@ import { generateReferenceNumber } from "@/lib/reference";
 import { decimalsToNumbers } from "@/lib/serialize";
 import type { BookingStatus } from "@/generated/prisma/client";
 import { normalizeReference } from "@/lib/utils";
-import { getSystemSettings, setting } from "@/lib/settings";
+import { getSystemSettings, getStorageCapacityLimit, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
 import { manilaDateStr, manilaDayRange, manilaMinutesOfDay } from "@/lib/manila-time";
 import { fleetCapacity, movementsOverlappingSlot, FLEET_SLOT_MINUTES } from "@/lib/fleet-capacity";
@@ -420,7 +420,7 @@ export async function POST(req: Request) {
       if (promoCodeId) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`promo:${promoCodeId}`}))`;
       }
-      const maxSimultaneousBags = parseInt(setting(settings, "max_simultaneous_bags", "0"));
+      const maxSimultaneousBags = await getStorageCapacityLimit();
       if (maxSimultaneousBags > 0) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('booking:storage-capacity'))`;
         await assertStorageCapacity(tx, { checkIn: checkInDate, checkOut: checkOutDate, bags: computed.totalBags, capacity: maxSimultaneousBags });

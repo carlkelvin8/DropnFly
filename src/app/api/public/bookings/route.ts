@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { generateReferenceNumber } from "@/lib/reference";
 import { sendConfirmationEmail } from "@/lib/email";
 import { notifyBookingCreated, sendCustomerNotification } from "@/lib/notifications";
-import { getSystemSettings, setting } from "@/lib/settings";
+import { getSystemSettings, getStorageCapacityLimit, setting } from "@/lib/settings";
 import { computeBookingPrice, getBookingPriceSettings, parseLuggageDetails } from "@/lib/pricing";
 import { grantBookingAccess } from "@/lib/booking-access";
 import { manilaDateStr, manilaMinutesOfDay, manilaDayRange } from "@/lib/manila-time";
@@ -142,7 +142,7 @@ export async function POST(req: Request) {
     if (maxBags > 0 && pricing.totalBags > maxBags) {
       return NextResponse.json({ error: `Maximum of ${maxBags} bags per booking` }, { status: 400 });
     }
-    const maxSimultaneousBags = parseInt(setting(settings, "max_simultaneous_bags", "0"));
+    const maxSimultaneousBags = await getStorageCapacityLimit();
 
     const declaredBags = parseInt(numberOfBags);
     if (isNaN(declaredBags) || declaredBags !== pricing.totalBags) {
