@@ -21,3 +21,9 @@ Luggage booking, storage, logistics, tracking, customer support, and payment man
 Run `npm test`, `npm run lint`, `npx tsc --noEmit`, and `npm run build` before deployment.
 
 Public bookings receive a secure, HTTP-only, seven-day browser grant for the newly created booking. Customer and staff sessions can also authorize access. Booking references and internal database IDs are identifiers, not credentials.
+
+---
+
+## Built by
+
+Built by **[Carl Kelvin Manahan](https://web-portfolio-tau-rust.vercel.app)**, a freelance software engineer who builds MVPs for startup founders. Have a product idea? [Book a free 15-min call](https://cal.com/carl-manahan-7lixzv/15min).
